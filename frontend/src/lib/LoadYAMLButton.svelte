@@ -1,65 +1,33 @@
 <script lang="ts">
-  import { selectedSpecies } from "$stores/speciesStore";
-  import { get } from "svelte/store";
-  import * as yaml from "js-yaml";
+  import { importYAMLText } from "$lib/importer";
 
+  let message = "";
   let fileInput: HTMLInputElement;
 
-  function handleFileUpload(event: Event) {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const content = reader.result as string;
-        const parsed = yaml.load(content);
-
-        const data = Array.isArray(parsed)
-          ? parsed
-          : Array.isArray(parsed?.species)
-            ? parsed.species
-            : null;
-
-        if (!data) {
-          alert("YAML 檔案格式錯誤，應為物種陣列或 species 陣列。");
-          return;
-        }
-
-        const current = get(selectedSpecies);
-        const currentIds = new Set(current.map(d => d.id));
-        const merged = [...current];
-
-        for (const item of data) {
-          if (item.id && !currentIds.has(item.id)) {
-            merged.push(item);
-          }
-        }
-
-        selectedSpecies.set(merged);
-        alert(`成功匯入 ${merged.length - current.length} 筆物種`);
-      } catch (err) {
-        alert("解析 YAML 失敗");
-        console.error(err);
-      }
-    };
-
-    reader.readAsText(file);
-    fileInput.value = ""; // reset file input
+  async function handleFileUpload(event: Event) {
+    const file = (event.target as HTMLInputElement)?.files?.[0];
+    if (file) {
+      const text = await file.text();
+      const result = await importYAMLText(text);
+      message = result ?? "✅ 匯入成功";
+    }
   }
 </script>
 
-<button
-  class="bg-green-600 text-white px-4 py-2 rounded mr-2"
-  on:click={() => fileInput.click()}
->
-  匯入 YAML
-</button>
-<input
-  type="file"
-  accept=".yml,.yaml"
-  bind:this={fileInput}
-  class="hidden"
-  on:change={handleFileUpload}
-/>
+<div class="my-4">
+  <label>
+    <span class="block font-semibold mb-1">匯入 YAML 或俗名檔案：</span>
+    <input
+      bind:this={fileInput}
+      type="file"
+      accept=".yaml,.yml,.txt"
+      class="block mt-1"
+      on:change={handleFileUpload}
+    />
+  </label>
+
+  {#if message}
+    <p class={message.startsWith("✅") ? "text-green-600 mt-2" : "text-red-500 mt-2"}>{message}</p>
+  {/if}
+</div>
 

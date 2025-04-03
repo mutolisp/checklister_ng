@@ -25,7 +25,7 @@
 # backend/main.py
 from fastapi import FastAPI
 from sqlmodel import SQLModel
-from backend.api import search_api
+from backend.api import search_api, resolve_name
 from backend.db import engine
 
 app = FastAPI()
@@ -36,3 +36,4 @@ def on_startup():
     SQLModel.metadata.create_all(engine)
 
 app.include_router(search_api.router)
+app.include_router(resolve_name.router)

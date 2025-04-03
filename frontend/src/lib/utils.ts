@@ -9,8 +9,8 @@ export function debounce<T extends (...args: any[]) => void>(func: T, wait = 300
 }
 
 export function downloadYAML(data: any, filename = "checklist.yml") {
-  const yamlText = yaml.dump({ species: data });
-  const blob = new Blob([yamlText], { type: "text/yaml" });
+  const yamlText = yaml.dump({ ["checklister-ng"]: data });
+  const blob = new Blob([yamlText], { type: "text/yaml;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -18,4 +18,3 @@ export function downloadYAML(data: any, filename = "checklist.yml") {
   a.click();
   URL.revokeObjectURL(url);
 }
-

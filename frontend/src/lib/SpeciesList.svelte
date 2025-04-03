@@ -5,7 +5,7 @@
 
 {#if groupedSpecies}
   {#each Array.from(groupedSpecies.entries()) as [pt_name, famMap]}
-    <h3 class="text-xl mt-4 mb-2 font-bold">## {pt_name}</h3>
+    <h3 class="text-xl mt-4 mb-2 font-bold">{pt_name}</h3>
     <ul>
       {#each Array.from(famMap.entries()) as [family, speciesList]}
         <li class="mb-1">
@@ -24,7 +24,7 @@
                   class="text-red-500 text-sm ml-2"
                   on:click={() => onRemove(item.id)}
                 >
-                  ✕
+                  🗑️
                 </button>
               </li>
             {/each}
