@@ -1,13 +1,13 @@
 <script lang="ts">
   import  SearchBox  from "$lib/SearchBox.svelte";
   import  SpeciesList  from "$lib/SpeciesList.svelte";
+  import  LoadYAMLButton  from "$lib/LoadYAMLButton.svelte";
+  import AmbiguousSelector from "$lib/AmbiguousSelector.svelte"; //模糊比對
   import { selectedSpecies } from "$stores/speciesStore";
   import { downloadYAML } from "$lib/utils";
-  import  LoadYAMLButton  from "$lib/LoadYAMLButton.svelte";
   import { derived, get } from "svelte/store";
   import { convertToDarwinCore } from '$lib/dwcMapper'; //DwC的解析
   import { importYAMLText } from '$lib/importer'; //匯入yaml或文字檔案
-  import AmbiguousSelector from "$lib/AmbiguousSelector.svelte"; //模糊比對
   import { unresolvedStore } from "$stores/importState"; //未解析的名字
 
   const typeOrder = {
@@ -103,6 +103,34 @@
 	  }
 	}
 
+	async function exportData(format: string) {
+	  const response = await fetch(`/api/export?format=${format}`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ checklist: get(selectedSpecies) })
+	  });
+
+	  if (!response.ok) {
+		alert("❌ 匯出失敗！");
+		return;
+	  }
+
+	  const blob = await response.blob();
+	  const url = URL.createObjectURL(blob);
+	  const a = document.createElement("a");
+	  a.href = url;
+	  a.download = `checklist.${format === 'docx' ? 'docx' : 'md'}`;
+	  a.click();
+	  URL.revokeObjectURL(url);
+	}
+
+    function clearChecklist() {
+      const confirmClear = confirm("你確定要清除目前名錄？");
+      if (confirmClear) {
+        selectedSpecies.set([]);
+      }
+    }
+
 </script>
 
 <h1 class="text-2xl font-bold mb-4">checklister-ng 名錄產生器</h1>
@@ -113,12 +141,20 @@
   <LoadYAMLButton />
   <button on:click={exportYAML} class="bg-blue-600 text-white px-4 py-2 rounded">
     匯出支援DwC的YAML
+  </button>  
+  <button on:click={() => exportData('markdown')} class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+    匯出 Markdown
   </button>
+  <button on:click={() => exportData('docx')} class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+    匯出 Word (.docx)
+  </button>
+  <button on:click={clearChecklist}>清除名錄</button>
+
 </div>
 
 <button on:click={exportUnresolved} class="mt-2 text-sm px-3 py-1 bg-yellow-100 border rounded hover:bg-yellow-200">
     ⬇ 匯出未解析俗名
- </button>
+</button>
 
 <p class="text-sm text-gray-700 mt-2">
 ✅ 目前已匯入物種筆數：{$selectedSpecies.length}

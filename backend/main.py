@@ -25,7 +25,7 @@
 # backend/main.py
 from fastapi import FastAPI
 from sqlmodel import SQLModel
-from backend.api import search_api, resolve_name
+from backend.api import search_api, resolve_name, export
 from backend.db import engine
 
 app = FastAPI()
@@ -37,3 +37,4 @@ def on_startup():
 
 app.include_router(search_api.router)
 app.include_router(resolve_name.router)
+app.include_router(export.router)

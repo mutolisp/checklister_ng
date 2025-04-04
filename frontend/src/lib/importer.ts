@@ -1,45 +1,8 @@
-// src/lib/importer.ts
-
-// import yaml from 'js-yaml';
-// import { convertFromDarwinCore } from '$lib/dwcMapper';
-// import { selectedSpecies } from '$stores/speciesStore';
-// 
-// export async function importYAMLFile(file: File): Promise<string | null> {
-//   try {
-//     const text = await file.text();
-//     const data = yaml.load(text);
-// 
-//     if (!data || typeof data !== 'object' || !Array.isArray(data['checklist'])) {
-//       return "YAML 檔案格式錯誤，應包含 checklist 陣列";
-//     }
-// 
-//     const rawList = data['checklist'].map(convertFromDarwinCore);
-// 
-//     selectedSpecies.update(current => {
-//       const existingIds = new Set(current.map(d => d.taxonID));
-//       const merged = [...current];
-// 
-//       for (const item of rawList) {
-//         if (!existingIds.has(item.taxonID)) {
-//           merged.push(item);
-//         }
-//       }
-// 
-//       return merged;
-//     });
-// 
-//     return null; // 匯入成功
-//   } catch (e: any) {
-//     return `匯入失敗：${e.message}`;
-//   }
-// }
-// 
-
 import yaml from "js-yaml";
 import { selectedSpecies } from "$stores/speciesStore";
 import { convertFromDarwinCore } from "$lib/dwcMapper";
 import { ambiguousStore, unresolvedStore } from "$stores/importState";
-import { distance } from "fastest-levenshtein";
+import { get } from "svelte/store";
 
 export async function importYAMLText(yamlText: string): Promise<string | null> {
   try {
@@ -59,13 +22,29 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
         list = parsed["checklister-ng"]["checklist"];
       }
 
-      // 若有 checklist，展開後直接匯入
+      // ✅ 若有 checklist，展開後詢問是否合併
       if (list.length > 0) {
         const restored = list.map(convertFromDarwinCore);
-        selectedSpecies.update((current) => {
-          const ids = new Set(current.map((d) => d.taxonID));
-          return [...current, ...restored.filter((d) => !ids.has(d.taxonID))];
-        });
+        const existing = get(selectedSpecies);
+
+        if (existing.length > 0) {
+          const shouldMerge = confirm("目前已有名錄資料，是否要合併匯入的資料？\n✅ 確定合併\n❌ 取消取代");
+          if (shouldMerge) {
+            const existingIds = new Set(existing.map((d) => d.id));
+            const merged = [...existing];
+            for (const item of restored) {
+              if (!existingIds.has(item.id)) {
+                merged.push(item);
+              }
+            }
+            selectedSpecies.set(merged);
+          } else {
+            selectedSpecies.set(restored);
+          }
+        } else {
+          selectedSpecies.set(restored);
+        }
+
         return null;
       } else {
         return "⚠️ YAML 檔案缺少 checklist 陣列";
@@ -105,10 +84,10 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
       }
     }
 
-    selectedSpecies.update((current) => {
-      const ids = new Set(current.map((d) => d.taxonID));
-      return [...current, ...resolved.filter((d) => !ids.has(d.taxonID))];
-    });
+    const existing = get(selectedSpecies);
+    const existingIds = new Set(existing.map((d) => d.id));
+    const merged = [...existing, ...resolved.filter((d) => !existingIds.has(d.id))];
+    selectedSpecies.set(merged);
 
     ambiguousStore.set(ambiguous);
     unresolvedStore.set(unresolved);

@@ -20,4 +20,5 @@ session = Session(engine)
 
 # load router
 app.include_router(search_api.router)
+app.include_router(export.router)
 
