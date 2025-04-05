@@ -75,7 +75,7 @@
 	  };
 	  downloadYAML(metadata, "checklist.yml");
 	}
-    
+ 
     let errorMsg = "";
     async function handleFileUpload(event: Event) {
     const input = event.target as HTMLInputElement;
@@ -119,7 +119,7 @@
 	  const url = URL.createObjectURL(blob);
 	  const a = document.createElement("a");
 	  a.href = url;
-	  a.download = `checklist.${format === 'docx' ? 'docx' : 'md'}`;
+      a.download = `checklist-${format}.zip`
 	  a.click();
 	  URL.revokeObjectURL(url);
 	}
