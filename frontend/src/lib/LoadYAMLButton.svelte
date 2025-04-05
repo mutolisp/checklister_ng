@@ -2,8 +2,8 @@
   import { Button } from 'flowbite-svelte';
   import { importYAMLText } from "$lib/importer";
 
-  let message = "";
   let fileInput: HTMLInputElement;
+  let message = "";
 
   async function handleFileUpload(event: Event) {
     const file = (event.target as HTMLInputElement)?.files?.[0];
@@ -15,32 +15,27 @@
   }
 
   function triggerUpload() {
-    fileInput?.click();
+    fileInput.click();
   }
 </script>
 
-<!-- 像 input 一樣等高、等寬的按鈕容器 -->
-<div class="w-full">
+<!-- 使用 hidden input + styled button -->
+<div class="flex items-center space-x-2">
   <input
-    type="file"
     bind:this={fileInput}
+    type="file"
     accept=".yaml,.yml,.txt"
     class="hidden"
     on:change={handleFileUpload}
   />
 
-  <Button
-    on:click={triggerUpload}
-    color="light"
-    size="sm"
-    class="w-full h-full"
-  >
-    匯入 YAML 或俗名清單
+  <Button size="sm" color="light" on:click={triggerUpload}>
+    批次匯入
   </Button>
 
   {#if message}
-    <p class={`text-sm mt-1 ${message.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>
+    <span class={message.startsWith("✅") ? "text-green-600 text-sm" : "text-red-500 text-sm"}>
       {message}
-    </p>
+    </span>
   {/if}
 </div>

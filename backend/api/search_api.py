@@ -23,7 +23,7 @@ def search_species(q: Optional[str] = Query(None)):
                     PlantName.family_cname.like(f"%{q}%"),
                 )
             )
-            .limit(10)
+            .limit(30)
         )
         results = session.exec(stmt).all()
         return [

@@ -1,14 +1,15 @@
 <script lang="ts">
-  import { Label, Input, } from "flowbite-svelte"
+  import { onMount } from "svelte";
+  import { Label, Input } from "flowbite-svelte";
   import { createEventDispatcher } from "svelte";
   import { debounce } from "$lib/utils";
   import { selectedSpecies } from "$stores/speciesStore";
+  import { formatScientificName } from '$lib/formatter';
 
   const dispatch = createEventDispatcher();
   let query = "";
   let suggestions = [];
 
-  // 延遲 300ms 執行搜尋
   const fetchSuggestions = debounce(async (text: string) => {
     if (!text || text.trim().length === 0) {
       suggestions = [];
@@ -25,7 +26,7 @@
   function selectSuggestion(item) {
     selectedSpecies.update(current => {
       if (!current.find(entry => entry.id === item.id)) {
-        return [...current, item];  // ✅ 改為建立新陣列才能觸發更新
+        return [...current, item];
       }
       return current;
     });
@@ -33,34 +34,73 @@
     query = "";
     suggestions = [];
   }
+
+  // 點按其他地方會取消建議選單 
+  let suggestionBox: HTMLUListElement;
+  let inputEl: HTMLInputElement;
+
+  function handleClickOutside(event: MouseEvent) {
+    if (
+      !suggestionBox?.contains(event.target as Node) &&
+      !inputEl?.contains(event.target as Node)
+    ) {
+      suggestions = [];
+    }
+  }
+
+
+  // 按 esc 時或點按其他地方時取消建議選單
+  onMount(() => {
+    const escListener = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        suggestions = [];
+      }
+    };
+  
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        !suggestionBox?.contains(event.target as Node) &&
+        !inputEl?.contains(event.target as Node)
+      ) {
+        suggestions = [];
+      }
+    };
+ 
+   window.addEventListener("keydown", escListener);
+   window.addEventListener("click", handleClickOutside);
+
+   return () => {
+     window.removeEventListener("keydown", escListener);
+     window.removeEventListener("click", handleClickOutside);
+   };
+  });
 </script>
 
-<!-- div class="w-full max-w-xl mx-auto relative"-->
-<div class="mb-6">
-  <Label for="large-input" class="block mb-2">輸入並查找物種</Label>
-  <Input id="large-input" size="lg" 
-    placeholder="Type scientific name, common name or family" 
+<div class="relative w-full max-w-2xl mb-6">
+  <Label for="search" class="block mb-2 text-sm font-medium text-gray-700 dark:text-white">
+    輸入並查找物種
+  </Label>
+  <Input
+    id="search"
+    size="lg"
+    placeholder="Type scientific name, common name or family"
     bind:value={query}
+    class="w-full"
   />
-  <!-- Input
-    class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:border-blue-300"
-    placeholder="輸入學名、俗名或科名"
-    bind:value={query}
-  /-->
+
   {#if suggestions.length}
-    <ul class="absolute z-10 w-full bg-white border rounded-md shadow max-h-60 overflow-y-auto mt-1">
+    <ul class="absolute z-10 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow max-h-60 overflow-y-auto w-full sm:max-w-sm md:max-w-md lg:max-w-xl">
       {#each suggestions as item}
         <li>
           <button
             type="button"
-            class="w-full text-left px-3 py-2 hover:bg-blue-100"
+            class="w-full text-left px-3 py-2 hover:bg-blue-100 dark:hover:bg-gray-700 text-sm"
             on:click={() => selectSuggestion(item)}
           >
-            {item.cname} ({item.fullname}) {item.family_cname} {item.family}
+            {item.cname} ({@html formatScientificName(item.fullname)}); {item.family_cname}({item.family})
           </button>
         </li>
       {/each}
     </ul>
   {/if}
 </div>
-

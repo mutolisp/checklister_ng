@@ -101,7 +101,86 @@ class ExportRequest(BaseModel):
 #     return PlainTextResponse("Unsupported format", status_code=400)
 # 
 
-@router.post("/api/export")
+description = """
+
+## 概要
+
+匯出植物名錄為不同格式（Markdown、DOCX、YAML、CSV）之檔案。
+此 API 適用於名錄產生工具，可將使用者選擇的物種清單依指定格式匯出。
+
+1. 所有匯出皆會自動排序（高階類群 → 科名 → 學名）
+2. Markdown/DOCX 中包含統計摘要（物種總數、科別總數）
+3. YAML 會自動轉換成 Darwin Core 欄位名稱
+4. DOCX 使用自訂樣式（reference.docx）美化輸出
+5. 回傳的 ZIP 檔名稱包含時間戳記（例如 checklist202504051239.zip）
+
+## Request format
+
+- Method：POST
+- Content-Type：application/json
+- Query String：
+  - format (選填)：
+    - "markdown"（預設，也會同時產出 yaml 的名錄之壓縮檔）
+    - "docx"（Word 檔，內含 checklist.md 與 checklist.yml 的壓縮檔）
+    - "yaml"（單一 checklist.yml 檔）
+    - "csv"（單一 CSV 檔）
+- Body (JSON)：
+  ```json
+  {
+    "checklist": [
+      {
+        "id": 123,
+        "name": "Pinus taiwanensis",
+        "fullname": "Pinus taiwanensis Hayata",
+        "cname": "臺灣二葉松",
+        "family": "Pinaceae",
+        "family_cname": "松科",
+        "iucn_category": "LC",
+        "endemic": 1,
+        "source": "原生",
+        "pt_name": "裸子植物 Gymnosperms"
+      },
+      ...
+    ]
+  }
+```
+
+## 名錄格式說明
+
+每筆物種資訊應包含：
+
+| 欄位名稱      | 說明                       |
+| ------------- | -------------------------- |
+| id	        | 唯一 ID 編號               |
+| name	        | 學名（不含作者）           |
+| fullname	| 完整學名（含作者）         |
+| cname	        | 中文名稱                   |
+| family	| 科名（拉丁文）             |
+| family_cname	| 科名（中文）               |
+| pt_name	| 高階類群                   |
+| endemic	| 是否特有（1 為特有）       |
+| source	| 來源（原生、歸化、栽培）   |
+| iucn_category	| IUCN 保育狀態（LC、VU 等） |
+
+## Return
+
+- format=markdown：
+ - 回傳壓縮檔（ZIP），內含 checklist.md 及 checklist.yml
+
+- format=docx：
+ - 回傳壓縮檔（ZIP），內含 checklist.docx（由 Pandoc 轉換）與 checklist.yml
+
+- format=yaml：
+ - 直接回傳 YAML 格式名錄（含 Darwin Core 欄位名稱）
+
+- format=csv：
+ - 回傳 CSV 檔案(尚未實作)
+
+"""
+
+@router.post("/api/export",
+             summary="匯出名錄檔",
+             description=description)
 async def export(request: Request):
     body = await request.json()
     fmt = request.query_params.get("format", "markdown")

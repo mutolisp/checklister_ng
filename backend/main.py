@@ -28,7 +28,13 @@ from sqlmodel import SQLModel
 from backend.api import search_api, resolve_name, export
 from backend.db import engine
 
-app = FastAPI()
+app = FastAPI(
+    title="Checklister-NG API",
+    description="提供植物名錄匯出與資料管理功能",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 @app.on_event("startup")
 def on_startup():

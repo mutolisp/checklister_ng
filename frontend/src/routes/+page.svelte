@@ -153,14 +153,14 @@
 <NavUl {hidden} class="ms-3 pt-6">
     <NavLi href="/" active={true}>Home</NavLi>
     <NavLi class="cursor-pointer">App</NavLi>
-    <NavLi href="/services">Services</NavLi>
-    <NavLi href="/pricing">Contact</NavLi>
+    <NavLi href="/documentation">Docs</NavLi>
+    <NavLi href="/contact">Contact</NavLi>
 </NavUl>
 </Navbar>
 
 <div class="grid grid-cols-1 gap-8 p-8">
     <!-- div class="flex flex-wrap gap-2" -->
-    <div class="grid flex gap-4 md:grid-cols-2">
+    <div class="flex flex-wrap gap-4 items-center mb-6">
     <SearchBox />
     <LoadYAMLButton />
     </div>
