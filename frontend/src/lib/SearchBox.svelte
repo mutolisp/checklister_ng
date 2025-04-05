@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Label, Input, } from "flowbite-svelte"
   import { createEventDispatcher } from "svelte";
   import { debounce } from "$lib/utils";
   import { selectedSpecies } from "$stores/speciesStore";
@@ -34,12 +35,18 @@
   }
 </script>
 
-<div class="w-full max-w-xl mx-auto relative">
-  <input
+<!-- div class="w-full max-w-xl mx-auto relative"-->
+<div class="mb-6">
+  <Label for="large-input" class="block mb-2">輸入並查找物種</Label>
+  <Input id="large-input" size="lg" 
+    placeholder="Type scientific name, common name or family" 
+    bind:value={query}
+  />
+  <!-- Input
     class="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring focus:border-blue-300"
     placeholder="輸入學名、俗名或科名"
     bind:value={query}
-  />
+  /-->
   {#if suggestions.length}
     <ul class="absolute z-10 w-full bg-white border rounded-md shadow max-h-60 overflow-y-auto mt-1">
       {#each suggestions as item}

@@ -1,5 +1,13 @@
 <script lang="ts">
+  import { Badge, Button } from 'flowbite-svelte';
+  import { Alert, Label, Input } from 'flowbite-svelte';
+  import { Dropdown, DropdownItem, DropdownDivider, DropdownHeader } from 'flowbite-svelte';
+  import { Navbar, NavBrand, NavHamburger, NavUl, NavLi } from 'flowbite-svelte';
+  import { DownloadSolid, ChevronDownOutline, TrashBinOutline } from 'flowbite-svelte-icons';
+  import { FileOutline, FileCodeOutline, FileWordOutline } from 'flowbite-svelte-icons';
+  import { Card } from 'flowbite-svelte';
   import  SearchBox  from "$lib/SearchBox.svelte";
+  import  SpeciesTable from "$lib/SpeciesTable.svelte";
   import  SpeciesList  from "$lib/SpeciesList.svelte";
   import  LoadYAMLButton  from "$lib/LoadYAMLButton.svelte";
   import AmbiguousSelector from "$lib/AmbiguousSelector.svelte"; //模糊比對
@@ -9,6 +17,7 @@
   import { convertToDarwinCore } from '$lib/dwcMapper'; //DwC的解析
   import { importYAMLText } from '$lib/importer'; //匯入yaml或文字檔案
   import { unresolvedStore } from "$stores/importState"; //未解析的名字
+
 
   const typeOrder = {
   "苔蘚地衣類植物 Mosses and Lichens": 0,
@@ -131,45 +140,66 @@
       }
     }
 
+    let dark = false;
+    function toggleDark() {
+      dark = !dark;
+      document.documentElement.classList.toggle("dark", dark);
+    }
+
 </script>
+<Navbar let:hidden let:toggle>
+<h1 class="text-2xl font-bold mb-2">checklister-ng 名錄產生器</h1>
+<NavHamburger on:click={toggle} />
+<NavUl {hidden} class="ms-3 pt-6">
+    <NavLi href="/" active={true}>Home</NavLi>
+    <NavLi class="cursor-pointer">App</NavLi>
+    <NavLi href="/services">Services</NavLi>
+    <NavLi href="/pricing">Contact</NavLi>
+</NavUl>
+</Navbar>
 
-<h1 class="text-2xl font-bold mb-4">checklister-ng 名錄產生器</h1>
+<div class="grid grid-cols-1 gap-8 p-8">
+    <!-- div class="flex flex-wrap gap-2" -->
+    <div class="grid flex gap-4 md:grid-cols-2">
+    <SearchBox />
+    <LoadYAMLButton />
+    </div>
 
-<div class="container mx-auto px-4 py-6">
-<SearchBox />
-<div class="mt-4 flex gap-2 items-center">
-  <LoadYAMLButton />
-  <button on:click={exportYAML} class="bg-blue-600 text-white px-4 py-2 rounded">
-    匯出支援DwC的YAML
-  </button>  
-  <button on:click={() => exportData('markdown')} class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
-    匯出 Markdown
-  </button>
-  <button on:click={() => exportData('docx')} class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
-    匯出 Word (.docx)
-  </button>
-  <button on:click={clearChecklist}>清除名錄</button>
+    <div class="flex flex-wrap gap-2">
+    <Button color="alternative">
+        <DownloadSolid class="w-8 h-4 me-2" />
+        Export
+        <ChevronDownOutline class="w-6 h-6 ms-2 text-white dark:text-white" />
+    </Button>
+    <Dropdown>
+      <DropdownItem color="alternative" on:click={() => exportData('docx')}>
+        <FileWordOutline class="w-4 h-4 me-2" />匯出Word (.docx)</DropdownItem>
+      <DropdownItem on:click={() => exportData('markdown')}>
+        <FileOutline class="w-4 h-4 me-2" />匯出 Markdown (.md)</DropdownItem>
+      <DropdownItem on:click={exportYAML}>
+        <FileCodeOutline class="w-4 h-4 me-2" />匯出支援DwC的YAML</DropdownItem>
+      <DropdownDivider />
+      <DropdownItem color="red" on:click={exportUnresolved}>匯出未解析俗名</DropdownItem>
+    </Dropdown> 
+      <Button color="alternative" on:click={clearChecklist}>
+        <TrashBinOutline class="w-4 h-4 me-2" /> 清除名錄</Button>
+    <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
+    </div>
 
+    {#if Array.isArray($unresolvedStore) && $unresolvedStore.length > 0}
+      <Alert color="failure" class="mt-2">
+        ⚠️ 無法解析的名稱：{$unresolvedStore.join("、")}
+      </Alert>
+    {/if}
+
+    <AmbiguousSelector />
+
+  {#if $selectedSpecies.length && $groupedSpecies}
+      <h2 class="font-semibold text-lg mb-2">已選名錄</h2>
+      <!-- SpeciesList groupedSpecies={$groupedSpecies} onRemove={removeSpecies} / -->
+      <SpeciesTable 
+        data={$selectedSpecies}
+        onRemove={removeSpecies}
+        onUpdate={(updated) => selectedSpecies.set(updated)} />
+  {/if}
 </div>
-
-<button on:click={exportUnresolved} class="mt-2 text-sm px-3 py-1 bg-yellow-100 border rounded hover:bg-yellow-200">
-    ⬇ 匯出未解析俗名
-</button>
-
-<p class="text-sm text-gray-700 mt-2">
-✅ 目前已匯入物種筆數：{$selectedSpecies.length}
-</p>
-
-{#if Array.isArray($unresolvedStore) && $unresolvedStore.length > 0}
-  <div class="mt-2 text-red-500 text-sm">
-    ⚠️ 無法解析的名稱：{$unresolvedStore.join("、")}
-  </div>
-{/if}
-
-<AmbiguousSelector />
-</div>
-<!-- 顯示已選名錄 -->
-{#if $selectedSpecies.length && $groupedSpecies}
-  <h2 class="mt-6 font-semibold text-lg">已選名錄：</h2>
-  <SpeciesList groupedSpecies={$groupedSpecies} onRemove={removeSpecies} />
-{/if}

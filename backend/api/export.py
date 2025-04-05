@@ -163,7 +163,7 @@ async def export(request: Request):
             for fam in sorted(grouped[pt].keys()):
                 lines.append("")
                 species_list = sorted(grouped[pt][fam], key=lambda x: x["fullname"])
-                lines.append(f"{counter}.  **{species_list[0]['family_cname']} ({fam})** ({len(species_list)})")
+                lines.append(f"{counter}. **{species_list[0]['family_cname']} ({fam})** ({len(species_list)})")
                 lines.append("")
                 for idx, item in enumerate(species_list):
                     parts = [

@@ -10,6 +10,9 @@ export default defineConfig({
       $stores: path.resolve(__dirname, 'src/stores')
     }
   },
+  optimizeDeps: {
+    include: ['flowbite', 'flowbite-svelte'],
+  },
   server: {
     proxy: {
       '/api': 'http://localhost:8000'

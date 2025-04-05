@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { Button } from 'flowbite-svelte';
   import { importYAMLText } from "$lib/importer";
 
   let message = "";
@@ -12,22 +13,34 @@
       message = result ?? "✅ 匯入成功";
     }
   }
+
+  function triggerUpload() {
+    fileInput?.click();
+  }
 </script>
 
-<div class="my-4">
-  <label>
-    <span class="block font-semibold mb-1">匯入 YAML 或俗名檔案：</span>
-    <input
-      bind:this={fileInput}
-      type="file"
-      accept=".yaml,.yml,.txt"
-      class="block mt-1"
-      on:change={handleFileUpload}
-    />
-  </label>
+<!-- 像 input 一樣等高、等寬的按鈕容器 -->
+<div class="w-full">
+  <input
+    type="file"
+    bind:this={fileInput}
+    accept=".yaml,.yml,.txt"
+    class="hidden"
+    on:change={handleFileUpload}
+  />
+
+  <Button
+    on:click={triggerUpload}
+    color="light"
+    size="sm"
+    class="w-full h-full"
+  >
+    匯入 YAML 或俗名清單
+  </Button>
 
   {#if message}
-    <p class={message.startsWith("✅") ? "text-green-600 mt-2" : "text-red-500 mt-2"}>{message}</p>
+    <p class={`text-sm mt-1 ${message.startsWith("✅") ? "text-green-600" : "text-red-500"}`}>
+      {message}
+    </p>
   {/if}
 </div>
-

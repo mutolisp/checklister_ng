@@ -8,7 +8,6 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
   try {
     const parsed = yaml.load(yamlText);
 
-    // ✅ case 1: checklist or checklister-ng.checklist exists
     let list: any[] = [];
     if (Array.isArray(parsed)) {
       list = parsed;
@@ -22,7 +21,6 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
         list = parsed["checklister-ng"]["checklist"];
       }
 
-      // ✅ 若有 checklist，展開後詢問是否合併
       if (list.length > 0) {
         const restored = list.map(convertFromDarwinCore);
         const existing = get(selectedSpecies);
@@ -51,7 +49,7 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
       }
     }
 
-    // ✅ fallback: treat as plain-text list of vernacular names
+    // fallback: 以文字俗名逐筆查詢
     const lines = yamlText
       .split("\n")
       .map((line) => line.trim())
@@ -61,27 +59,32 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
       return "⚠️ YAML 檔案格式錯誤，請確認是否為 checklist 陣列格式或俗名清單";
     }
 
+    const normalizedNames = lines.map(name => name.replace(/^台/g, "臺"));
+
+    const res = await fetch("/api/resolve_name", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names: normalizedNames })
+    });
+
     const resolved: any[] = [];
     const ambiguous: Record<string, any[]> = {};
     const unresolved: string[] = [];
 
-    for (const name of lines) {
-      const normalized = name.replace(/^台/g, "臺");
-      const res = await fetch(`/api/resolve_name?q=${encodeURIComponent(normalized)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data)) {
-          if (data.length === 1) {
-            resolved.push(data[0]);
-          } else if (data.length > 1) {
-            ambiguous[name] = data;
-          } else {
-            unresolved.push(name);
-          }
+    if (res.ok) {
+      const result = await res.json();
+      for (const name of normalizedNames) {
+        const matches = result[name] || [];
+        if (matches.length === 1) {
+          resolved.push(matches[0]);
+        } else if (matches.length > 1) {
+          ambiguous[name] = matches;
+        } else {
+          unresolved.push(name);
         }
-      } else {
-        unresolved.push(name);
       }
+    } else {
+      return "❌ 後端名稱解析失敗";
     }
 
     const existing = get(selectedSpecies);
