@@ -64,7 +64,7 @@
 `run.py` boots the backend using Uvicorn and accepts optional `--host` and `--port` arguments.
 
 ```bash
-python run.py --port 9000
+python run.py --port 8964
 ```
 
 Build a standalone executable with PyInstaller using the provided spec file. The spec already defines the build mode:
@@ -78,7 +78,7 @@ binary in `dist/checklister`. Run the binary with the same options to change the
 listening port:
 
 ```bash
-./dist/checklister --port 9000
+./dist/checklister --port 8964
 ```
 
 ### Learning Pointers
