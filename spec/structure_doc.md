@@ -54,10 +54,30 @@
 2. **Frontend**  
    Inside `frontend`, install dependencies then start the dev server:
    ```bash
-   npm install
-   npm run dev
-   ```
-   The UI connects to the backend endpoints described above.
+    npm install
+    npm run dev
+    ```
+    The UI connects to the backend endpoints described above.
+
+### Packaging
+
+`run.py` boots the backend using Uvicorn and accepts optional `--host` and `--port` arguments.
+
+```bash
+python run.py --port 9000
+```
+
+Build a standalone executable with PyInstaller using the provided spec file:
+
+```bash
+pyinstaller -F checklister.spec
+```
+
+Run the resulting binary with the same options to change the listening port:
+
+```bash
+./dist/checklister --port 9000
+```
 
 ### Learning Pointers
 
