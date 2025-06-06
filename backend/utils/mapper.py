@@ -4,7 +4,8 @@ dwc_field_map = {
     "fullname": "scientificNameAuthorship",
     "cname": "vernacularName",
     "family": "family",
-    "family_cname": "familyVerncularName",
+    # Darwin Core uses "vernacular". Fix a long-standing typo here.
+    "family_cname": "familyVernacularName",
     "pt_name": "higherClassification",
     "source": "establishmentMeans",
     "iucn_category": "iucnStatus",

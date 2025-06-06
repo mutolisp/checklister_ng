@@ -8,7 +8,8 @@ export const dwcFieldMap: Record<string, string> = {
   fullname: "scientificNameAuthorship",
   cname: "vernacularName",
   family: "family",
-  family_cname: "familyVerncularName", // not standard, but retained
+  // Darwin Core uses "vernacular". Fix a long-standing typo here.
+  family_cname: "familyVernacularName",
   pt_name: "higherClassification",
   source: "establishmentMeans",
   iucn_category: "iucnStatus", // not standard, but used in export
