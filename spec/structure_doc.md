@@ -67,13 +67,15 @@
 python run.py --port 9000
 ```
 
-Build a standalone executable with PyInstaller using the provided spec file:
+Build a standalone executable or macOS bundle with PyInstaller using the provided spec file:
 
 ```bash
 pyinstaller -F checklister.spec
 ```
 
-Run the resulting binary with the same options to change the listening port:
+This creates `dist/checklister-ng.app` (on macOS) alongside the command‐line
+binary in `dist/checklister`. Run the binary with the same options to change the
+listening port:
 
 ```bash
 ./dist/checklister --port 9000

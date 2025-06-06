@@ -25,8 +25,8 @@ exe = EXE(pyz,
           debug=False,
           bootloader_ignore_signals=False,
           strip=False,
-          upx=True,
-          console=True)
+         upx=True,
+         console=False)  # disable console window on macOS
 coll = COLLECT(exe,
                a.binaries,
                a.zipfiles,
@@ -35,3 +35,5 @@ coll = COLLECT(exe,
                upx=True,
                upx_exclude=[],
                name='checklister')
+app = BUNDLE(coll,
+             name='checklister-ng.app')  # produce macOS .app bundle
