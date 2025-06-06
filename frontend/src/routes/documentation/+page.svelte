@@ -21,7 +21,7 @@
 <div class="border rounded shadow-md overflow-hidden">
   <iframe
     title="API docs"
-    src="http://localhost:8000/docs"
+    src="/docs"
     class="w-full h-[80vh] border-none"
   ></iframe>
 </div>
