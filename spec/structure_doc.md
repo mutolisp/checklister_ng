@@ -67,10 +67,10 @@
 python run.py --port 9000
 ```
 
-Build a standalone executable or macOS bundle with PyInstaller using the provided spec file:
+Build a standalone executable with PyInstaller using the provided spec file. The spec already defines the build mode:
 
 ```bash
-pyinstaller -F checklister.spec
+pyinstaller checklister.spec
 ```
 
 This creates `dist/checklister-ng.app` (on macOS) alongside the command‐line
