@@ -67,10 +67,10 @@
 python run.py --port 9000
 ```
 
-Build a standalone executable with PyInstaller using the provided spec file:
+Build a standalone executable with PyInstaller using the provided spec file. The spec already defines the build mode:
 
 ```bash
-pyinstaller -F checklister.spec
+pyinstaller checklister.spec
 ```
 
 Run the resulting binary with the same options to change the listening port:
