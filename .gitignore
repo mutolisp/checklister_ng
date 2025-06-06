@@ -1,0 +1,10 @@
+# Python virtual environments
+venv/
+*/venv/
+
+# Node dependencies
+frontend/node_modules/
+
+# SvelteKit build outputs
+frontend/.svelte-kit/
+frontend/build/
