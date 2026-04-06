@@ -1,10 +1,53 @@
 from fastapi import APIRouter, Query
 from typing import Optional
+import threading
 from sqlmodel import Session, select, or_, col
+from rapidfuzz import process, fuzz
 from backend.models.schema import PlantName, PlantType, TaicolName
 from backend.db import engine, get_session
 
 router = APIRouter()
+
+# ── Fuzzy 俗名快取 ──────────────────────────────────────
+_cname_cache: Optional[dict[str, list[int]]] = None  # {common_name_c: [name_id, ...]}
+_cache_lock = threading.Lock()
+
+
+def _get_cname_cache() -> dict[str, list[int]]:
+    """Lazy load 俗名快取（accepted + in_taiwan）"""
+    global _cname_cache
+    if _cname_cache is not None:
+        return _cname_cache
+
+    with _cache_lock:
+        if _cname_cache is not None:
+            return _cname_cache
+
+        cache: dict[str, list[int]] = {}
+        try:
+            with Session(engine) as session:
+                rows = session.exec(
+                    select(TaicolName.common_name_c, TaicolName.name_id)
+                    .where(TaicolName.common_name_c != "")
+                    .where(TaicolName.common_name_c.is_not(None))
+                    .where(TaicolName.is_in_taiwan == "true")
+                    .where(TaicolName.usage_status == "accepted")
+                ).all()
+                for cname, name_id in rows:
+                    if cname not in cache:
+                        cache[cname] = []
+                    cache[cname].append(name_id)
+        except Exception:
+            pass
+
+        _cname_cache = cache
+        return _cname_cache
+
+
+def invalidate_cname_cache():
+    """TaiCOL 匯入後呼叫，清空快取"""
+    global _cname_cache
+    _cname_cache = None
 
 # 分類群篩選器對照表
 TAXON_GROUP_FILTERS = {
@@ -121,8 +164,14 @@ def search_species(
     # 優先搜尋 TaiCOL 表
     if _check_taicol_table_exists():
         results = _search_taicol(q, group)
+
+        # 結果不足時啟動 fuzzy match
+        if len(results) < 5:
+            fuzzy_results = _fuzzy_search(q, group, exclude_ids={r["id"] for r in results})
+            results.extend(fuzzy_results)
+
         if results:
-            return results
+            return results[:30]
 
     # Fallback: 搜尋舊的 dao_pnamelist_pg（向下相容）
     if not group:
@@ -258,6 +307,73 @@ def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
 
         results.sort(key=lambda r: (not r["cname"], r["cname"]))
         return results[:30]
+
+
+def _fuzzy_search(q: str, group: Optional[str], exclude_ids: set[int] = None) -> list[dict]:
+    """模糊比對搜尋：用 Levenshtein distance 對俗名快取做近似匹配
+
+    策略：
+    - 先找 edit distance ≤ 1 的候選（~11ms for 62k entries）
+    - 若不足再放寬到 distance ≤ 2
+    - 依 distance 排序，同 distance 按字串長度接近度排序
+    """
+    from rapidfuzz.distance import Levenshtein
+
+    if not q or len(q) < 2:
+        return []
+
+    cache = _get_cname_cache()
+    if not cache:
+        return []
+
+    names = list(cache.keys())
+
+    # 第一輪：distance ≤ 1
+    matches = [(n, Levenshtein.distance(q, n)) for n in names if Levenshtein.distance(q, n) <= 1]
+
+    # 不足則放寬到 distance ≤ 2
+    if len(matches) < 3 and len(q) >= 3:
+        matches = [(n, Levenshtein.distance(q, n)) for n in names if Levenshtein.distance(q, n) <= 2]
+
+    if not matches:
+        return []
+
+    # 排序：distance 小 → 長度接近 → 字母序
+    matches.sort(key=lambda x: (x[1], abs(len(x[0]) - len(q)), x[0]))
+
+    # 收集 name_id，去重
+    matched_name_ids = []
+    fuzzy_info = {}
+    for matched_cname, dist in matches[:15]:
+        for name_id in cache[matched_cname]:
+            if exclude_ids and name_id in exclude_ids:
+                continue
+            if name_id not in fuzzy_info:
+                matched_name_ids.append(name_id)
+                fuzzy_info[name_id] = (q, matched_cname, dist)
+
+    if not matched_name_ids:
+        return []
+
+    with Session(engine) as session:
+        stmt = select(TaicolName).where(TaicolName.name_id.in_(matched_name_ids))
+
+        if group and group in TAXON_GROUP_FILTERS:
+            filters = TAXON_GROUP_FILTERS[group]
+            for field, value in filters.items():
+                stmt = stmt.where(getattr(TaicolName, field) == value)
+
+        rows = session.exec(stmt).all()
+
+        results = []
+        for row in rows:
+            resp = _taicol_to_response(row)
+            fq, fc, fd = fuzzy_info.get(row.name_id, (q, "", 99))
+            resp["fuzzy_match"] = {"query": fq, "matched": fc, "score": fd}
+            results.append(resp)
+
+        results.sort(key=lambda r: r.get("fuzzy_match", {}).get("score", 99))
+        return results[:10]
 
 
 def _search_legacy(q: str) -> list[dict]:

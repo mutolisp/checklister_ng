@@ -114,15 +114,22 @@
             class="w-full text-left px-3 py-2 hover:bg-blue-100 dark:hover:bg-gray-700 text-sm"
             on:click={() => selectSuggestion(item)}
           >
-            <span>{item.cname}</span>
-            {#if item.matched_as}
-              <span class="text-gray-500"> ({@html formatScientificName(item.matched_as.fullname)})</span>
-              <span class="text-gray-400 text-xs"> {item.family_cname}({item.family})</span>
-              <span class="text-yellow-600 dark:text-yellow-400 text-xs ml-1">[{item.matched_as.status}]</span>
-              <span class="text-blue-500 text-xs"> → {@html formatScientificName(item.fullname)}</span>
-            {:else}
+            {#if item.fuzzy_match}
+              <span class="text-orange-500">{item.fuzzy_match.matched}</span>
               <span class="text-gray-500"> ({@html formatScientificName(item.fullname)})</span>
               <span class="text-gray-400 text-xs"> {item.family_cname}({item.family})</span>
+              <span class="text-orange-400 text-xs ml-1">≈ 您是否在找？</span>
+            {:else}
+              <span>{item.cname}</span>
+              {#if item.matched_as}
+                <span class="text-gray-500"> ({@html formatScientificName(item.matched_as.fullname)})</span>
+                <span class="text-gray-400 text-xs"> {item.family_cname}({item.family})</span>
+                <span class="text-yellow-600 dark:text-yellow-400 text-xs ml-1">[{item.matched_as.status}]</span>
+                <span class="text-blue-500 text-xs"> → {@html formatScientificName(item.fullname)}</span>
+              {:else}
+                <span class="text-gray-500"> ({@html formatScientificName(item.fullname)})</span>
+                <span class="text-gray-400 text-xs"> {item.family_cname}({item.family})</span>
+              {/if}
             {/if}
           </button>
         </li>

@@ -108,6 +108,13 @@ def import_taicol_csv(csv_path: str, do_backup: bool = True) -> dict:
     # 建立索引
     _create_indexes()
 
+    # 清空 fuzzy 快取
+    try:
+        from backend.api.search_api import invalidate_cname_cache
+        invalidate_cname_cache()
+    except ImportError:
+        pass
+
     elapsed = time.time() - start
     return {
         "rows_imported": rows_imported,
