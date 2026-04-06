@@ -1,18 +1,12 @@
-#!/usr/bin/env sh
+#!/bin/bash
+set -e
 
-echo "🔧 creating python virtual environment..."
+echo "creating python virtual environment..."
 python3 -m venv venv
 source venv/bin/activate
 
-echo "📦 installing required packages..."
+echo "installing required packages..."
 pip3 install --upgrade pip
-pip3 install fastapi uvicorn sqlmodel pyyaml python-docx
+pip3 install -r ../requirements.txt
 
-echo "📝 exporting requirements.txt..."
-pip freeze > ../requirements.txt
-
-echo "📁 creating the scaffold of backend..."
-mkdir -p api models services
-
-echo "✅ Done"
-
+echo "Done"

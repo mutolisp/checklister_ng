@@ -9,12 +9,35 @@
   export let data: any[] = [];
   export let onRemove: (id: number) => void;
   export let onUpdate: (updated: any[]) => void = () => {};
+  export let onRowClick: (item: any) => void = () => {};
 
   let currentPage = 1;
   let perPage = 10;
   let selectedIds = new Set<number>();
   let search = "";
   let filterFamily = "";
+
+  // 排序狀態
+  type SortKey = 'id' | 'family' | 'cname' | 'fullname' | 'source' | 'endemic';
+  let sortKey: SortKey | null = null;
+  let sortAsc = true;
+
+  const strokeCollator = new Intl.Collator('zh-Hant', { collation: 'stroke' });
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      sortAsc = !sortAsc;
+    } else {
+      sortKey = key;
+      sortAsc = true;
+    }
+    currentPage = 1;
+  }
+
+  function sortIndicator(key: SortKey): string {
+    if (sortKey !== key) return '';
+    return sortAsc ? ' ▲' : ' ▼';
+  }
 
   $: families = Array.from(new Set(data.map(d => d.family))).sort();
   $: filtered = data.filter(d => {
@@ -23,8 +46,38 @@
     return match && familyMatch;
   });
 
-  $: pageCount = Math.ceil(filtered.length / perPage);
-  $: paginated = filtered.slice((currentPage - 1) * perPage, currentPage * perPage);
+  $: sorted = (() => {
+    if (!sortKey) return filtered;
+    const arr = [...filtered];
+    arr.sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'id':
+          cmp = a.id - b.id;
+          break;
+        case 'family':
+          cmp = (a.family || '').localeCompare(b.family || '');
+          break;
+        case 'cname':
+          cmp = strokeCollator.compare(a.cname || '', b.cname || '');
+          break;
+        case 'fullname':
+          cmp = (a.fullname || '').localeCompare(b.fullname || '');
+          break;
+        case 'source':
+          cmp = (a.source || '').localeCompare(b.source || '');
+          break;
+        case 'endemic':
+          cmp = (a.endemic || 0) - (b.endemic || 0);
+          break;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+    return arr;
+  })();
+
+  $: pageCount = Math.ceil(sorted.length / perPage);
+  $: paginated = sorted.slice((currentPage - 1) * perPage, currentPage * perPage);
   $: {
   if (currentPage > pageCount) {
     currentPage = pageCount || 1;
@@ -95,16 +148,19 @@
   <Table class="text-sm">
     <TableHead>
       <TableHeadCell><input type="checkbox" on:change={toggleAllChecked} /></TableHeadCell>
-      <TableHeadCell>ID</TableHeadCell>
-      <TableHeadCell>科名</TableHeadCell>
-      <TableHeadCell>俗名</TableHeadCell>
-      <TableHeadCell>學名</TableHeadCell>
-      <TableHeadCell>來源</TableHeadCell>
-      <TableHeadCell>特有</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('id')}>ID{sortIndicator('id')}</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('family')}>科名{sortIndicator('family')}</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('cname')}>俗名{sortIndicator('cname')}</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('fullname')}>學名{sortIndicator('fullname')}</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('source')}>來源{sortIndicator('source')}</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('endemic')}>特有{sortIndicator('endemic')}</TableHeadCell>
     </TableHead>
     <TableBody>
       {#each paginated as item}
-        <TableBodyRow class="hover:bg-gray-100 h-10">
+        <TableBodyRow class="hover:bg-gray-100 h-10 cursor-pointer" on:click={(e) => {
+            if ((e.target).closest('input[type="checkbox"]')) return;
+            onRowClick(item);
+          }}>
           <TableBodyCell>
             <input
               type="checkbox"
@@ -146,7 +202,7 @@
   {/if}
 
   <p class="text-sm text-gray-500 mt-2 text-center">
-    顯示 {Math.min((currentPage - 1) * perPage + 1, filtered.length)} -
-    {Math.min(currentPage * perPage, filtered.length)} 筆，共 {filtered.length} 筆
+    顯示 {Math.min((currentPage - 1) * perPage + 1, sorted.length)} -
+    {Math.min(currentPage * perPage, sorted.length)} 筆，共 {sorted.length} 筆
   </p>
 </Section>

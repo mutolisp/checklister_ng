@@ -29,6 +29,7 @@ def search_species(q: Optional[str] = Query(None)):
         return [
             {
                 "id": plant.id,
+                "name": plant.name,
                 "fullname": plant.fullname,
                 "cname": plant.cname,
                 "family": plant.family,

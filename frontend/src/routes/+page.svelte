@@ -10,7 +10,8 @@
   import  SpeciesTable from "$lib/SpeciesTable.svelte";
   import  SpeciesList  from "$lib/SpeciesList.svelte";
   import  LoadYAMLButton  from "$lib/LoadYAMLButton.svelte";
-  import AmbiguousSelector from "$lib/AmbiguousSelector.svelte"; //模糊比對
+  import AmbiguousSelector from "$lib/AmbiguousSelector.svelte";
+  import SpeciesDetailView from "$lib/SpeciesDetailView.svelte";
   import { selectedSpecies } from "$stores/speciesStore";
   import { downloadYAML } from "$lib/utils";
   import { derived, get } from "svelte/store";
@@ -146,7 +147,22 @@
       document.documentElement.classList.toggle("dark", dark);
     }
 
+    // 物種詳細頁狀態
+    let viewMode: 'table' | 'detail' = 'table';
+    let activeSpeciesId: number | null = null;
+
+    function openDetail(item: any) {
+      activeSpeciesId = item.id;
+      viewMode = 'detail';
+    }
+
+    function backToTable() {
+      viewMode = 'table';
+      activeSpeciesId = null;
+    }
+
 </script>
+<div class="flex flex-col h-screen">
 <Navbar let:hidden let:toggle>
 <h1 class="text-2xl font-bold mb-2">checklister-ng 名錄產生器</h1>
 <NavHamburger on:click={toggle} />
@@ -158,9 +174,9 @@
 </NavUl>
 </Navbar>
 
-<div class="grid grid-cols-1 gap-8 p-8">
-    <!-- div class="flex flex-wrap gap-2" -->
-    <div class="flex flex-wrap gap-4 items-center mb-6">
+<!-- Zone A: sticky toolbar -->
+<div class="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-8 py-4 space-y-4">
+    <div class="flex flex-wrap gap-4 items-center">
     <SearchBox />
     <LoadYAMLButton />
     </div>
@@ -180,26 +196,41 @@
         <FileCodeOutline class="w-4 h-4 me-2" />匯出支援DwC的YAML</DropdownItem>
       <DropdownDivider />
       <DropdownItem color="red" on:click={exportUnresolved}>匯出未解析俗名</DropdownItem>
-    </Dropdown> 
+    </Dropdown>
       <Button color="alternative" on:click={clearChecklist}>
         <TrashBinOutline class="w-4 h-4 me-2" /> 清除名錄</Button>
     <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
     </div>
 
     {#if Array.isArray($unresolvedStore) && $unresolvedStore.length > 0}
-      <Alert color="failure" class="mt-2">
+      <Alert color="failure">
         ⚠️ 無法解析的名稱：{$unresolvedStore.join("、")}
       </Alert>
     {/if}
 
     <AmbiguousSelector />
+</div>
 
-  {#if $selectedSpecies.length && $groupedSpecies}
-      <h2 class="font-semibold text-lg mb-2">已選名錄</h2>
-      <!-- SpeciesList groupedSpecies={$groupedSpecies} onRemove={removeSpecies} / -->
-      <SpeciesTable 
-        data={$selectedSpecies}
-        onRemove={removeSpecies}
-        onUpdate={(updated) => selectedSpecies.set(updated)} />
+<!-- Main content area -->
+<div class="flex-1 overflow-hidden">
+  {#if viewMode === 'table'}
+    <div class="p-8 overflow-y-auto h-full">
+      {#if $selectedSpecies.length && $groupedSpecies}
+        <h2 class="font-semibold text-lg mb-2">已選名錄</h2>
+        <SpeciesTable
+          data={$selectedSpecies}
+          onRemove={removeSpecies}
+          onUpdate={(updated) => selectedSpecies.set(updated)}
+          onRowClick={openDetail} />
+      {/if}
+    </div>
+  {:else}
+    <SpeciesDetailView
+      species={$selectedSpecies}
+      {activeSpeciesId}
+      onSelectSpecies={(id) => activeSpeciesId = id}
+      onBack={backToTable}
+    />
   {/if}
+</div>
 </div>

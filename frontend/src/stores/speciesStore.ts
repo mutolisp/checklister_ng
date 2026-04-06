@@ -20,10 +20,26 @@ export type ChecklistItem = {
   modified: string;                    // modified_at
 };
 
-// ✅ 從 localStorage 載入暫存資料
-//
+// 從 fullname 提取不含命名者的學名（含 var./subsp./f.）
+function extractName(fullname: string): string {
+  if (!fullname) return '';
+  // 逐步取 Genus species [rank epithet]... 直到碰到大寫開頭的命名者
+  const match = fullname.match(
+    /^([A-Z][a-z]+ [a-z\-]+(?:\s+(?:subsp\.|var\.|f\.|fo\.)\s+[a-z\-]+)*)/
+  );
+  return match ? match[1] : fullname;
+}
+
+// 從 localStorage 載入暫存資料，自動補齊缺少的 name 欄位
 const stored = browser ? localStorage.getItem("checklist") : null;
-const initialData: ChecklistItem[] = stored ? JSON.parse(stored) : [];
+const initialData: ChecklistItem[] = stored
+  ? JSON.parse(stored).map((item: any) => {
+      if (!item.name && item.fullname) {
+        item.name = extractName(item.fullname);
+      }
+      return item;
+    })
+  : [];
 
 export const selectedSpecies = writable<ChecklistItem[]>(initialData);
 

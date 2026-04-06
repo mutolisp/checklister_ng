@@ -1,29 +1,7 @@
-# backend/main.py
-# from fastapi import FastAPI
-# from sqlmodel import SQLModel, Session, select
-# 
-# from backend.api import search_api
-# from backend.db import engine, get_session
-# from backend.models.schema import PlantType
-# 
-# app = FastAPI()
-# 
-# @app.on_event("startup")
-# def on_startup():
-#     SQLModel.metadata.create_all(engine)
-#     with get_session() as session:
-#         if not session.exec(select(PlantType)).first():
-#             session.add_all([
-#                 PlantType(id=0, name_zh="苔蘚地衣類植物", name_en="Mosses and Lichens"),
-#                 PlantType(id=1, name_zh="石松類植物", name_en="Lycophytes"),
-#                 PlantType(id=3, name_zh="裸子植物", name_en="Gymnosperms"),
-#             ])
-#             session.commit()
-# 
-# app.include_router(search_api.router)
-
-# backend/main.py
+import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlmodel import SQLModel
 from backend.api import search_api, resolve_name, export
 from backend.db import engine
@@ -38,9 +16,23 @@ app = FastAPI(
 
 @app.on_event("startup")
 def on_startup():
-    # 若資料表已存在則不會改動
     SQLModel.metadata.create_all(engine)
 
 app.include_router(search_api.router)
 app.include_router(resolve_name.router)
 app.include_router(export.router)
+
+# Serve frontend static files
+_frontend_dir = os.environ.get(
+    "CHECKLISTER_FRONTEND_DIR",
+    os.path.join(os.path.dirname(__file__), "..", "frontend", "build")
+)
+if os.path.isdir(_frontend_dir):
+    app.mount("/_app", StaticFiles(directory=os.path.join(_frontend_dir, "_app")), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(_frontend_dir, full_path)
+        if full_path and os.path.isfile(file_path):
+            return FileResponse(file_path)
+        return FileResponse(os.path.join(_frontend_dir, "index.html"))

@@ -1,15 +1,14 @@
 # -*- mode: python ; coding: utf-8 -*-
-import subprocess, os
+import subprocess, os, shutil
 
 block_cipher = None
 
-# 自動找到 pandoc 路徑
-pandoc_path = subprocess.check_output(['which', 'pandoc']).decode().strip()
-pandoc_real = os.path.realpath(pandoc_path)
+# 找到 pandoc 路徑 (Windows)
+pandoc_path = shutil.which('pandoc') or r'C:\Users\Public\pandoc\pandoc.exe'
 
 a = Analysis(['run.py'],
              pathex=[],
-             binaries=[(pandoc_real, '.')],
+             binaries=[(pandoc_path, '.')],
              datas=[('backend/twnamelist.db', 'backend'),
                    ('backend/api/reference.docx', 'backend/api'),
                    ('frontend/build', 'frontend/build')],
@@ -27,23 +26,11 @@ pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 exe = EXE(pyz,
           a.scripts,
-          [],
-          exclude_binaries=True,
-          name='checklister',
+          a.binaries,
+          a.zipfiles,
+          a.datas,
+          name='checklister-ng',
           debug=False,
-          bootloader_ignore_signals=False,
           strip=False,
           upx=True,
           console=False)
-coll = COLLECT(exe,
-               a.binaries,
-               a.zipfiles,
-               a.datas,
-               strip=False,
-               upx=True,
-               upx_exclude=[],
-               name='checklister')
-app = BUNDLE(coll,
-             name='checklister-ng.app',
-             icon='icons/checklister2.icns',
-             bundle_identifier='org.checklister.ng')

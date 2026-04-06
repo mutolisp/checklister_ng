@@ -3,6 +3,7 @@ from fastapi.responses import PlainTextResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+from sqlmodel import Session, select
 import os
 import tempfile
 import yaml
@@ -11,8 +12,16 @@ import subprocess
 import zipfile
 import shutil
 from backend.utils.mapper import convert_to_dwc
+from backend.db import engine
+from backend.models.schema import PlantType
 
-from backend.api.formatter import format_scientific_name_markdown # 格式化學名
+from backend.api.formatter import format_scientific_name_markdown
+import sys
+
+def _get_base_path():
+    if getattr(sys, '_MEIPASS', None):
+        return sys._MEIPASS
+    return os.path.join(os.path.dirname(__file__), '..', '..')
 
 router = APIRouter()
 
@@ -32,74 +41,6 @@ class SpeciesItem(BaseModel):
 class ExportRequest(BaseModel):
     checklist: list[SpeciesItem]
 
-
-# def formatScientificNameMarkdown(fullname: str) -> str:
-#     import re
-#     match = re.match(r"^([A-Z][a-z]+ [a-z\-]+)", fullname)
-#     if not match:
-#         return fullname
-#     main = match[1]
-#     rest = fullname[len(main):].strip()
-#     return f"*{main}* {rest}"
-
-
-# @router.post("/api/export")
-# async def export(request: Request):
-#     body = await request.json()
-#     fmt = request.query_params.get("format", "markdown")
-#     checklist = body.get("checklist", [])
-# 
-#     if fmt == "yaml":
-#         return PlainTextResponse(yaml.dump({"checklist": checklist}, allow_unicode=True))
-# 
-#     elif fmt == "csv":
-#         with tempfile.NamedTemporaryFile(mode="w+", delete=False, newline='', suffix=".csv") as f:
-#             writer = csv.DictWriter(f, fieldnames=checklist[0].keys())
-#             writer.writeheader()
-#             writer.writerows(checklist)
-#             f.flush()
-#             return FileResponse(f.name, media_type="text/csv", filename="checklist.csv")
-# 
-#     elif fmt == "markdown" or fmt == "docx":
-#         # group and format markdown
-#         lines = []
-#         grouped = {}
-#         for item in checklist:
-#             pt = item["pt_name"]
-#             fam = item["family"]
-#             grouped.setdefault(pt, {}).setdefault(fam, []).append(item)
-# 
-#         for pt in sorted(grouped.keys()):
-#             lines.append(f"## {pt}")
-#             for fam in sorted(grouped[pt].keys()):
-#                 key_name = "name" if "name" in checklist[0] else "fullname"
-#                 species_list = sorted(grouped[pt][fam], key=lambda x: x.get(key_name, ""))
-#                 lines.append(f"  - **{species_list[0]['family_cname']} ({fam})** ({len(species_list)})")
-#                 for item in species_list:
-#                     parts = [
-#                         f"    - {item['cname']}",
-#                         f"({format_scientific_name_markdown(item['fullname'])})"
-#                     ]
-#                     if item.get("endemic") == 1: parts.append("#")
-#                     if item.get("source") == "歸化": parts.append("*")
-#                     if item.get("source") == "栽培": parts.append("†")
-#                     if item.get("iucn_category"): parts.append(item["iucn_category"])
-#                     lines.append(" ".join(parts))
-#         md_text = "\n".join(lines)
-# 
-#         if fmt == "markdown":
-#             return PlainTextResponse(md_text, media_type="text/markdown")
-# 
-#         # convert to docx using pandoc
-#         with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".md") as mdfile:
-#             mdfile.write(md_text)
-#             mdfile.flush()
-#             docx_path = mdfile.name.replace(".md", ".docx")
-#             subprocess.run(["pandoc", mdfile.name, "-o", docx_path])
-#             return FileResponse(docx_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename="checklist.docx")
-# 
-#     return PlainTextResponse("Unsupported format", status_code=400)
-# 
 
 description = """
 
@@ -202,16 +143,10 @@ async def export(request: Request):
             return FileResponse(f.name, media_type="text/csv", filename="checklist.csv")
 
     elif fmt in ["markdown", "docx"]:
-        # 高階類群順序
-        type_order = {
-            "苔蘚地衣類植物 Mosses and Lichens": 0,
-            "石松類植物 Lycophytes": 1,
-            "蕨類植物 Monilophytes": 2,
-            "裸子植物 Gymnosperms": 3,
-            "單子葉植物 Monocots": 4,
-            "真雙子葉植物姊妹群 Sister groups of Eudicots": 5,
-            "真雙子葉植物 Eudicots": 6
-        }
+        # 從資料庫取得高階類群排序（plant_type 欄位即為排序值）
+        with Session(engine) as session:
+            plant_types = session.exec(select(PlantType)).all()
+            type_order = {pt.pt_name: pt.plant_type for pt in plant_types}
 
         lines = []
         grouped = {}
@@ -261,13 +196,7 @@ async def export(request: Request):
         md_text = "\n".join(lines)
 
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
-        # export checklist.yml
-        #with open(tempfile., "w", encoding="utf-8") as yf:
-        #    yaml.dump({"checklist": dwc_checklist}, yf, allow_unicode=True)
 
-
-        # Converting markdown to docx with pandoc 
-        #with tempfile.NamedTemporaryFile(mode="w+", delete=False, suffix=".md") as mdfile:
         with tempfile.TemporaryDirectory() as tmpdir:
             base_path = os.path.join(tmpdir, "checklist")
             md_path = base_path + ".md"
@@ -290,12 +219,16 @@ async def export(request: Request):
                     zipf.write(yaml_path, "checklist.yml")
             elif fmt == "docx":
                 docx_path = base_path + ".docx"
-                reference_path = os.path.join(os.path.dirname(__file__), "reference.docx")
-                subprocess.run([
-                    "pandoc", md_path,
-                    "--reference-doc", reference_path,
-                    "-o", docx_path
-                ])
+                reference_path = os.path.join(_get_base_path(), "backend", "api", "reference.docx")
+                result = subprocess.run(
+                    ["pandoc", md_path, "--reference-doc", reference_path, "-o", docx_path],
+                    capture_output=True, text=True, timeout=30
+                )
+                if result.returncode != 0:
+                    return PlainTextResponse(
+                        f"Pandoc 轉換失敗: {result.stderr}",
+                        status_code=500
+                    )
                 with zipfile.ZipFile(zip_path, "w") as zipf:
                     zipf.write(docx_path, "checklist.docx")
                     zipf.write(yaml_path, "checklist.yml")
@@ -309,6 +242,5 @@ async def export(request: Request):
                 media_type="application/zip",
                 filename=zip_filename
             )
-            #return FileResponse(docx_path, media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document", filename="checklist.docx")
 
     return PlainTextResponse("Unsupported format", status_code=400)
