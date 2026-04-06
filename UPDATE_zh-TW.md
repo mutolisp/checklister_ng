@@ -1,5 +1,80 @@
 # 更新紀錄
 
+## 2026-04-06：TaiCOL 資料整合與多分類群搜尋
+
+### TaiCOL 資料庫整合
+
+- 匯入 TaiCOL 物種名錄 CSV（242,285 筆，涵蓋臺灣所有生物類群）至新的 `taicol_names` SQLite 資料表。
+- 對搜尋常用欄位建立索引：`common_name_c`、`alternative_name_c`、`simple_name`、`family`、`family_c`、`taxon_id`、`usage_status`、`(kingdom, phylum)`、`class`。
+- 多值 `taxon_id`（433 筆含逗號分隔 ID）取第一個為主要值，原始值保留於 `taxon_id_all`。
+- CSV 中重複的 `name_id` 自動跳過。
+- 每次匯入前自動備份資料庫。
+
+### 搜尋 API 改寫
+
+- **`GET /api/search?q=&group=`**：改查 `taicol_names` 表，LIKE 搜尋 5 個欄位（`common_name_c`、`alternative_name_c`、`simple_name`、`family`、`family_c`），並保留舊 `dao_pnamelist_pg` 表作為 fallback。
+- **替代俗名搜尋**：輸入任何俗名（主要或替代）皆可找到物種。例如「過山龍」、「台灣鹹蝦花」、「臺灣鹹蝦花」都找到 *Vernonia gratiosa*。
+- **台/臺自動互換**：搜尋時自動產生台↔臺的查詢變體。
+- **接受名優先排序**：`usage_status = 'accepted'` 的結果排在異名和誤用名之前。
+- **`is_in_taiwan` 篩選**：只回傳存在於臺灣的物種。
+- **分類群篩選器**：新增 `group` 查詢參數（見前端章節）。
+- 回應新增 `taxon_id` 和 `usage_status` 欄位。
+
+### 同物異名 API
+
+- **`GET /api/synonyms?taxon_id={id}`**（`backend/api/synonyms_api.py`）：回傳同一 `taxon_id` 的所有學名，含狀態標記（`accepted`、`not-accepted`、`misapplied`）、命名者及俗名。
+
+### 管理匯入 API
+
+- **`POST /api/admin/import-taicol`**（`backend/api/admin_api.py`）：接受 TaiCOL CSV 檔案上傳（multipart），備份資料庫後清空重建 `taicol_names`，以每 5,000 筆為單位批次匯入，完成後重建索引。回傳匯入統計（筆數、耗時）。
+- 需要 `python-multipart` 套件（已新增至 `requirements.txt`）。
+
+### 前端：分類群篩選器
+
+- `SearchBox.svelte` 新增下拉篩選器，包含 13 個分類群與「所有類群」：
+  - 維管束植物、植物界、鳥綱、真菌界、哺乳類、爬行類、昆蟲綱、蛛形綱、軟體動物、輻鰭魚類、兩棲類、原生生物、所有動物。
+- 搜尋結果中非接受名顯示 `usage_status` 標籤。
+
+### 前端：同物異名顯示
+
+- `SpeciesDetailPanel.svelte` C2 區塊現在會自動從 `/api/synonyms?taxon_id=` 載入同物異名資料。
+- 以科學名、命名者、俗名和色彩標籤（綠=接受名、紅=誤用名、深灰=異名）顯示。
+
+### 前端：管理頁面
+
+- 新增 `/admin` 路由（`frontend/src/routes/admin/+page.svelte`）：提供 TaiCOL CSV 檔案上傳介面。
+- 顯示上傳進度、匯入統計（筆數、耗時）及錯誤訊息。
+- 導覽列新增 Admin 連結。
+
+### Makefile
+
+- 新增 `make taicol` target：自動找到最新的 `references/TaiCOL_name_*.csv`，備份資料庫並匯入。支援自訂路徑：`make taicol CSV=path/to/file.csv`。
+
+### 新建檔案
+
+| 檔案 | 用途 |
+|------|------|
+| `backend/models/schema.py`（修改） | 新增 `TaicolName` model 對應 `taicol_names` 表 |
+| `backend/services/taicol_import.py` | CSV 匯入服務（批次插入 + 索引建立） |
+| `backend/services/__init__.py` | 套件初始化 |
+| `backend/utils/backup.py` | 資料庫備份工具 |
+| `backend/api/admin_api.py` | TaiCOL CSV 上傳端點 |
+| `backend/api/synonyms_api.py` | 同物異名查詢端點 |
+| `frontend/src/routes/admin/+page.svelte` | 管理上傳頁面 |
+
+### 修改檔案
+
+| 檔案 | 修改內容 |
+|------|---------|
+| `backend/api/search_api.py` | 全面改寫：TaiCOL 搜尋、分類群篩選、台/臺互換 |
+| `backend/main.py` | 註冊 synonyms_api 和 admin_api router |
+| `frontend/src/lib/SearchBox.svelte` | 分類群下拉選單、usage_status 標籤 |
+| `frontend/src/lib/SpeciesDetailPanel.svelte` | 自動從 API 載入同物異名 |
+| `Makefile` | 新增 `taicol` target |
+| `requirements.txt` | 新增 `python-multipart` |
+
+---
+
 ## 2026-04-06：架構重構與物種詳細頁
 
 ### 移除項目

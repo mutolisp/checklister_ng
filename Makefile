@@ -8,7 +8,7 @@ BACKEND_VENV := backend/venv
 UNAME_S := $(shell uname -s)
 
 # ─── Default ──────────────────────────────────────────────
-.PHONY: all frontend backend pkg pkg-dmg pkg-win clean help
+.PHONY: all frontend backend pkg pkg-dmg pkg-win taicol clean help
 
 all: backend frontend
 
@@ -22,6 +22,7 @@ help:
 	@echo "  make pkg          Build platform package (dmg on macOS)"
 	@echo "  make pkg-dmg      Build macOS .app + .dmg"
 	@echo "  make pkg-win      Build Windows .exe (run on Windows)"
+	@echo "  make taicol        Import TaiCOL CSV (auto-find latest or CSV=path)"
 	@echo "  make clean        Remove build artifacts"
 
 # ─── Backend ──────────────────────────────────────────────
@@ -79,6 +80,14 @@ pkg-dmg: frontend
 pkg-win: frontend
 	pyinstaller checklister_win32.spec --clean -y
 	@echo "==> Done: $(DIST_DIR)/$(APP_NAME).exe"
+
+# ─── TaiCOL Import ────────────────────────────────────────
+CSV ?= $(shell ls -t references/TaiCOL_name_*.csv 2>/dev/null | head -1)
+
+taicol: backend
+	@if [ -z "$(CSV)" ]; then echo "Error: No TaiCOL CSV found in references/"; exit 1; fi
+	@echo "==> Importing TaiCOL from: $(CSV)"
+	$(BACKEND_VENV)/bin/python -m backend.services.taicol_import "$(CSV)"
 
 # ─── Clean ────────────────────────────────────────────────
 clean:

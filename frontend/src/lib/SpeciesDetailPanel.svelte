@@ -4,7 +4,28 @@
   import { formatScientificName } from '$lib/formatter';
 
   export let species: any;
-  export let synonyms: any[] = [];
+
+  // 自動從 API 載入同物異名
+  let synonyms: any[] = [];
+  let synonymsLoading = false;
+
+  async function fetchSynonyms(taxonId: string) {
+    if (!taxonId) { synonyms = []; return; }
+    synonymsLoading = true;
+    try {
+      const res = await fetch(`/api/synonyms?taxon_id=${encodeURIComponent(taxonId)}`);
+      if (res.ok) {
+        synonyms = await res.json();
+      } else {
+        synonyms = [];
+      }
+    } catch {
+      synonyms = [];
+    }
+    synonymsLoading = false;
+  }
+
+  $: fetchSynonyms(species?.taxon_id);
 
   function sourceColor(source: string): string {
     switch (source) {
@@ -53,6 +74,12 @@
         <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">分類資訊</h3>
         <table class="text-sm">
           <tbody>
+            {#if species.alternative_name_c}
+            <tr>
+              <td class="pr-4 py-1 text-gray-500 dark:text-gray-400">其他俗名</td>
+              <td class="py-1 text-gray-900 dark:text-white">{species.alternative_name_c}</td>
+            </tr>
+            {/if}
             <tr>
               <td class="pr-4 py-1 text-gray-500 dark:text-gray-400">科名</td>
               <td class="py-1 text-gray-900 dark:text-white">{species.family_cname} ({species.family})</td>
@@ -91,7 +118,9 @@
   <!-- C2: 同物異名 -->
   <Card class="max-w-none" size="xl">
     <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">同物異名 Synonyms</h3>
-    {#if synonyms.length > 0}
+    {#if synonymsLoading}
+      <p class="text-sm text-gray-400 dark:text-gray-500 italic">載入中...</p>
+    {:else if synonyms.length > 0}
       <ul class="space-y-2">
         {#each synonyms as syn}
           <li class="text-sm text-gray-700 dark:text-gray-300">
@@ -100,7 +129,7 @@
               <span class="text-gray-500"> {syn.authorship}</span>
             {/if}
             {#if syn.status}
-              <Badge color="dark" class="ml-2 text-xs">{syn.status}</Badge>
+              <Badge color={syn.status === 'accepted' ? 'green' : syn.status === 'misapplied' ? 'red' : 'dark'} class="ml-2 text-xs">{syn.status}</Badge>
             {/if}
           </li>
         {/each}

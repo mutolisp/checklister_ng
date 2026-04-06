@@ -1,5 +1,80 @@
 # Update Log
 
+## 2026-04-06: TaiCOL Data Integration & Multi-Taxon Search
+
+### TaiCOL Database Integration
+
+- Imported TaiCOL species name CSV (242,285 rows, covering all biological groups in Taiwan) into a new `taicol_names` SQLite table.
+- Key fields indexed for search performance: `common_name_c`, `alternative_name_c`, `simple_name`, `family`, `family_c`, `taxon_id`, `usage_status`, `(kingdom, phylum)`, `class`.
+- Multi-value `taxon_id` rows (433 records with comma-separated IDs) are handled by extracting the primary taxon_id and preserving the original in `taxon_id_all`.
+- Duplicate `name_id` entries in CSV are automatically skipped during import.
+- Database is automatically backed up before each import.
+
+### Search API Rewrite
+
+- **`GET /api/search?q=&group=`**: Now queries the `taicol_names` table with LIKE on 5 fields (`common_name_c`, `alternative_name_c`, `simple_name`, `family`, `family_c`), with fallback to the legacy `dao_pnamelist_pg` table.
+- **Alternative name search**: Searching any common name (primary or alternative) finds the species. For example, "過山龍", "台灣鹹蝦花", and "臺灣鹹蝦花" all find *Vernonia gratiosa*.
+- **台/臺 auto-conversion**: Search queries automatically generate variants with 台↔臺 swapped.
+- **Accepted-first sorting**: Results with `usage_status = 'accepted'` are shown before synonyms and misapplied names.
+- **`is_in_taiwan` filter**: Only species present in Taiwan are returned.
+- **Taxon group filter**: New `group` query parameter filters by taxonomic group (see frontend section below).
+- Response includes new fields: `taxon_id` and `usage_status`.
+
+### Synonyms API
+
+- **`GET /api/synonyms?taxon_id={id}`** (`backend/api/synonyms_api.py`): Returns all names sharing the same `taxon_id`, with status labels (`accepted`, `not-accepted`, `misapplied`), authorship, and common name.
+
+### Admin Import API
+
+- **`POST /api/admin/import-taicol`** (`backend/api/admin_api.py`): Accepts TaiCOL CSV file upload (multipart), backs up the database, drops and recreates `taicol_names`, imports all rows in batches of 5,000, and rebuilds indexes. Returns import statistics (row count, elapsed time).
+- Requires `python-multipart` package (added to `requirements.txt`).
+
+### Frontend: Taxon Group Filter
+
+- `SearchBox.svelte` now includes a dropdown filter with 13 taxonomic groups plus "所有類群" (all):
+  - 維管束植物 (Tracheophyta), 植物界 (Plantae), 鳥綱 (Aves), 真菌界 (Fungi), 哺乳類 (Mammalia), 爬行類 (Reptilia), 昆蟲綱 (Insecta), 蛛形綱 (Arachnida), 軟體動物 (Mollusca), 輻鰭魚類 (Actinopterygii), 兩棲類 (Amphibia), 原生生物 (Protozoa), 所有動物 (Animalia).
+- Search results show `usage_status` badge for non-accepted names.
+
+### Frontend: Synonym Display
+
+- `SpeciesDetailPanel.svelte` C2 section now automatically fetches synonyms from `/api/synonyms?taxon_id=` when a species is selected.
+- Synonyms are displayed with scientific name, authorship, common name, and color-coded status badges (green=accepted, red=misapplied, dark=not-accepted).
+
+### Frontend: Admin Page
+
+- New route `/admin` (`frontend/src/routes/admin/+page.svelte`): Provides a file upload interface for importing TaiCOL CSV files.
+- Shows upload progress, import statistics (row count, elapsed time), and error messages.
+- Admin link added to the navigation bar.
+
+### Makefile
+
+- New target `make taicol`: Automatically finds the latest `references/TaiCOL_name_*.csv` file, backs up the database, and runs the import. Supports custom path via `make taicol CSV=path/to/file.csv`.
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `backend/models/schema.py` (modified) | Added `TaicolName` model for `taicol_names` table |
+| `backend/services/taicol_import.py` | CSV import service with batch insert and index creation |
+| `backend/services/__init__.py` | Package init |
+| `backend/utils/backup.py` | Database backup utility |
+| `backend/api/admin_api.py` | TaiCOL CSV upload endpoint |
+| `backend/api/synonyms_api.py` | Synonym query endpoint |
+| `frontend/src/routes/admin/+page.svelte` | Admin upload page |
+
+### Modified Files
+
+| File | Change |
+|------|--------|
+| `backend/api/search_api.py` | Full rewrite: TaiCOL search, group filter, 台/臺 conversion |
+| `backend/main.py` | Register synonyms_api and admin_api routers |
+| `frontend/src/lib/SearchBox.svelte` | Taxon group dropdown, usage_status badge |
+| `frontend/src/lib/SpeciesDetailPanel.svelte` | Auto-fetch synonyms from API |
+| `Makefile` | Added `taicol` target |
+| `requirements.txt` | Added `python-multipart` |
+
+---
+
 ## 2026-04-06: Architecture Overhaul & Species Detail View
 
 ### Removed

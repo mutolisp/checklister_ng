@@ -171,6 +171,7 @@
     <NavLi class="cursor-pointer">App</NavLi>
     <NavLi href="/documentation">Docs</NavLi>
     <NavLi href="/contact">Contact</NavLi>
+    <NavLi href="/admin">Admin</NavLi>
 </NavUl>
 </Navbar>
 

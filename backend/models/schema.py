@@ -27,3 +27,31 @@ class PlantName(SQLModel, table=True):
 
     plant_type_obj: Optional[PlantType] = Relationship(back_populates="plants")
 
+
+class TaicolName(SQLModel, table=True):
+    __tablename__ = "taicol_names"
+
+    name_id: int = Field(primary_key=True)
+    rank: Optional[str] = None
+    simple_name: Optional[str] = None
+    name_author: Optional[str] = None
+    formatted_name: Optional[str] = None
+    usage_status: Optional[str] = None
+    taxon_id: Optional[str] = None
+    taxon_id_all: Optional[str] = None  # 原始多值 taxon_id
+    is_in_taiwan: Optional[str] = None
+    common_name_c: Optional[str] = None
+    alternative_name_c: Optional[str] = None
+    is_endemic: Optional[str] = None
+    alien_type: Optional[str] = None
+    iucn: Optional[str] = None
+    redlist: Optional[str] = None
+    kingdom: Optional[str] = None
+    phylum: Optional[str] = None
+    class_name: Optional[str] = Field(default=None, sa_column_kwargs={"name": "class"})
+    order: Optional[str] = None
+    family: Optional[str] = None
+    family_c: Optional[str] = None
+    genus: Optional[str] = None
+    genus_c: Optional[str] = None
+

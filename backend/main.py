@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from sqlmodel import SQLModel
-from backend.api import search_api, resolve_name, export
+from backend.api import search_api, resolve_name, export, synonyms_api, admin_api
 from backend.db import engine
 
 app = FastAPI(
@@ -21,6 +21,8 @@ def on_startup():
 app.include_router(search_api.router)
 app.include_router(resolve_name.router)
 app.include_router(export.router)
+app.include_router(synonyms_api.router)
+app.include_router(admin_api.router)
 
 # Serve frontend static files
 _frontend_dir = os.environ.get(
