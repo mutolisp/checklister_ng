@@ -38,11 +38,15 @@
 // }
 // 
 
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // 格式化學名為帶斜體的顯示形式
 export function formatScientificName(fullname: string): string {
   // 主學名 (Genus species)
   let formatted = "";
-  let remaining = fullname.trim();
+  let remaining = escapeHtml(fullname.trim());
 
   // 抓主學名
   const mainMatch = remaining.match(/^([A-Z][a-z]+ [a-z\-]+)/);

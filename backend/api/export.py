@@ -1,4 +1,4 @@
-from fastapi import Request, APIRouter
+from fastapi import Request, APIRouter, BackgroundTasks
 from fastapi.responses import PlainTextResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
@@ -13,7 +13,7 @@ import zipfile
 import shutil
 from backend.utils.mapper import convert_to_dwc
 from backend.db import engine
-from backend.models.schema import PlantType
+from backend.models.schema import PlantType, PlantName
 
 from backend.api.formatter import format_scientific_name_markdown
 import sys
@@ -25,110 +25,325 @@ def _get_base_path():
 
 router = APIRouter()
 
-class SpeciesItem(BaseModel):
-    id: int
-    name: str
-    fullname: str
-    cname: str
-    family: str
-    family_cname: str
-    iucn_category: Optional[str]
-    endemic: int
-    source: str
-    pt_name: str
+# ── 各分類群預設階層 ──────────────────────────────────────
+# 每個 key 對應物種資料中的 phylum 或 class_name 值
+# value 是用於分群的欄位列表（由高到低），最後一層永遠是物種
+DEFAULT_HIERARCHIES = {
+    "Tracheophyta": ["pt_name", "family"],
+    "Bryophyta": ["class_name", "family"],
+    "Aves": ["order", "family"],
+    "Insecta": ["order", "family"],
+    "Mammalia": ["order", "family"],
+    "Reptilia": ["order", "family"],
+    "Amphibia": ["order", "family"],
+    "Actinopteri": ["order", "family"],
+    "Arachnida": ["order", "family"],
+    "Gastropoda": ["order", "family"],
+    "Bivalvia": ["order", "family"],
+    "Malacostraca": ["order", "family"],
+    "Ascomycota": ["class_name", "order", "family"],
+    "Basidiomycota": ["class_name", "order", "family"],
+    "Mollusca": ["class_name", "order", "family"],
+    "_default": ["class_name", "family"],
+}
+
+# 維管束植物 class → 中文顯示名 fallback（當沒有 pt_name 時使用）
+# 蘇鐵、銀杏、松綱全部併入裸子植物
+PLANT_CLASS_NAMES = {
+    "Lycopodiopsida": "石松類植物 Lycophytes",
+    "Polypodiopsida": "蕨類植物 Monilophytes",
+    "Cycadopsida": "裸子植物 Gymnosperms",
+    "Ginkgoopsida": "裸子植物 Gymnosperms",
+    "Pinopsida": "裸子植物 Gymnosperms",
+    "Magnoliopsida": "被子植物 Angiosperms",  # 無法區分單/雙子葉的 fallback
+}
+
+# pt_name 排序值（對應 dao_plant_type.plant_type）
+PT_NAME_ORDER = {
+    "苔蘚地衣類植物 Mosses and Lichens": 0,
+    "石松類植物 Lycophytes": 1,
+    "蕨類植物 Monilophytes": 2,
+    "裸子植物 Gymnosperms": 3,
+    "單子葉植物 Monocots": 4,
+    "真雙子葉植物姊妹群 Sister groups of Eudicots": 5,
+    "真雙子葉植物 Eudicots": 6,
+    "被子植物 Angiosperms": 7,
+}
+
+# 從舊表查詢 pt_name 的快取
+_pt_name_cache: Optional[dict] = None
+
+def _get_pt_name_for_species(species_name: str) -> str:
+    """從 dao_pnamelist_pg 查詢物種的 pt_name"""
+    global _pt_name_cache
+    if _pt_name_cache is None:
+        _pt_name_cache = {}
+        try:
+            with Session(engine) as session:
+                rows = session.exec(
+                    select(PlantName.name, PlantType.pt_name)
+                    .join(PlantType, PlantName.plant_type == PlantType.plant_type)
+                ).all()
+                for name, pt_name in rows:
+                    _pt_name_cache[name] = pt_name
+        except Exception:
+            pass
+    return _pt_name_cache.get(species_name, "")
+
+# 階層欄位的中文顯示名
+LEVEL_LABELS = {
+    "kingdom": "界",
+    "phylum": "門",
+    "class_name": "綱",
+    "order": "目",
+    "family": "科",
+    "genus": "屬",
+    "pt_name": "類群",
+}
+
+# 分類群顯示順序（偵測到多個分類群時的排列）
+GROUP_ORDER = [
+    "Tracheophyta", "Bryophyta",  # 植物
+    "Ascomycota", "Basidiomycota",  # 真菌
+    "Aves", "Mammalia", "Reptilia", "Amphibia", "Actinopteri",  # 脊索
+    "Insecta", "Arachnida", "Malacostraca",  # 節肢
+    "Gastropoda", "Bivalvia",  # 軟體
+]
+
+# 分類群中文名
+GROUP_NAMES = {
+    "Tracheophyta": "維管束植物",
+    "Bryophyta": "苔蘚植物",
+    "Aves": "鳥綱",
+    "Insecta": "昆蟲綱",
+    "Mammalia": "哺乳綱",
+    "Reptilia": "爬行綱",
+    "Amphibia": "兩生綱",
+    "Actinopteri": "輻鰭魚綱",
+    "Arachnida": "蛛形綱",
+    "Gastropoda": "腹足綱",
+    "Bivalvia": "雙殼綱",
+    "Malacostraca": "軟甲綱",
+    "Ascomycota": "子囊菌門",
+    "Basidiomycota": "擔子菌門",
+    "Mollusca": "軟體動物門",
+}
 
 
-class ExportRequest(BaseModel):
-    checklist: list[SpeciesItem]
+def _detect_group(item: dict) -> str:
+    """從物種資料偵測所屬分類群"""
+    # 優先用 class_name，再用 phylum
+    cls = item.get("class_name", "")
+    phy = item.get("phylum", "")
+
+    if cls in DEFAULT_HIERARCHIES:
+        return cls
+    if phy in DEFAULT_HIERARCHIES:
+        return phy
+    # 舊資料可能只有 pt_name（維管束植物）
+    if item.get("pt_name", ""):
+        return "Tracheophyta"
+    return "_default"
+
+
+def _get_field_display(item: dict, field: str) -> str:
+    """取得階層欄位的顯示文字（中文名 + 拉丁名）"""
+    if field == "family":
+        fc = item.get("family_cname", "") or ""
+        fl = item.get("family", "") or ""
+        return f"{fc} ({fl})" if fc else fl
+    elif field == "pt_name":
+        pt = item.get("pt_name", "") or ""
+        if not pt:
+            # 從舊表查 pt_name（嚴格使用石松/蕨類/裸子/單子葉/真雙子葉等）
+            name = item.get("name", "") or ""
+            pt = _get_pt_name_for_species(name)
+        if not pt:
+            # 最後 fallback: class → 中文名
+            cls = item.get("class_name", "") or ""
+            pt = PLANT_CLASS_NAMES.get(cls, cls)
+        return pt
+    elif field == "class_name":
+        cls = item.get("class_name", "") or ""
+        if item.get("phylum") == "Tracheophyta" and cls in PLANT_CLASS_NAMES:
+            return PLANT_CLASS_NAMES[cls]
+        return cls
+    elif field == "order":
+        return item.get("order", "") or ""
+    elif field == "genus":
+        gc = item.get("genus_c", "") or ""
+        gl = item.get("genus", "") or ""
+        return f"{gc} ({gl})" if gc else gl
+    elif field == "phylum":
+        return item.get("phylum", "") or ""
+    elif field == "kingdom":
+        return item.get("kingdom", "") or ""
+    return item.get(field, "") or ""
+
+
+def _get_field_sort_key(item: dict, field: str) -> str:
+    """取得階層欄位的排序 key"""
+    if field == "family":
+        return item.get("family", "") or ""
+    if field == "pt_name":
+        # 用 display 邏輯保持排序一致
+        return _get_field_display(item, field)
+    return item.get(field, "") or ""
+
+
+def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str]] = None) -> str:
+    """從名錄產生 Markdown 文字，支援多分類群和可配置階層"""
+
+    # 偵測分類群並分組
+    groups: dict[str, list[dict]] = {}
+    for item in checklist:
+        g = _detect_group(item)
+        groups.setdefault(g, [])
+        groups[g].append(item)
+
+    # 排序分類群
+    sorted_groups = sorted(groups.keys(), key=lambda g: (
+        GROUP_ORDER.index(g) if g in GROUP_ORDER else 999, g
+    ))
+
+    total_species = len(checklist)
+    total_families = len({(item.get("family", ""), _detect_group(item)) for item in checklist})
+
+    lines = []
+    lines.append("# 物種名錄")
+    lines.append(f"本名錄共有 {total_families} 科、{total_species} 種。"
+                 f"\"#\" 代表特有種，\"*\" 代表歸化種，\"†\" 代表栽培種。")
+    lines.append("")
+
+    counter = 1
+    sp_counter = 1
+
+    for group_key in sorted_groups:
+        group_items = groups[group_key]
+        group_name = GROUP_NAMES.get(group_key, group_key)
+
+        # 決定階層
+        if levels_override:
+            levels = levels_override
+        else:
+            levels = DEFAULT_HIERARCHIES.get(group_key, DEFAULT_HIERARCHIES["_default"])
+
+        # 多分類群時加入分類群標題
+        if len(sorted_groups) > 1:
+            lines.append("")
+            lines.append(f"## {group_name} {group_key}")
+            lines.append("")
+
+        # 依階層遞迴分群
+        counter, sp_counter = _render_group(
+            lines, group_items, levels, 0, counter, sp_counter,
+            single_group=(len(sorted_groups) == 1)
+        )
+
+    return "\n".join(lines)
+
+
+def _render_group(
+    lines: list[str],
+    items: list[dict],
+    levels: list[str],
+    depth: int,
+    counter: int,
+    sp_counter: int,
+    single_group: bool = False,
+) -> tuple[int, int]:
+    """遞迴渲染分群結構"""
+
+    if depth >= len(levels):
+        # 已到最底層，輸出物種
+        sorted_items = sorted(items, key=lambda x: x.get("fullname", ""))
+        for item in sorted_items:
+            indent = "  " * depth
+            parts = [
+                f"{indent}{sp_counter}. {item.get('cname', '')}",
+                f" {format_scientific_name_markdown(item.get('fullname', ''))} "
+            ]
+            if item.get("endemic") == 1: parts.append("#")
+            if item.get("source") == "歸化": parts.append("*")
+            if item.get("source") == "栽培": parts.append("†")
+            if item.get("iucn_category"): parts.append(item["iucn_category"])
+            lines.append(" ".join(parts))
+            sp_counter += 1
+        return counter, sp_counter
+
+    field = levels[depth]
+    is_last_group_level = (depth == len(levels) - 1)
+
+    # 按當前階層分群
+    grouped: dict[str, list[dict]] = {}
+    for item in items:
+        key = _get_field_sort_key(item, field)
+        grouped.setdefault(key, [])
+        grouped[key].append(item)
+
+    # 排序：pt_name 用 PT_NAME_ORDER，其他按字母
+    if field == "pt_name":
+        sort_fn = lambda k: PT_NAME_ORDER.get(k, 99)
+    else:
+        sort_fn = lambda k: k
+
+    for group_key in sorted(grouped.keys(), key=sort_fn):
+        group_items = grouped[group_key]
+        display = _get_field_display(group_items[0], field)
+        species_count = sum(1 for it in group_items if it.get("rank", "Species") in ("Species", "Subspecies", "Variety", "Form", ""))
+
+        if depth == 0 and not is_last_group_level:
+            # 頂層非科：用 ## 標題
+            heading = f"## {display}" if single_group else f"### {display}"
+            lines.append("")
+            lines.append(heading)
+            lines.append("")
+            counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group)
+        elif is_last_group_level or (depth > 0 and depth == len(levels) - 1):
+            # 最底層分群（通常是科）：用編號列表
+            lines.append("")
+            lines.append(f"{counter}. **{display}** ({species_count})")
+            lines.append("")
+            counter += 1
+            _, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group)
+        else:
+            # 中間層
+            lines.append("")
+            lines.append(f"{'#' * min(depth + 2, 4)} {display}")
+            lines.append("")
+            counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group)
+
+    return counter, sp_counter
 
 
 description = """
 
 ## 概要
 
-匯出植物名錄為不同格式（Markdown、DOCX、YAML、CSV）之檔案。
-此 API 適用於名錄產生工具，可將使用者選擇的物種清單依指定格式匯出。
+匯出物種名錄為不同格式（Markdown、DOCX、YAML、CSV）之檔案。
+支援多分類群自動偵測，每個分類群套用預設階層。
 
-1. 所有匯出皆會自動排序（高階類群 → 科名 → 學名）
-2. Markdown/DOCX 中包含統計摘要（物種總數、科別總數）
-3. YAML 會自動轉換成 Darwin Core 欄位名稱
-4. DOCX 使用自訂樣式（reference.docx）美化輸出
-5. 回傳的 ZIP 檔名稱包含時間戳記（例如 checklist202504051239.zip）
+## Query Parameters
 
-## Request format
-
-- Method：POST
-- Content-Type：application/json
-- Query String：
-  - format (選填)：
-    - "markdown"（預設，也會同時產出 yaml 的名錄之壓縮檔）
-    - "docx"（Word 檔，內含 checklist.md 與 checklist.yml 的壓縮檔）
-    - "yaml"（單一 checklist.yml 檔）
-    - "csv"（單一 CSV 檔）
-- Body (JSON)：
-  ```json
-  {
-    "checklist": [
-      {
-        "id": 123,
-        "name": "Pinus taiwanensis",
-        "fullname": "Pinus taiwanensis Hayata",
-        "cname": "臺灣二葉松",
-        "family": "Pinaceae",
-        "family_cname": "松科",
-        "iucn_category": "LC",
-        "endemic": 1,
-        "source": "原生",
-        "pt_name": "裸子植物 Gymnosperms"
-      },
-      ...
-    ]
-  }
-```
-
-## 名錄格式說明
-
-每筆物種資訊應包含：
-
-| 欄位名稱      | 說明                       |
-| ------------- | -------------------------- |
-| id	        | 唯一 ID 編號               |
-| name	        | 學名（不含作者）           |
-| fullname	| 完整學名（含作者）         |
-| cname	        | 中文名稱                   |
-| family	| 科名（拉丁文）             |
-| family_cname	| 科名（中文）               |
-| pt_name	| 高階類群                   |
-| endemic	| 是否特有（1 為特有）       |
-| source	| 來源（原生、歸化、栽培）   |
-| iucn_category	| IUCN 保育狀態（LC、VU 等） |
-
-## Return
-
-- format=markdown：
- - 回傳壓縮檔（ZIP），內含 checklist.md 及 checklist.yml
-
-- format=docx：
- - 回傳壓縮檔（ZIP），內含 checklist.docx（由 Pandoc 轉換）與 checklist.yml
-
-- format=yaml：
- - 直接回傳 YAML 格式名錄（含 Darwin Core 欄位名稱）
-
-- format=csv：
- - 回傳 CSV 檔案(尚未實作)
+- `format`: markdown（預設）、docx、yaml、csv
+- `levels`（可選）: 自訂分群階層，逗號分隔，例如 `levels=order,family`
+  可用值：kingdom, phylum, class_name, order, family, genus, pt_name
 
 """
 
 @router.post("/api/export",
              summary="匯出名錄檔",
              description=description)
-async def export(request: Request):
+async def export(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
     fmt = request.query_params.get("format", "markdown")
+    levels_param = request.query_params.get("levels", "")
     checklist = body.get("checklist", [])
 
     if not checklist:
         return PlainTextResponse("⚠️ checklist 為空", status_code=400)
+
+    levels_override = [l.strip() for l in levels_param.split(",") if l.strip()] if levels_param else None
 
     if fmt == "yaml":
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
@@ -143,57 +358,7 @@ async def export(request: Request):
             return FileResponse(f.name, media_type="text/csv", filename="checklist.csv")
 
     elif fmt in ["markdown", "docx"]:
-        # 從資料庫取得高階類群排序（plant_type 欄位即為排序值）
-        with Session(engine) as session:
-            plant_types = session.exec(select(PlantType)).all()
-            type_order = {pt.pt_name: pt.plant_type for pt in plant_types}
-
-        lines = []
-        grouped = {}
-        total_species = 0
-        family_set = set()
-
-        # 分群
-        for item in checklist:
-            pt = item["pt_name"]
-            fam = item["family"]
-            grouped.setdefault(pt, {}).setdefault(fam, []).append(item)
-            total_species += 1
-            family_set.add((pt, fam))
-
-        # 說明 header
-        lines.append("# 維管束植物名錄")
-        lines.append(f"本名錄中共有 {len(family_set)} 科、{total_species} 種，科名後括弧內為該科之物種總數。\"#\" 代表特有種，\"*\" 代表歸化種，\"†\" 代表栽培種。")
-        lines.append("中名後面括號內的縮寫代表依照「2017臺灣維管束植物紅皮書名錄」中依照 IUCN 瀕危物種所評估等級：EX: 滅絕、EW: 野外滅絕、RE: 區域性滅絕、CR: 嚴重瀕臨滅絕、EN: 瀕臨滅絕、VU: 易受害、NT: 接近威脅、DD: 資料不足、LC: 安全。")
-        lines.append("")
-
-        pt_sorted = sorted(grouped.keys(), key=lambda k: type_order.get(k, 99))
-        counter = 1
-        sp_counter = 1
-        for pt in pt_sorted:
-            lines.append("")
-            lines.append(f"## {pt}")
-            lines.append("")
-            for fam in sorted(grouped[pt].keys()):
-                lines.append("")
-                species_list = sorted(grouped[pt][fam], key=lambda x: x["fullname"])
-                lines.append(f"{counter}. **{species_list[0]['family_cname']} ({fam})** ({len(species_list)})")
-                lines.append("")
-                for idx, item in enumerate(species_list):
-                    parts = [
-                        f"    {sp_counter}. {item['cname']}",
-                        f" {format_scientific_name_markdown(item['fullname'])} "
-                    ]
-                    if item.get("endemic") == 1: parts.append("#")
-                    if item.get("source") == "歸化": parts.append("*")
-                    if item.get("source") == "栽培": parts.append("†")
-                    if item.get("iucn_category"): parts.append(item["iucn_category"])
-                    lines.append(" ".join(parts))
-                    sp_counter +=1
-                lines.append("")
-                counter += 1
-
-        md_text = "\n".join(lines)
+        md_text = _generate_markdown(checklist, levels_override)
 
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
 
@@ -203,12 +368,10 @@ async def export(request: Request):
             with open(md_path, "w", encoding="utf-8") as f:
                 f.write(md_text)
 
-            # YAML 輸出
             yaml_path = base_path + ".yml"
             with open(yaml_path, "w", encoding="utf-8") as yf:
                 yaml.dump({"checklist": dwc_checklist}, yf, allow_unicode=True)
 
-            # compress zip
             timestamp = datetime.now().strftime("%Y%m%d%H%M")
             zip_filename = f"checklist{timestamp}.zip"
             zip_path = os.path.join(tmpdir, zip_filename)
@@ -236,6 +399,9 @@ async def export(request: Request):
             final_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
             shutil.copy(zip_path, final_zip.name)
             final_zip.flush()
+
+            # 回傳後清理 temp file
+            background_tasks.add_task(os.unlink, final_zip.name)
 
             return FileResponse(
                 final_zip.name,

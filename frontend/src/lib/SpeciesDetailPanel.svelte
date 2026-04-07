@@ -49,12 +49,25 @@
   }
 
   // name = 不含命名者的學名；fallback 從 fullname 取屬名+種名
-  $: scientificName = species?.name || (species?.fullname?.match(/^([A-Z][a-z]+ [a-z\-]+)/)?.[1] ?? '');
+  $: scientificName = species?.name || (species?.fullname?.match(/^([A-Z][a-z]+ [a-z\-]+(?:\s+(?:subsp\.|var\.|f\.|fo\.)\s+[a-z\-]+)*)/)?.[1] ?? '');
+
+  // 俗名：取第一個（去掉括號中的第二俗名）
+  $: primaryCname = (species?.cname || '').replace(/\(.*\)$/, '').trim();
+
+  // 判斷是否為植物（用於顯示植物專用連結）
+  $: isPlant = species?.kingdom === 'Plantae' || species?.phylum === 'Tracheophyta' || species?.pt_name;
+
+  // 所有類群共用
   $: gbifUrl = `https://www.gbif.org/species/search?q=${encodeURIComponent(scientificName)}`;
   $: inatUrl = `https://www.inaturalist.org/taxa/search?q=${encodeURIComponent(scientificName)}`;
+  $: taicolUrl = `https://taicol.tw/zh-hant/catalogue?keyword=${encodeURIComponent(primaryCname)}&name-select=equal`;
+  $: wikispeciesUrl = `https://species.wikimedia.org/wiki/${encodeURIComponent(scientificName.replace(/ /g, '_'))}`;
+  $: ncbiUrl = `https://www.ncbi.nlm.nih.gov/taxonomy/?term=${encodeURIComponent(scientificName)}`;
 
-  // TaiCOL: 用俗名搜尋目錄頁
-  $: taicolUrl = `https://taicol.tw/zh-hant/catalogue?keyword=${encodeURIComponent(species?.cname || '')}&name-select=equal`;
+  // 植物專用
+  $: ipniUrl = `https://ipni.org/search?q=${encodeURIComponent(scientificName)}`;
+  $: powoUrl = `https://powo.science.kew.org/results?q=${encodeURIComponent(scientificName)}`;
+  $: taiUrl = `https://tai2.ntu.edu.tw/search/1/${encodeURIComponent(scientificName)}`;
 </script>
 
 {#if species}
@@ -124,7 +137,7 @@
       <ul class="space-y-2">
         {#each synonyms as syn}
           <li class="text-sm text-gray-700 dark:text-gray-300">
-            <span class="italic">{@html formatScientificName(syn.scientificName)}</span>
+            <span>{@html formatScientificName(syn.scientificName)}</span>
             {#if syn.authorship}
               <span class="text-gray-500"> {syn.authorship}</span>
             {/if}
@@ -147,11 +160,28 @@
         <GlobeOutline class="w-4 h-4 me-2" />GBIF
       </Button>
       <Button color="alternative" href={taicolUrl} target="_blank">
-        <GlobeOutline class="w-4 h-4 me-2" />TaiCOL 臺灣物種名錄
+        <GlobeOutline class="w-4 h-4 me-2" />TaiCOL
       </Button>
       <Button color="alternative" href={inatUrl} target="_blank">
         <GlobeOutline class="w-4 h-4 me-2" />iNaturalist
       </Button>
+      <Button color="alternative" href={wikispeciesUrl} target="_blank">
+        <GlobeOutline class="w-4 h-4 me-2" />Wikispecies
+      </Button>
+      <Button color="alternative" href={ncbiUrl} target="_blank">
+        <GlobeOutline class="w-4 h-4 me-2" />NCBI Taxonomy
+      </Button>
+      {#if isPlant}
+        <Button color="alternative" href={ipniUrl} target="_blank">
+          <GlobeOutline class="w-4 h-4 me-2" />IPNI
+        </Button>
+        <Button color="alternative" href={powoUrl} target="_blank">
+          <GlobeOutline class="w-4 h-4 me-2" />POWO
+        </Button>
+        <Button color="alternative" href={taiUrl} target="_blank">
+          <GlobeOutline class="w-4 h-4 me-2" />台灣植物資訊整合查詢
+        </Button>
+      {/if}
     </div>
   </Card>
 

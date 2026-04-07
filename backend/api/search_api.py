@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Query
 from typing import Optional
+import logging
 import threading
 from sqlmodel import Session, select, or_, col
 from rapidfuzz import process, fuzz
 from backend.models.schema import PlantName, PlantType, TaicolName
 from backend.db import engine, get_session
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -38,7 +41,7 @@ def _get_cname_cache() -> dict[str, list[int]]:
                         cache[cname] = []
                     cache[cname].append(name_id)
         except Exception:
-            pass
+            logger.exception("Failed to load cname cache")
 
         _cname_cache = cache
         return _cname_cache
@@ -73,6 +76,11 @@ ALIEN_TYPE_MAP = {
     "invasive": "歸化",
     "cultured": "栽培",
 }
+
+
+def _escape_like(s: str) -> str:
+    """跳脫 SQL LIKE 的特殊字元 % 和 _"""
+    return s.replace("%", r"\%").replace("_", r"\_")
 
 
 def _normalize_tw(q: str) -> list[str]:
@@ -115,6 +123,12 @@ def _taicol_to_response(
         "taxon_id": row.taxon_id or "",
         "usage_status": "accepted",
         "alternative_name_c": row.alternative_name_c or "",
+        "kingdom": row.kingdom or "",
+        "phylum": row.phylum or "",
+        "class_name": row.class_name or "",
+        "order": row.order or "",
+        "genus": row.genus or "",
+        "genus_c": row.genus_c or "",
     }
 
     # 若原始匹配是 non-accepted，附上異名資訊供前端顯示
@@ -131,8 +145,38 @@ def _taicol_to_response(
     return result
 
 
+_dao_pt_name_cache: Optional[dict] = None
+
+def _get_dao_pt_name(species_name: str) -> str:
+    """從 dao_pnamelist_pg 查詢正確的中文 pt_name"""
+    global _dao_pt_name_cache
+    if _dao_pt_name_cache is None:
+        _dao_pt_name_cache = {}
+        try:
+            with Session(engine) as session:
+                rows = session.exec(
+                    select(PlantName.name, PlantType.pt_name)
+                    .join(PlantType, PlantName.plant_type == PlantType.plant_type)
+                ).all()
+                for name, pt_name in rows:
+                    _dao_pt_name_cache[name] = pt_name
+        except Exception:
+            logger.exception("Failed to load dao pt_name cache")
+    return _dao_pt_name_cache.get(species_name, "")
+
+
 def _build_pt_name(row: TaicolName) -> str:
-    """從分類階層組合 pt_name 顯示"""
+    """從分類階層組合 pt_name 顯示
+
+    維管束植物優先從 dao_pnamelist_pg 查中文 pt_name（石松類植物、裸子植物等）
+    """
+    # 維管束植物：查舊表的中文 pt_name
+    if row.phylum == "Tracheophyta" and row.simple_name:
+        dao_pt = _get_dao_pt_name(row.simple_name)
+        if dao_pt:
+            return dao_pt
+
+    # 其他類群：phylum > class
     parts = []
     if row.phylum:
         parts.append(row.phylum)
@@ -153,8 +197,8 @@ def _check_taicol_table_exists() -> bool:
 
 @router.get("/api/search")
 def search_species(
-    q: Optional[str] = Query(None),
-    group: Optional[str] = Query(None),
+    q: Optional[str] = Query(None, max_length=512),
+    group: Optional[str] = Query(None, max_length=50),
 ):
     if not q or len(q.strip()) == 0:
         return []
@@ -194,7 +238,7 @@ def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
         # 建構 LIKE 條件（含台/臺互換）
         like_conditions = []
         for v in variants:
-            pattern = f"%{v}%"
+            pattern = f"%{_escape_like(v)}%"
             like_conditions.extend([
                 TaicolName.common_name_c.like(pattern),
                 TaicolName.alternative_name_c.like(pattern),
@@ -265,6 +309,27 @@ def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
                 if v in alt:
                     return True
             return False
+
+        # 過濾：同俗名的 Species + nominal infraspecific 只保留 Species
+        # 例如 玉山石竹 Dianthus pygmaeus (Species) vs Dianthus pygmaeus fo. pygmaeus (Form)
+        cname_species_map: dict[str, str] = {}  # cname → simple_name of Species rank
+        for row, _ in unique_entries:
+            cn = row.common_name_c or ""
+            if cn and row.rank == "Species":
+                cname_species_map[cn] = row.simple_name or ""
+
+        filtered_entries = []
+        for acc_row, matched in unique_entries:
+            cn = acc_row.common_name_c or ""
+            rank = acc_row.rank or ""
+            if cn and rank in ("Form", "Variety", "Subspecies") and cn in cname_species_map:
+                sp_name = cname_species_map[cn]
+                # 如果是 nominal infraspecific（學名以 Species 學名開頭），跳過
+                if (acc_row.simple_name or "").startswith(sp_name):
+                    continue
+            filtered_entries.append((acc_row, matched))
+
+        unique_entries = filtered_entries
 
         # 同俗名統計（用於區分同俗名不同物種）
         cname_counts: dict[str, int] = {}
@@ -384,11 +449,11 @@ def _search_legacy(q: str) -> list[dict]:
             .join(PlantType, PlantName.plant_type == PlantType.plant_type)
             .where(
                 or_(
-                    PlantName.name.like(f"%{q}%"),
-                    PlantName.fullname.like(f"%{q}%"),
-                    PlantName.cname.like(f"%{q}%"),
-                    PlantName.family.like(f"%{q}%"),
-                    PlantName.family_cname.like(f"%{q}%"),
+                    PlantName.name.like(f"%{_escape_like(q)}%"),
+                    PlantName.fullname.like(f"%{_escape_like(q)}%"),
+                    PlantName.cname.like(f"%{_escape_like(q)}%"),
+                    PlantName.family.like(f"%{_escape_like(q)}%"),
+                    PlantName.family_cname.like(f"%{_escape_like(q)}%"),
                 )
             )
             .limit(30)

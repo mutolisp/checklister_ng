@@ -1,6 +1,101 @@
 # 更新紀錄
 
-## 2026-04-06：TaiCOL 資料整合與多分類群搜尋
+## 2026-04-07：安全強化與程式碼品質
+
+### 安全修復
+
+- **LIKE 注入跳脫**：所有 SQL `LIKE` 查詢透過 `_escape_like()` 跳脫使用者輸入中的 `%` 和 `_` 萬用字元。套用於 `search_api.py` 和 `resolve_name.py`。
+- **CORS 中介層**：新增 `CORSMiddleware`，允許 `localhost:5173` 和 `localhost:8964`。
+- **速率限制**：新增 `slowapi`，預設每 IP 每分鐘 60 次請求。
+- **XSS 防護**：`formatter.ts` 的 `formatScientificName()` 在建構斜體標籤前先跳脫 HTML 實體（`<`、`>`、`&`、`"`），防止資料庫被污染時的 stored XSS。
+- **CSV SQL 注入檢查**：Admin CSV 上傳（`/api/admin/import-taicol`）掃描上傳內容中的可疑 SQL 語法（`DROP`、`DELETE`、`INSERT`、`UNION` 等），偵測到即拒絕。
+- **查詢長度限制**：搜尋 `q` 限制 512 字元，`taxon_id` 限制 20 字元。
+- **上傳大小限制**：CSV 上傳限制 200MB。
+
+### 程式碼品質
+
+- **日誌**：`main.py` 新增 `logging.basicConfig()`。所有 `except Exception: pass` 改為 `logger.exception()` 以正確記錄錯誤。
+- **暫存檔清理**：匯出 API 使用 `BackgroundTasks` 在回應送出後刪除暫存 ZIP 檔案。
+
+### 依賴
+
+- 新增 `slowapi` 至 `requirements.txt`。
+
+---
+
+## 2026-04-07：匯出修正、RWD、外部連結與資料校正
+
+### 匯出修正
+
+- **植物高階層名稱**：維管束植物匯出嚴格使用中文類群名（石松類植物、蕨類植物、裸子植物、單子葉植物、真雙子葉植物姊妹群、真雙子葉植物），透過 `dao_pnamelist_pg` 查詢正確的 `pt_name`。蘇鐵/銀杏/松綱全部歸入裸子植物。
+- **植物階層排序**：依 `dao_plant_type.plant_type` 順序排列（苔蘚→石松→蕨類→裸子→單子葉→姊妹群→真雙子葉）。
+- **Markdown 斜體修正**：物種項目縮排從 8 空格改為 4 空格，避免 Pandoc 將 `*斜體*` 當成 code block 直接輸出星號。
+- **種下名義亞種去重**：同俗名的 Species 和其 nominal infraspecific（如 `fo. pygmaeus`）只保留 Species 層級。
+- **同物異名斜體修正**：移除同物異名列表的外層 `italic` class，rank 縮寫（var./subsp./fo.）現在正確顯示為正體。
+
+### RWD：手機版物種詳細頁
+
+- 桌面版（md 以上）：左側邊欄固定顯示。
+- 手機版（md 以下）：側邊欄隱藏，詳細頁頂部顯示「物種列表」按鈕。點擊後從左側滑出 drawer（附半透明背景遮罩），選擇物種後自動關閉。
+
+### 外部連結
+
+- **TaiCOL**：修正為只取第一個俗名（去掉括號內的第二俗名）。
+- **植物專用連結**（僅植物界顯示）：IPNI、POWO、台灣植物資訊整合查詢系統。
+- **所有類群新增**：Wikispecies、NCBI Taxonomy。
+
+### 資料校正
+
+- `Pinus armandii var. masteriana`（name_id=133788）：`usage_status` 從 `accepted` 改為 `not-accepted`。此為 TaiCOL 原始資料的拼寫錯誤，正確接受名為 `Pinus armandii var. mastersiana`（name_id=61488）。
+
+### 搜尋 API：pt_name 查詢
+
+- 維管束植物的 `_build_pt_name()` 改為查詢 `dao_pnamelist_pg` 取得正確的中文 `pt_name`（如「真雙子葉植物 Eudicots」），而非回傳 `Tracheophyta > Magnoliopsida`。
+
+---
+
+## 2026-04-06：多分類群匯出與可配置階層
+
+### 多分類群匯出
+
+- **自動偵測分類群**：匯出時自動依物種的 `kingdom`、`phylum`、`class_name` 欄位偵測分類群（維管束植物、鳥綱、昆蟲綱、真菌等）。
+- **各分類群預設階層**：
+  - 維管束植物：類群(pt_name) → 科(family) → 物種
+  - 鳥類/昆蟲/哺乳類/爬行類/兩棲類：目(order) → 科(family) → 物種
+  - 真菌：門(phylum) → 綱(class) → 科(family) → 物種
+  - 軟體動物：綱(class) → 目(order) → 科(family) → 物種
+- **混合名錄**：名錄同時包含多個分類群的物種時，匯出自動分段，各段套用各自的預設階層。
+- **Markdown 標題**：從硬編碼的「維管束植物名錄」改為動態的「物種名錄」，統計數字正確反映實際內容。
+
+### 可配置匯出階層
+
+- **`levels` 查詢參數**：`POST /api/export?format=markdown&levels=order,family` 可覆蓋預設階層。
+- **前端「匯出設定」按鈕**：開啟 modal，提供 6 個 checkbox（界、門、綱、目、科、屬）自訂匯出階層。
+- **未勾選時**：使用各分類群的預設階層。
+- 注：Superfamily（總科）、Subfamily（亞科）、Tribe（族）第一版不支援（TaiCOL 中為 rank 值而非物種欄位），留待後續版本。
+
+### 搜尋 API：完整分類階層欄位
+
+- 搜尋結果新增：`kingdom`、`phylum`、`class_name`、`order`、`genus`、`genus_c`。
+- 這些欄位會存入 species store，供匯出系統使用。
+
+### DwC Mapper
+
+- 新增 `kingdom`、`phylum`、`class`（對應 `class_name`）、`order`、`genus`、`taxon_id` 至 Darwin Core 欄位對應。
+
+### 新建/修改檔案
+
+| 檔案 | 修改內容 |
+|------|---------|
+| `backend/api/export.py` | 全面改寫：多分類群偵測、預設階層定義、遞迴分群渲染、`levels` 參數 |
+| `backend/api/search_api.py` | 回傳完整分類階層欄位（kingdom 到 genus） |
+| `backend/utils/mapper.py` | DwC mapping 新增分類階層欄位 |
+| `frontend/src/lib/ExportSettings.svelte` | 新建：匯出階層勾選 modal |
+| `frontend/src/routes/+page.svelte` | 整合 ExportSettings，匯出時傳遞 levels 參數 |
+
+---
+
+## 2026-04-06：TaiCOL 整合、模糊搜尋與搜尋體驗改進
 
 ### TaiCOL 資料庫整合
 
@@ -62,16 +157,34 @@
 | `backend/api/synonyms_api.py` | 同物異名查詢端點 |
 | `frontend/src/routes/admin/+page.svelte` | 管理上傳頁面 |
 
+### 模糊比對搜尋（Levenshtein Distance）
+
+- 新增 `rapidfuzz` 依賴，實作打字容錯搜尋。
+- **記憶體快取**：62,658 個不重複 accepted 俗名於首次搜尋時載入（~0.2 秒），常駐記憶體（~2-3MB）。Thread-safe lazy loading，TaiCOL 重新匯入後自動清空。
+- **兩階段搜尋**：先做 LIKE 精確搜尋，結果不足 5 筆時啟動 fuzzy fallback，以 Levenshtein distance ≤ 1 掃描快取（62k 筆約 11ms），不足再放寬到 distance ≤ 2。
+- 範例：「香南」→ 找到「香楠」（dist=1）；「舗地黍」→ 找到「舖地黍」（dist=1）。
+- 含 fuzzy 的整體搜尋時間 < 130ms。
+
+### 搜尋體驗改進
+
+- **只顯示接受名**：搜尋下拉選單只顯示 accepted name，非接受名自動解析到對應的接受名。
+- **非接受名顯示**：使用者輸入異名（如 `Lycopodium cernuum`）時，下拉顯示：`俗名 (異名學名) [not-accepted] → 接受學名`。
+- **同俗名區分**：多個物種共用相同俗名時，以替代俗名加括號區分，例如「過山龍(台灣鹹蝦花)」vs「過山龍(垂穗石松)」。
+- **替代俗名匹配**：透過 `alternative_name_c` 匹配時，顯示格式為：`替代俗名(主要俗名) (學名) 科名`。
+- **模糊結果提示**：fuzzy 結果以橘色顯示「≈ 您是否在找？」標記。
+- **物種詳細頁**：分類資訊科名上方新增「其他俗名」欄位（來自 `alternative_name_c`）。同物異名列表移除俗名，只顯示學名 + 命名者 + 狀態標籤。
+
 ### 修改檔案
 
 | 檔案 | 修改內容 |
 |------|---------|
-| `backend/api/search_api.py` | 全面改寫：TaiCOL 搜尋、分類群篩選、台/臺互換 |
+| `backend/api/search_api.py` | 全面改寫：TaiCOL 搜尋、分類群篩選、台/臺互換、只顯示接受名並自動解析異名、同俗名區分、Levenshtein 模糊快取搜尋 |
 | `backend/main.py` | 註冊 synonyms_api 和 admin_api router |
-| `frontend/src/lib/SearchBox.svelte` | 分類群下拉選單、usage_status 標籤 |
-| `frontend/src/lib/SpeciesDetailPanel.svelte` | 自動從 API 載入同物異名 |
+| `backend/services/taicol_import.py` | 匯入後清空 fuzzy 快取 |
+| `frontend/src/lib/SearchBox.svelte` | 分類群下拉選單、非接受名顯示、模糊提示 |
+| `frontend/src/lib/SpeciesDetailPanel.svelte` | 自動載入同物異名、顯示其他俗名、移除同物異名中的俗名 |
 | `Makefile` | 新增 `taicol` target |
-| `requirements.txt` | 新增 `python-multipart` |
+| `requirements.txt` | 新增 `python-multipart`、`rapidfuzz` |
 
 ---
 

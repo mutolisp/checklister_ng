@@ -7,6 +7,12 @@ dwc_field_map = {
     # Darwin Core uses "vernacular". Fix a long-standing typo here.
     "family_cname": "familyVernacularName",
     "pt_name": "higherClassification",
+    "kingdom": "kingdom",
+    "phylum": "phylum",
+    "class_name": "class",
+    "order": "order",
+    "genus": "genus",
+    "taxon_id": "taxonID",
     "source": "establishmentMeans",
     "iucn_category": "iucnStatus",
     "endemic": "endemic",

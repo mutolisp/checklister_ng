@@ -5,6 +5,10 @@ from sqlmodel import Session, select
 from backend.db import get_session
 from backend.models.schema import PlantName, PlantType
 
+
+def _escape_like(s: str) -> str:
+    return s.replace("%", r"\%").replace("_", r"\_")
+
 router = APIRouter()
 
 @router.get("/api/resolve_name")
@@ -15,7 +19,7 @@ def resolve_name(q: Optional[str] = Query(None), session: Session = Depends(get_
     query = (
         select(PlantName, PlantType)
         .join(PlantType, PlantName.plant_type == PlantType.plant_type)
-        .where(PlantName.cname.like(f"%{q}%"))
+        .where(PlantName.cname.like(f"%{_escape_like(q)}%"))
         .limit(20)
     )
     results = session.exec(query).all()
@@ -45,7 +49,7 @@ def resolve_name_batch(
         query = (
             select(PlantName, PlantType)
             .join(PlantType, PlantName.plant_type == PlantType.plant_type)
-            .where(PlantName.cname.like(f"%{cname}%"))
+            .where(PlantName.cname.like(f"%{_escape_like(cname)}%"))
             .limit(10)
         )
         rows = session.exec(query).all()

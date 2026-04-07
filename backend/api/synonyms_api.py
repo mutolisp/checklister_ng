@@ -1,7 +1,10 @@
+import logging
 from fastapi import APIRouter, Query
 from sqlmodel import Session, select
 from backend.db import engine
 from backend.models.schema import TaicolName
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -9,7 +12,7 @@ router = APIRouter()
 @router.get("/api/synonyms",
             summary="查詢同物異名",
             description="依 taxon_id 查詢所有相關學名（含接受名、異名、誤用名）")
-def get_synonyms(taxon_id: str = Query(...)):
+def get_synonyms(taxon_id: str = Query(..., max_length=20)):
     if not taxon_id:
         return []
 
@@ -33,4 +36,5 @@ def get_synonyms(taxon_id: str = Query(...)):
                 for row in rows
             ]
     except Exception:
+        logger.exception(f"Failed to query synonyms for taxon_id={taxon_id}")
         return []

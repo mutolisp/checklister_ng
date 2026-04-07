@@ -12,6 +12,7 @@
   import  LoadYAMLButton  from "$lib/LoadYAMLButton.svelte";
   import AmbiguousSelector from "$lib/AmbiguousSelector.svelte";
   import SpeciesDetailView from "$lib/SpeciesDetailView.svelte";
+  import ExportSettings from "$lib/ExportSettings.svelte";
   import { selectedSpecies } from "$stores/speciesStore";
   import { downloadYAML } from "$lib/utils";
   import { derived, get } from "svelte/store";
@@ -113,8 +114,16 @@
 	  }
 	}
 
+    // 匯出設定
+    let showExportSettings = false;
+    let exportLevels: string[] = [];
+
 	async function exportData(format: string) {
-	  const response = await fetch(`/api/export?format=${format}`, {
+	  let exportUrl = `/api/export?format=${format}`;
+	  if (exportLevels.length > 0) {
+	    exportUrl += `&levels=${exportLevels.join(',')}`;
+	  }
+	  const response = await fetch(exportUrl, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({ checklist: get(selectedSpecies) })
@@ -200,6 +209,7 @@
     </Dropdown>
       <Button color="alternative" on:click={clearChecklist}>
         <TrashBinOutline class="w-4 h-4 me-2" /> 清除名錄</Button>
+    <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} />
     <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
     </div>
 
