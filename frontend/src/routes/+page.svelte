@@ -2,7 +2,7 @@
   import { Badge, Button } from 'flowbite-svelte';
   import { Alert, Label, Input } from 'flowbite-svelte';
   import { Dropdown, DropdownItem, DropdownDivider, DropdownHeader } from 'flowbite-svelte';
-  import { Navbar, NavBrand, NavHamburger, NavUl, NavLi } from 'flowbite-svelte';
+  // Navbar moved to +layout.svelte
   import { DownloadSolid, ChevronDownOutline, TrashBinOutline } from 'flowbite-svelte-icons';
   import { FileOutline, FileCodeOutline, FileWordOutline } from 'flowbite-svelte-icons';
   import { Card } from 'flowbite-svelte';
@@ -13,7 +13,9 @@
   import AmbiguousSelector from "$lib/AmbiguousSelector.svelte";
   import SpeciesDetailView from "$lib/SpeciesDetailView.svelte";
   import ExportSettings from "$lib/ExportSettings.svelte";
+  import MapPreview from "$lib/MapPreview.svelte";
   import { selectedSpecies } from "$stores/speciesStore";
+  import { projectMetadata } from "$stores/metadataStore";
   import { downloadYAML } from "$lib/utils";
   import { derived, get } from "svelte/store";
   import { convertToDarwinCore } from '$lib/dwcMapper'; //DwC的解析
@@ -75,15 +77,16 @@
 
       const raw = get(selectedSpecies);
       const checklist = raw.map(convertToDarwinCore);
-	  const metadata = {
+      const meta = get(projectMetadata);
+	  const metadata: any = {
 		version: "1.0",
 		exported_at: new Date().toISOString(),
 		generated_by: "checklister-ng App",
-		//project: metadataStore.project ?? "",
-		//site: metadataStore.site ?? "",
-		//geometry: metadataStore.geometry ?? null,
 		checklist,
 	  };
+	  if (meta.projectName) metadata.project = meta.projectName;
+	  if (meta.siteName) metadata.site = meta.siteName;
+	  if (meta.footprintWKT) metadata.footprintWKT = meta.footprintWKT;
 	  downloadYAML(metadata, "checklist.yml");
 	}
  
@@ -123,10 +126,16 @@
 	  if (exportLevels.length > 0) {
 	    exportUrl += `&levels=${exportLevels.join(',')}`;
 	  }
+	  const meta = get(projectMetadata);
 	  const response = await fetch(exportUrl, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify({ checklist: get(selectedSpecies) })
+		body: JSON.stringify({
+		  checklist: get(selectedSpecies),
+		  project: meta.projectName || "",
+		  site: meta.siteName || "",
+		  footprintWKT: meta.footprintWKT || "",
+		})
 	  });
 
 	  if (!response.ok) {
@@ -172,45 +181,34 @@
 
 </script>
 <div class="flex flex-col h-screen">
-<Navbar let:hidden let:toggle>
-<h1 class="text-2xl font-bold mb-2">checklister-ng 名錄產生器</h1>
-<NavHamburger on:click={toggle} />
-<NavUl {hidden} class="ms-3 pt-6">
-    <NavLi href="/" active={true}>Home</NavLi>
-    <NavLi class="cursor-pointer">App</NavLi>
-    <NavLi href="/documentation">Docs</NavLi>
-    <NavLi href="/contact">Contact</NavLi>
-    <NavLi href="/admin">Admin</NavLi>
-</NavUl>
-</Navbar>
 
 <!-- Zone A: sticky toolbar -->
 <div class="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-8 py-4 space-y-4">
-    <div class="flex flex-wrap gap-4 items-center">
-    <SearchBox />
-    <LoadYAMLButton />
+    <div class="flex flex-wrap gap-2 items-center">
+      <SearchBox />
+      <LoadYAMLButton />
     </div>
 
-    <div class="flex flex-wrap gap-2">
-    <Button color="alternative">
-        <DownloadSolid class="w-8 h-4 me-2" />
-        Export
-        <ChevronDownOutline class="w-6 h-6 ms-2 text-white dark:text-white" />
-    </Button>
-    <Dropdown>
-      <DropdownItem color="alternative" on:click={() => exportData('docx')}>
-        <FileWordOutline class="w-4 h-4 me-2" />匯出Word (.docx)</DropdownItem>
-      <DropdownItem on:click={() => exportData('markdown')}>
-        <FileOutline class="w-4 h-4 me-2" />匯出 Markdown (.md)</DropdownItem>
-      <DropdownItem on:click={exportYAML}>
-        <FileCodeOutline class="w-4 h-4 me-2" />匯出支援DwC的YAML</DropdownItem>
-      <DropdownDivider />
-      <DropdownItem color="red" on:click={exportUnresolved}>匯出未解析俗名</DropdownItem>
-    </Dropdown>
-      <Button color="alternative" on:click={clearChecklist}>
-        <TrashBinOutline class="w-4 h-4 me-2" /> 清除名錄</Button>
-    <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} />
-    <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
+    <div class="flex flex-wrap gap-2 items-center">
+      <Button color="alternative" size="sm">
+        <DownloadSolid class="w-4 h-4 me-1" />Export
+        <ChevronDownOutline class="w-4 h-4 ms-1" />
+      </Button>
+      <Dropdown>
+        <DropdownItem on:click={() => exportData('docx')}>
+          <FileWordOutline class="w-4 h-4 me-2" />匯出 Word (.docx)</DropdownItem>
+        <DropdownItem on:click={() => exportData('markdown')}>
+          <FileOutline class="w-4 h-4 me-2" />匯出 Markdown (.md)</DropdownItem>
+        <DropdownItem on:click={exportYAML}>
+          <FileCodeOutline class="w-4 h-4 me-2" />匯出 DwC YAML</DropdownItem>
+        <DropdownDivider />
+        <DropdownItem color="red" on:click={exportUnresolved}>匯出未解析俗名</DropdownItem>
+      </Dropdown>
+      <Button color="alternative" size="sm" on:click={clearChecklist}>
+        <TrashBinOutline class="w-4 h-4 me-1" />清除名錄</Button>
+      <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} />
+      <MapPreview />
+      <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
     </div>
 
     {#if Array.isArray($unresolvedStore) && $unresolvedStore.length > 0}
@@ -241,6 +239,15 @@
       {activeSpeciesId}
       onSelectSpecies={(id) => activeSpeciesId = id}
       onBack={backToTable}
+      onDelete={(id) => {
+        removeSpecies(id);
+        // 如果刪除的是當前顯示的，選下一個或回到名錄
+        if (id === activeSpeciesId) {
+          const remaining = get(selectedSpecies);
+          activeSpeciesId = remaining.length > 0 ? remaining[0].id : null;
+          if (!activeSpeciesId) backToTable();
+        }
+      }}
     />
   {/if}
 </div>

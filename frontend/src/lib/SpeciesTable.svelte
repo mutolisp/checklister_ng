@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onMount, onDestroy } from 'svelte';
   import {
     Table, TableBody, TableBodyRow, TableBodyCell, TableHead, TableHeadCell,
     Select, Input, Button
   } from 'flowbite-svelte';
+  import { TrashBinOutline } from 'flowbite-svelte-icons';
   import { Section } from 'flowbite-svelte-blocks';
   import { formatScientificName } from '$lib/formatter';
 
@@ -18,7 +20,7 @@
   let filterFamily = "";
 
   // 排序狀態
-  type SortKey = 'id' | 'family' | 'cname' | 'fullname' | 'source' | 'endemic';
+  type SortKey = 'id' | 'family' | 'cname' | 'fullname' | 'source' | 'endemic' | 'abundance';
   let sortKey: SortKey | null = null;
   let sortAsc = true;
 
@@ -70,6 +72,9 @@
         case 'endemic':
           cmp = (a.endemic || 0) - (b.endemic || 0);
           break;
+        case 'abundance':
+          cmp = (a.abundance || 0) - (b.abundance || 0);
+          break;
       }
       return sortAsc ? cmp : -cmp;
     });
@@ -96,7 +101,7 @@
   function toggleItem(id: number, checked: boolean) {
     if (checked) selectedIds.add(id);
     else selectedIds.delete(id);
-    selectedIds = new Set(selectedIds); // force update
+    selectedIds = new Set(selectedIds);
   }
 
   function removeSelected() {
@@ -108,6 +113,27 @@
     onUpdate?.(updated);
   }
 
+  // 鍵盤快捷鍵：Delete/Backspace 刪除已勾選項目
+  function handleGlobalKeydown(e: KeyboardEvent) {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      // 避免在輸入框中觸發
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if (selectedIds.size > 0) {
+        e.preventDefault();
+        removeSelected();
+      }
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('keydown', handleGlobalKeydown);
+  });
+
+  onDestroy(() => {
+    window.removeEventListener('keydown', handleGlobalKeydown);
+  });
+
   function goToPage(p: number) {
     if (p >= 1 && p <= pageCount) {
       currentPage = p;
@@ -115,7 +141,7 @@
   }
 
   $: visiblePages = (() => {
-    const range = 2; // 前後最多兩頁
+    const range = 2;
     let start = Math.max(1, currentPage - range);
     let end = Math.min(pageCount, currentPage + range);
     if (end - start < 4) {
@@ -127,21 +153,18 @@
 </script>
 
 <Section class="p-6 rounded bg-white dark:bg-gray-800">
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-    <Input bind:value={search} placeholder="搜尋學名或中文名..." class="w-full" />
-    <Select bind:value={filterFamily} class="w-full">
+  <!-- 搜尋 + 科別篩選 + 刪除按鈕 -->
+  <div class="flex flex-wrap gap-2 mb-4 items-center">
+    <Input bind:value={search} placeholder="搜尋學名或中文名..." class="w-48 lg:w-64" size="sm" />
+    <Select bind:value={filterFamily} class="w-40" size="sm">
       <option value="">全部科別</option>
       {#each families as fam}
         <option value={fam}>{fam}</option>
       {/each}
     </Select>
-    <Select bind:value={perPage} class="w-full">
-      <option value="10">每頁 10 筆</option>
-      <option value="20">每頁 20 筆</option>
-      <option value="50">每頁 50 筆</option>
-    </Select>
-    <Button color="red" on:click={removeSelected} disabled={selectedIds.size === 0} class="w-full">
-      批次刪除 ({selectedIds.size})
+    <span class="flex-1"></span>
+    <Button color="red" size="sm" on:click={removeSelected} disabled={selectedIds.size === 0}>
+      <TrashBinOutline class="w-3 h-3 me-1" />刪除 ({selectedIds.size})
     </Button>
   </div>
 
@@ -154,6 +177,7 @@
       <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('fullname')}>學名{sortIndicator('fullname')}</TableHeadCell>
       <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('source')}>來源{sortIndicator('source')}</TableHeadCell>
       <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('endemic')}>特有{sortIndicator('endemic')}</TableHeadCell>
+      <TableHeadCell class="cursor-pointer select-none" on:click={() => toggleSort('abundance')}>數量{sortIndicator('abundance')}</TableHeadCell>
     </TableHead>
     <TableBody>
       {#each paginated as item}
@@ -174,14 +198,28 @@
           <TableBodyCell>{@html formatScientificName(item.fullname)}</TableBodyCell>
           <TableBodyCell>{item.source}</TableBodyCell>
           <TableBodyCell>{item.endemic === 1 ? '✅' : ''}</TableBodyCell>
+          <TableBodyCell>
+            <input
+              type="number"
+              min="0"
+              class="w-16 text-xs border border-gray-200 dark:border-gray-600 rounded px-1 py-0.5 bg-transparent text-center"
+              value={item.abundance || 0}
+              on:click|stopPropagation
+              on:change={(e) => {
+                const val = parseInt(e.target.value) || 0;
+                const updated = data.map(d => d.id === item.id ? { ...d, abundance: val } : d);
+                onUpdate(updated);
+              }}
+            />
+          </TableBodyCell>
         </TableBodyRow>
       {/each}
     </TableBody>
   </Table>
 
-  <!-- Custom pagination buttons -->
-  {#if pageCount > 1}
-    <div class="flex justify-center items-center gap-1 mt-4">
+  <!-- 分頁 + 每頁筆數 -->
+  <div class="flex justify-center items-center gap-2 mt-4 flex-wrap">
+    {#if pageCount > 1}
       <Button size="sm" color="light" on:click={() => goToPage(currentPage - 1)} disabled={currentPage === 1}>
         ‹
       </Button>
@@ -198,11 +236,19 @@
       <Button size="sm" color="light" on:click={() => goToPage(currentPage + 1)} disabled={currentPage === pageCount}>
         ›
       </Button>
-    </div>
-  {/if}
+    {/if}
 
-  <p class="text-sm text-gray-500 mt-2 text-center">
-    顯示 {Math.min((currentPage - 1) * perPage + 1, sorted.length)} -
-    {Math.min(currentPage * perPage, sorted.length)} 筆，共 {sorted.length} 筆
-  </p>
+    <span class="text-sm text-gray-500 ml-2">
+      顯示
+    </span>
+    <Select bind:value={perPage} size="sm" class="w-20 inline-block">
+      <option value={10}>10</option>
+      <option value={20}>20</option>
+      <option value={50}>50</option>
+      <option value={100}>100</option>
+    </Select>
+    <span class="text-sm text-gray-500">
+      筆/頁，共 {sorted.length} 筆
+    </span>
+  </div>
 </Section>

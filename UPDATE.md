@@ -1,5 +1,183 @@
 # Update Log
 
+## 2026-04-08: Checklist Comparison, Batch Import Rewrite, Search Sort & YAML Fix
+
+### Checklist Comparison (`/compare`)
+
+- New page for comparing 2-10 checklists side by side.
+- **Input**: Add current checklist and/or upload multiple YAML files.
+- **Presence/absence indices**: Species richness, shared species, unique species per list, Sørensen and Jaccard similarity matrices.
+- **Abundance indices** (when data available): Shannon-Wiener H', Simpson D, Evenness J'.
+- **Species matrix**: All species × checklists table with ✓/✗, filterable by shared/unique/at-least-N.
+- **Export**: CSV report with matrix + indices.
+- **Abundance column**: SpeciesTable now has inline editable "數量" column. DwC mapping: `abundance → individualCount`.
+
+### Batch Import Rewrite
+
+- "批次匯入" button now opens a modal with textarea for pasting names (newline or comma separated) + file upload.
+- **Three-stage processing**:
+  1. Exact match (cname or scientific name) → auto-added to checklist
+  2. Multiple matches → shown in-modal for user selection (per species: click to select, skip, or skip-all)
+  3. Unresolved (no match) → shown in-modal with options: "放入未收錄" (add as unresolved) or "忽略" (ignore), with bulk buttons
+- Auto-closes modal when all names resolved successfully.
+- Button text changed: "開始比對" → "開始匯入".
+
+### Search Sort Fix
+
+- Search results now prioritize exact matches: `cname == query` or `name == query` shown first, then prefix matches, then by name length (shorter = more relevant).
+- Example: searching "芒" now returns "芒 (Miscanthus sinensis)" first instead of "三芒耳稃草".
+
+### YAML Parse Fix
+
+- `parseChecklistYAML()` now handles the `checklister-ng:` wrapper key in YAML files (e.g., `checklister-ng.checklist` nested structure).
+- Fixes comparison page failing to parse exported YAML files.
+
+### YAML Export: WKT in YAML only
+
+- Markdown/DOCX header no longer includes raw WKT string (only project name and site name).
+- WKT is included in the `.yml` file inside the ZIP and in standalone YAML export.
+
+### New/Modified Files
+
+| File | Action |
+|------|--------|
+| `frontend/src/lib/compareUtils.ts` | New: comparison logic + diversity indices |
+| `frontend/src/routes/compare/+page.svelte` | New: comparison page |
+| `frontend/src/lib/LoadYAMLButton.svelte` | Rewrite: modal-based batch import with in-modal resolution |
+| `frontend/src/lib/SpeciesTable.svelte` | Added abundance column |
+| `frontend/src/lib/importer.ts` | Added `parseChecklistYAML()`, fixed `checklister-ng` wrapper parsing |
+| `frontend/src/routes/+layout.svelte` | Navbar: added Compare link |
+| `backend/api/search_api.py` | Search sort: exact → prefix → length |
+| `backend/api/export.py` | YAML export includes metadata; Markdown header WKT removed |
+| `backend/utils/mapper.py` | DwC mapping: `abundance → individualCount` |
+
+---
+
+## 2026-04-08: Map Editor, Keyboard Shortcuts, Export Metadata & Plant Classification Fix
+
+### Map Editor (`/map`)
+
+- Full Leaflet map editor with Marker, Polyline, Polygon, Rectangle drawing tools.
+- **Import**: GPX, KML, WKT, GeoJSON files via `@tmcw/togeojson` and `terraformer-wkt-parser`.
+- **Export**: Download as WKT, GPX (`togpx`), KML (`tokml`), or GeoJSON.
+- Project metadata form: project name + site name (persisted to localStorage via `metadataStore`).
+- Geometry auto-saved to `metadataStore.geometries` (GeoJSON) and `metadataStore.footprintWKT` (WKT).
+- Location search via Nominatim geocoding.
+- Fix: Leaflet marker icon path and `draw:created` event string (ESM dynamic import compatibility).
+
+### Map Preview (Main Page)
+
+- "地圖" button in toolbar opens a pop-up Modal with read-only map preview (lazy-loaded Leaflet).
+- Shows WKT snippet and "前往編輯" link to `/map`.
+- Button turns green when geometry exists.
+
+### YAML Geometry Integration
+
+- **Export**: YAML now includes `project`, `site`, `footprintWKT` fields from `metadataStore`.
+- **Import**: `importer.ts` reads `footprintWKT`, `project`, `site` from YAML and stores in `metadataStore`.
+- **Markdown/DOCX export**: Header auto-appends project name (as title), site name, and WKT.
+
+### Keyboard Shortcuts
+
+- **SearchBox**: `↑`/`↓` navigate suggestions (blue highlight), `Enter` adds highlighted species, `Esc` closes list.
+- **SpeciesTable**: `Delete`/`Backspace` removes checked species (with confirmation). Not triggered inside input fields.
+- **SpeciesSidebar (detail view)**: `Delete`/`Backspace` removes currently selected species (with confirmation). Deleted species auto-switches to next or returns to table.
+
+### Sidebar Search Filter
+
+- Added search/filter input above "返回名錄" button in detail view sidebar.
+- Filters species list by common name or scientific name in real-time.
+
+### Vascular Plant Classification Fix
+
+- **Strict 6-group ordering**: 石松類 → 蕨類 → 裸子 → 單子葉 → 真雙子葉姊妹群 → 真雙子葉.
+- **Magnoliopsida resolved by order**: Built `MONOCOT_ORDERS` (11 orders) and `SISTER_EUDICOT_ORDERS` (Ceratophyllales) lookup tables. Remaining Magnoliopsida orders → 真雙子葉植物.
+- Removed fallback "被子植物 Angiosperms" — all Magnoliopsida now correctly classified.
+- Export `_get_field_display()` always resolves vascular plants via dao lookup → class mapping → order-based resolution, regardless of `pt_name` value.
+
+### Same Common Name Disambiguation Fix
+
+- When multiple accepted species share the same common name and no `alternative_name_c` exists, the display no longer appends the full scientific name in parentheses. Only species with `alternative_name_c` show disambiguation.
+
+### Search Badges
+
+- Search suggestion dropdown now shows colored badges: 原生 (green), 歸化 (yellow), 栽培 (blue), 臺灣特有 (purple), IUCN status (dark).
+
+### Unified Advanced Filter
+
+- Merged taxon group dropdown + rank dropdown into single "篩選" modal with:
+  - Emoji icon buttons for 14 taxon groups (connected to search)
+  - Rank-specific search with auto-complete (via `/api/search/rank`)
+  - Endemic checkbox + alien type dropdown
+- Changing taxon group clears rank filter (with confirmation).
+- Filter auto-complete minimum input: 1 character.
+
+### New/Modified Files
+
+| File | Action |
+|------|--------|
+| `frontend/src/stores/metadataStore.ts` | Expanded: projectName, siteName, geometries, footprintWKT + localStorage |
+| `frontend/src/lib/MapEditor.svelte` | Full rewrite: Leaflet editor + GPX/KML/WKT/GeoJSON import/export |
+| `frontend/src/lib/MapPreview.svelte` | New: pop-up map preview |
+| `frontend/src/lib/TaxonTreeNode.svelte` | New: recursive tree node with auto-expand |
+| `frontend/src/lib/ExportSettings.svelte` | New: export hierarchy config modal |
+| `frontend/src/routes/map/+page.svelte` | Rewrite: full map editor page |
+| `frontend/src/routes/taxonomy/+page.svelte` | New: taxonomy browser page |
+| `frontend/src/routes/+layout.svelte` | Shared Navbar with active state |
+| `frontend/src/lib/SearchBox.svelte` | Unified filter + keyboard nav + search badges |
+| `frontend/src/lib/SpeciesTable.svelte` | UI polish + Delete shortcut |
+| `frontend/src/lib/SpeciesSidebar.svelte` | Filter input + Delete shortcut |
+| `frontend/src/lib/importer.ts` | YAML geometry import |
+| `backend/api/export.py` | Multi-taxon + plant classification fix + metadata header |
+| `backend/api/search_api.py` | Advanced filters + `/api/search/rank` + plant pt_name resolution |
+| `backend/api/taxonomy_api.py` | New: taxonomy tree + search API |
+
+---
+
+## 2026-04-07: Taxonomy Tree, Advanced Filter, UI Polish
+
+### Taxonomy Tree Browser
+
+- New `/taxonomy` route with collapsible hierarchy browser (Kingdom → Phylum → Class → Order → Family → Genus → Species).
+- Lazy-load children via `GET /api/taxonomy/children`. Each node shows stats (X門 X綱 X目 X科 X屬 X種).
+- Rank badges with color coding (界=red, 門=yellow, 綱=green, 目=blue, 科=purple, 屬=dark).
+- Species list shows endemic/native/naturalized/invasive/cultured badges and IUCN status.
+- Search within taxonomy tree (`GET /api/taxonomy/search`): type a name → auto-complete → select → auto-expand full ancestor path with highlight.
+- "全部收合" button to collapse all expanded nodes.
+- Quick access buttons for Plantae/Animalia/Fungi.
+
+### Shared Navbar
+
+- Navbar moved from `+page.svelte` to `+layout.svelte`. All pages (Home, Taxonomy, Docs, Admin) now share the same navigation bar with active page highlighting.
+
+### Advanced Search Filter (Unified)
+
+- Replaced separate taxon group dropdown + rank dropdown with a single "篩選" button opening a unified filter modal.
+- Filter modal contains:
+  - **Taxon group icons**: Emoji-based buttons (🌿維管束植物, 🐦鳥綱, 🍄真菌界, etc.) with blue highlight on selection.
+  - **Rank-specific search**: Select rank (綱/目/科/屬) → type name with auto-complete → select from suggestions.
+  - **Endemic filter**: Checkbox for endemic-only species.
+  - **Alien type filter**: Dropdown for native/naturalized/invasive/cultured.
+- Rank search uses dedicated `GET /api/search/rank` endpoint (queries by specific rank level).
+- Changing taxon group clears rank-specific filter with confirmation prompt.
+- Active filters shown as colored badges below search bar; "清除篩選" to reset all.
+- Backend: Added `class_filter` and `genus_filter` parameters to `/api/search`.
+
+### UI Polish (SpeciesTable)
+
+- Search + family filter moved above the table as a compact row.
+- Delete button moved to table top-right, smaller: "刪除 (n)".
+- Per-page selector moved to bottom alongside pagination: "顯示 [10▼] 筆/頁，共 N 筆".
+- Per-page options expanded: 10, 20, 50, 100.
+
+### Search Fixes
+
+- Filter auto-complete minimum input reduced from 2 to 1 character (supports single Chinese character like 菊, 蘭, 松).
+- Genus rank search now also queries `genus_c` (Chinese genus name).
+- Nominal infraspecific dedup: Species + its nominal form/variety with same common name only shows Species rank.
+
+---
+
 ## 2026-04-07: Security Hardening & Code Quality
 
 ### Security Fixes

@@ -47,16 +47,30 @@ DEFAULT_HIERARCHIES = {
     "_default": ["class_name", "family"],
 }
 
-# 維管束植物 class → 中文顯示名 fallback（當沒有 pt_name 時使用）
-# 蘇鐵、銀杏、松綱全部併入裸子植物
+# 維管束植物 class → 中文顯示名（非 Magnoliopsida 的 class 直接對應）
 PLANT_CLASS_NAMES = {
     "Lycopodiopsida": "石松類植物 Lycophytes",
     "Polypodiopsida": "蕨類植物 Monilophytes",
     "Cycadopsida": "裸子植物 Gymnosperms",
     "Ginkgoopsida": "裸子植物 Gymnosperms",
     "Pinopsida": "裸子植物 Gymnosperms",
-    "Magnoliopsida": "被子植物 Angiosperms",  # 無法區分單/雙子葉的 fallback
 }
+
+# Magnoliopsida (被子植物) 需用 order 區分單子葉/真雙子葉/姊妹群
+MONOCOT_ORDERS = {
+    "Acorales", "Alismatales", "Arecales", "Asparagales", "Commelinales",
+    "Dioscoreales", "Liliales", "Pandanales", "Petrosaviales", "Poales",
+    "Zingiberales",
+}
+SISTER_EUDICOT_ORDERS = {"Ceratophyllales"}
+
+def _resolve_angiosperm_group(order: str) -> str:
+    """Magnoliopsida 用 order 區分單子葉/真雙子葉植物姊妹群/真雙子葉植物"""
+    if order in MONOCOT_ORDERS:
+        return "單子葉植物 Monocots"
+    if order in SISTER_EUDICOT_ORDERS:
+        return "真雙子葉植物姊妹群 Sister groups of Eudicots"
+    return "真雙子葉植物 Eudicots"
 
 # pt_name 排序值（對應 dao_plant_type.plant_type）
 PT_NAME_ORDER = {
@@ -153,16 +167,29 @@ def _get_field_display(item: dict, field: str) -> str:
         fl = item.get("family", "") or ""
         return f"{fc} ({fl})" if fc else fl
     elif field == "pt_name":
-        pt = item.get("pt_name", "") or ""
-        if not pt:
-            # 從舊表查 pt_name（嚴格使用石松/蕨類/裸子/單子葉/真雙子葉等）
+        # 維管束植物：嚴格使用石松類/蕨類/裸子/單子葉/真雙子葉姊妹群/真雙子葉
+        is_vascular = (item.get("phylum", "") == "Tracheophyta" or
+                       "Tracheophyta" in (item.get("pt_name", "") or ""))
+        if is_vascular:
+            # 1. 先查 dao（最準確）
             name = item.get("name", "") or ""
             pt = _get_pt_name_for_species(name)
-        if not pt:
-            # 最後 fallback: class → 中文名
+            if pt:
+                return pt
+            # 2. 非 Magnoliopsida 的 class 直接對照
             cls = item.get("class_name", "") or ""
-            pt = PLANT_CLASS_NAMES.get(cls, cls)
-        return pt
+            if cls in PLANT_CLASS_NAMES:
+                return PLANT_CLASS_NAMES[cls]
+            # 3. Magnoliopsida 用 order 區分單子葉/真雙子葉
+            if cls == "Magnoliopsida":
+                order = item.get("order", "") or ""
+                return _resolve_angiosperm_group(order)
+        # 非維管束植物：用原始 pt_name
+        pt = item.get("pt_name", "") or ""
+        if pt and not pt.startswith("Tracheophyta"):
+            return pt
+        cls = item.get("class_name", "") or ""
+        return cls
     elif field == "class_name":
         cls = item.get("class_name", "") or ""
         if item.get("phylum") == "Tracheophyta" and cls in PLANT_CLASS_NAMES:
@@ -191,8 +218,10 @@ def _get_field_sort_key(item: dict, field: str) -> str:
     return item.get(field, "") or ""
 
 
-def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str]] = None) -> str:
+def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str]] = None, metadata: dict = None) -> str:
     """從名錄產生 Markdown 文字，支援多分類群和可配置階層"""
+    if metadata is None:
+        metadata = {}
 
     # 偵測分類群並分組
     groups: dict[str, list[dict]] = {}
@@ -210,7 +239,12 @@ def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str
     total_families = len({(item.get("family", ""), _detect_group(item)) for item in checklist})
 
     lines = []
-    lines.append("# 物種名錄")
+    # Header with metadata
+    title = metadata.get("project", "") or "物種名錄"
+    lines.append(f"# {title}")
+    if metadata.get("site"):
+        lines.append(f"**樣區：** {metadata['site']}")
+    lines.append("")
     lines.append(f"本名錄共有 {total_families} 科、{total_species} 種。"
                  f"\"#\" 代表特有種，\"*\" 代表歸化種，\"†\" 代表栽培種。")
     lines.append("")
@@ -347,7 +381,14 @@ async def export(request: Request, background_tasks: BackgroundTasks):
 
     if fmt == "yaml":
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
-        return PlainTextResponse(yaml.dump({"checklist": dwc_checklist}, allow_unicode=True))
+        yaml_data: dict = {"checklist": dwc_checklist}
+        if body.get("project"):
+            yaml_data["project"] = body["project"]
+        if body.get("site"):
+            yaml_data["site"] = body["site"]
+        if body.get("footprintWKT"):
+            yaml_data["footprintWKT"] = body["footprintWKT"]
+        return PlainTextResponse(yaml.dump(yaml_data, allow_unicode=True))
 
     elif fmt == "csv":
         with tempfile.NamedTemporaryFile(mode="w+", delete=False, newline='', suffix=".csv") as f:
@@ -358,7 +399,12 @@ async def export(request: Request, background_tasks: BackgroundTasks):
             return FileResponse(f.name, media_type="text/csv", filename="checklist.csv")
 
     elif fmt in ["markdown", "docx"]:
-        md_text = _generate_markdown(checklist, levels_override)
+        export_metadata = {
+            "project": body.get("project", ""),
+            "site": body.get("site", ""),
+            "footprintWKT": body.get("footprintWKT", ""),
+        }
+        md_text = _generate_markdown(checklist, levels_override, export_metadata)
 
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
 
@@ -369,8 +415,15 @@ async def export(request: Request, background_tasks: BackgroundTasks):
                 f.write(md_text)
 
             yaml_path = base_path + ".yml"
+            yaml_data: dict = {"checklist": dwc_checklist}
+            if export_metadata.get("project"):
+                yaml_data["project"] = export_metadata["project"]
+            if export_metadata.get("site"):
+                yaml_data["site"] = export_metadata["site"]
+            if export_metadata.get("footprintWKT"):
+                yaml_data["footprintWKT"] = export_metadata["footprintWKT"]
             with open(yaml_path, "w", encoding="utf-8") as yf:
-                yaml.dump({"checklist": dwc_checklist}, yf, allow_unicode=True)
+                yaml.dump(yaml_data, yf, allow_unicode=True)
 
             timestamp = datetime.now().strftime("%Y%m%d%H%M")
             zip_filename = f"checklist{timestamp}.zip"

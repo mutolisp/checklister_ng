@@ -8,7 +8,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from sqlmodel import SQLModel
-from backend.api import search_api, resolve_name, export, synonyms_api, admin_api
+from backend.api import search_api, resolve_name, export, synonyms_api, admin_api, taxonomy_api
 from backend.db import engine
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
@@ -53,6 +53,7 @@ app.include_router(resolve_name.router)
 app.include_router(export.router)
 app.include_router(synonyms_api.router)
 app.include_router(admin_api.router)
+app.include_router(taxonomy_api.router)
 
 # Serve frontend static files
 _frontend_dir = os.environ.get(

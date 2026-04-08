@@ -1,5 +1,143 @@
 # 更新紀錄
 
+## 2026-04-08：名錄比較、批次匯入改寫、搜尋排序與 YAML 修正
+
+### 名錄比較（`/compare`）
+
+- 新頁面，支援 2-10 份名錄並排比較。
+- **輸入**：加入當前名錄 及/或 上傳多個 YAML 檔。
+- **有無指數**：物種數、共同種、獨有種、Sørensen / Jaccard 相似度矩陣。
+- **豐度指數**（有數量資料時）：Shannon-Wiener H'、Simpson D、Evenness J'。
+- **物種矩陣**：所有物種 × 名錄，✓/✗ 顯示，可篩選共同種/獨有種/至少 N 個。
+- **匯出**：CSV 報告（含矩陣 + 指數）。
+- **數量欄位**：SpeciesTable 新增 inline 可編輯「數量」欄。DwC 對應：`abundance → individualCount`。
+
+### 批次匯入改寫
+
+- 「批次匯入」改為 modal，可貼上名稱列表（換行或逗號分隔）+ 檔案上傳。
+- **三階段處理**：
+  1. 精確匹配（俗名或學名完全一致）→ 自動加入
+  2. 多筆匹配 → modal 內列出讓使用者選擇（可跳過、全部跳過）
+  3. 查無資料 → modal 內列出，每筆可選「放入未收錄」或「忽略」（含批次按鈕）
+- 全部成功時自動關閉 modal。
+- 按鈕文字：「開始比對」→「開始匯入」。
+
+### 搜尋排序修正
+
+- 搜尋結果排序：精確匹配優先 → 前綴匹配 → 名稱長度（短的更相關）。
+- 範例：搜「芒」→「芒 (Miscanthus sinensis)」排第一（原本被「三芒耳稃草」擠到後面）。
+
+### YAML 解析修正
+
+- `parseChecklistYAML()` 現在處理 `checklister-ng:` 包裹層（巢狀 YAML 結構）。
+- 修正比較頁面無法解析匯出的 YAML 檔的問題。
+
+### YAML 匯出：WKT 只在 YAML
+
+- Markdown/DOCX header 不再包含原始 WKT 字串（只有計畫名稱和樣區名稱）。
+- WKT 包含在 ZIP 內的 `.yml` 檔及獨立 YAML 匯出中。
+
+---
+
+## 2026-04-08：地圖編輯器、鍵盤快捷鍵、匯出 metadata 與植物分類修正
+
+### 地圖編輯器（`/map`）
+
+- 完整 Leaflet 地圖編輯器：支援 Marker/Polyline/Polygon/Rectangle 繪製。
+- **匯入**：GPX、KML、WKT、GeoJSON 檔案（使用 `@tmcw/togeojson` 和 `terraformer-wkt-parser`）。
+- **匯出**：下載為 WKT、GPX（`togpx`）、KML（`tokml`）、GeoJSON。
+- 計畫 metadata 表單：計畫名稱 + 樣區名稱（持久化至 localStorage 的 `metadataStore`）。
+- 幾何資料自動存入 `metadataStore.geometries`（GeoJSON）和 `metadataStore.footprintWKT`（WKT）。
+- 地點搜尋（Nominatim geocoding）。
+- 修正：Leaflet marker icon 路徑及 `draw:created` 事件字串（ESM 動態 import 相容性）。
+
+### 地圖預覽（主頁面）
+
+- 工具列「地圖」按鈕開啟 pop-up Modal，內嵌只讀地圖預覽（Leaflet lazy load）。
+- 顯示 WKT 片段及「前往編輯」連結至 `/map`。
+- 有幾何資料時按鈕轉綠色。
+
+### YAML 幾何連動
+
+- **匯出**：YAML 自動含 `project`、`site`、`footprintWKT` 欄位。
+- **匯入**：`importer.ts` 讀取 YAML 中的 `footprintWKT`、`project`、`site` 存入 `metadataStore`。
+- **Markdown/DOCX 匯出**：header 自動帶入計畫名稱（作標題）、樣區名稱、WKT。
+
+### 鍵盤快捷鍵
+
+- **SearchBox**：`↑`/`↓` 瀏覽建議（藍色高亮）、`Enter` 加入物種、`Esc` 關閉。
+- **SpeciesTable**：`Delete`/`Backspace` 刪除已勾選物種（附確認）。輸入框中不觸發。
+- **SpeciesSidebar（詳細頁）**：`Delete`/`Backspace` 刪除當前選中物種（附確認），刪除後自動切換。
+
+### Sidebar 搜尋篩選
+
+- 詳細頁 sidebar「返回名錄」上方新增篩選輸入框，即時過濾物種列表。
+
+### 維管束植物分類修正
+
+- **嚴格 6 類群排序**：石松類→蕨類→裸子→單子葉→真雙子葉姊妹群→真雙子葉。
+- **Magnoliopsida 用 order 判斷**：建立 `MONOCOT_ORDERS`（11 目）和 `SISTER_EUDICOT_ORDERS`（Ceratophyllales）對照表，其餘 → 真雙子葉植物。
+- 移除「被子植物 Angiosperms」fallback。
+- 匯出 `_get_field_display()` 一律走 dao lookup → class 對照 → order 判斷。
+
+### 同俗名區分修正
+
+- 無 `alternative_name_c` 時不再顯示括號內的學名。
+
+### 搜尋結果 Badge
+
+- 搜尋建議列表顯示原生（綠）、歸化（黃）、栽培（藍）、臺灣特有（紫）、IUCN（灰）標籤。
+
+### 統一進階篩選
+
+- 合併為單一「篩選」modal：Emoji icon 分類群按鈕 + 階層搜尋（auto-complete）+ 特有性/原生外來。
+- 切換分類群清空限定分類群（附確認）。
+- 篩選 auto-complete 最低 1 字觸發。
+
+---
+
+## 2026-04-07：分類樹、進階篩選、UI 調整
+
+### 分類樹瀏覽器
+
+- 新增 `/taxonomy` 路由，可開合的階層瀏覽器（界→門→綱→目→科→屬→種）。
+- 透過 `GET /api/taxonomy/children` lazy-load 子節點，每個節點顯示統計（X門 X綱 X目 X科 X屬 X種）。
+- 不同階層用不同顏色 badge（界=紅, 門=黃, 綱=綠, 目=藍, 科=紫, 屬=灰）。
+- 物種列表顯示特有/原生/歸化/入侵/栽培標籤及 IUCN 狀態。
+- 分類樹內搜尋（`GET /api/taxonomy/search`）：輸入名稱 → auto-complete → 選取後自動逐層展開並高亮。
+- 「全部收合」按鈕。植物界/動物界/真菌界快捷按鈕。
+
+### 共用 Navbar
+
+- Navbar 從 `+page.svelte` 搬到 `+layout.svelte`，所有頁面（Home, Taxonomy, Docs, Admin）共用同一導覽列，當前頁面自動標記 active。
+
+### 統一進階篩選
+
+- 將原本的分類群下拉和階層下拉合併為單一「篩選」按鈕，開啟統一篩選 modal。
+- 篩選 modal 內容：
+  - **高階分類群 icon 按鈕**：Emoji 圖示（🌿維管束植物, 🐦鳥綱, 🍄真菌界 等），選中藍色高亮。
+  - **限定特定分類群**：選階層（綱/目/科/屬）→ 輸入名稱（auto-complete）→ 選取。
+  - **特有性**：僅特有種 checkbox。
+  - **原生/外來**：原生/歸化/入侵/栽培下拉。
+- 階層搜尋使用專用 `GET /api/search/rank` API。
+- 切換高階分類群時清空已選的限定分類群（附確認提示）。
+- 啟用的篩選以 badge 顯示於搜尋列下方；「清除篩選」一鍵重置。
+
+### UI 調整（SpeciesTable）
+
+- 搜尋+科別篩選移到表格上方獨立行。
+- 刪除按鈕移到表格右上角，縮小為「刪除 (n)」。
+- 每頁筆數選單移到表格下方與分頁並排：「顯示 [10▼] 筆/頁，共 N 筆」。
+- 每頁選項擴展為 10/20/50/100。
+
+### 搜尋修正
+
+- 篩選 auto-complete 最低輸入從 2 字改為 1 字（支援單個中文字如菊、蘭、松）。
+- 屬層級搜尋加入 `genus_c`（屬中文名）查詢。
+- 同俗名 Species + nominal infraspecific 去重。
+
+---
+
 ## 2026-04-07：安全強化與程式碼品質
 
 ### 安全修復

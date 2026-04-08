@@ -8,6 +8,14 @@ import threading
 import webbrowser
 
 
+# Windows PyInstaller console=False 時 sys.stdout/stderr 是 None，
+# 任何 print/logging 都會崩潰。重導向到 devnull。
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
+
 def get_base_path():
     """PyInstaller 打包後用 sys._MEIPASS，開發時用專案根目錄"""
     if getattr(sys, '_MEIPASS', None):
@@ -34,10 +42,13 @@ def main():
     os.environ.setdefault("CHECKLISTER_DB_PATH", os.path.join(base, "backend", "twnamelist.db"))
     os.environ.setdefault("CHECKLISTER_FRONTEND_DIR", os.path.join(base, "frontend", "build"))
 
-    # 如果 bundle 內有 pandoc，加入 PATH
+    # 如果 bundle 內有 pandoc，加入 PATH（Windows 和 macOS）
     bundled_pandoc = os.path.join(base, "pandoc")
-    if os.path.isfile(bundled_pandoc):
-        os.environ["PATH"] = os.path.dirname(bundled_pandoc) + os.pathsep + os.environ.get("PATH", "")
+    bundled_pandoc_exe = os.path.join(base, "pandoc.exe")
+    for p in [bundled_pandoc, bundled_pandoc_exe]:
+        if os.path.isfile(p):
+            os.environ["PATH"] = os.path.dirname(p) + os.pathsep + os.environ.get("PATH", "")
+            break
 
     parser = argparse.ArgumentParser(description="Run the Checklister-NG backend")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind")
@@ -48,15 +59,13 @@ def main():
     from backend.main import app
 
     def start_server(host, port):
-        uvicorn.run(app, host=host, port=port)
+        uvicorn.run(app, host=host, port=port, log_level="warning")
 
     thread = threading.Thread(target=start_server, args=(args.host, args.port), daemon=True)
     thread.start()
 
     if wait_for_server(args.host, args.port):
         webbrowser.open(f"http://{args.host}:{args.port}")
-    else:
-        print(f"Warning: server did not start within timeout, open http://{args.host}:{args.port} manually")
 
     thread.join()
 

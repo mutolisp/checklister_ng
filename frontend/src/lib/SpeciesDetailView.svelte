@@ -8,6 +8,7 @@
   export let activeSpeciesId: number | null = null;
   export let onSelectSpecies: (id: number) => void = () => {};
   export let onBack: () => void = () => {};
+  export let onDelete: (id: number) => void = () => {};
 
   let detailContainer: HTMLDivElement;
   let mobileDrawerOpen = false;
@@ -34,6 +35,7 @@
       {activeSpeciesId}
       {onSelectSpecies}
       {onBack}
+      {onDelete}
     />
   </div>
 
@@ -59,6 +61,7 @@
           {activeSpeciesId}
           onSelectSpecies={handleSelectSpecies}
           {onBack}
+          {onDelete}
         />
       </div>
     </div>

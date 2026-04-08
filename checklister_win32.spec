@@ -4,7 +4,7 @@ import subprocess, os, shutil
 block_cipher = None
 
 # 找到 pandoc 路徑 (Windows)
-pandoc_path = shutil.which('pandoc') or r'C:\Users\Public\pandoc\pandoc.exe'
+pandoc_path = shutil.which('pandoc') or r'C:\Program Files\Pandoc\pandoc.exe'
 
 a = Analysis(['run.py'],
              pathex=[],

@@ -13,6 +13,7 @@ dwc_field_map = {
     "order": "order",
     "genus": "genus",
     "taxon_id": "taxonID",
+    "abundance": "individualCount",
     "source": "establishmentMeans",
     "iucn_category": "iucnStatus",
     "endemic": "endemic",

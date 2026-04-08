@@ -199,18 +199,42 @@ def _check_taicol_table_exists() -> bool:
 def search_species(
     q: Optional[str] = Query(None, max_length=512),
     group: Optional[str] = Query(None, max_length=50),
+    rank_filter: Optional[str] = Query(None, max_length=20),
+    endemic: Optional[str] = Query(None, max_length=10),
+    alien_type: Optional[str] = Query(None, max_length=20),
+    family_filter: Optional[str] = Query(None, max_length=100),
+    order_filter: Optional[str] = Query(None, max_length=100),
+    class_filter: Optional[str] = Query(None, max_length=100),
+    genus_filter: Optional[str] = Query(None, max_length=100),
 ):
     if not q or len(q.strip()) == 0:
         return []
 
     q = q.strip()
 
+    # 組裝進階篩選
+    adv_filters = {}
+    if rank_filter:
+        adv_filters["rank"] = rank_filter
+    if endemic == "true":
+        adv_filters["is_endemic"] = "true"
+    if alien_type:
+        adv_filters["alien_type"] = alien_type
+    if family_filter:
+        adv_filters["family"] = family_filter
+    if order_filter:
+        adv_filters["order"] = order_filter
+    if class_filter:
+        adv_filters["class_name"] = class_filter
+    if genus_filter:
+        adv_filters["genus"] = genus_filter
+
     # 優先搜尋 TaiCOL 表
     if _check_taicol_table_exists():
-        results = _search_taicol(q, group)
+        results = _search_taicol(q, group, adv_filters)
 
-        # 結果不足時啟動 fuzzy match
-        if len(results) < 5:
+        # 結果不足時啟動 fuzzy match（只在無進階篩選時）
+        if len(results) < 5 and not adv_filters:
             fuzzy_results = _fuzzy_search(q, group, exclude_ids={r["id"] for r in results})
             results.extend(fuzzy_results)
 
@@ -224,7 +248,7 @@ def search_species(
     return []
 
 
-def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
+def _search_taicol(q: str, group: Optional[str], adv_filters: dict = None) -> list[dict]:
     """搜尋 TaiCOL 名錄。
 
     顯示邏輯：
@@ -232,6 +256,9 @@ def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
     2. 透過 alternative_name_c 匹配：搜尋詞(主要俗名) (學名) 科名
     3. non-accepted name 匹配：顯示異名資訊 [non-accepted] → 接受名，選擇後加入的是 accepted
     """
+    if adv_filters is None:
+        adv_filters = {}
+
     variants = _normalize_tw(q)
 
     with Session(engine) as session:
@@ -259,6 +286,26 @@ def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
             filters = TAXON_GROUP_FILTERS[group]
             for field, value in filters.items():
                 stmt = stmt.where(getattr(TaicolName, field) == value)
+
+        # 進階篩選
+        if "rank" in adv_filters:
+            rank_val = adv_filters["rank"]
+            if rank_val == "infraspecies":
+                stmt = stmt.where(TaicolName.rank.in_(["Subspecies", "Variety", "Form"]))
+            else:
+                stmt = stmt.where(TaicolName.rank == rank_val)
+        if "is_endemic" in adv_filters:
+            stmt = stmt.where(TaicolName.is_endemic == adv_filters["is_endemic"])
+        if "alien_type" in adv_filters:
+            stmt = stmt.where(TaicolName.alien_type == adv_filters["alien_type"])
+        if "family" in adv_filters:
+            stmt = stmt.where(TaicolName.family == adv_filters["family"])
+        if "order" in adv_filters:
+            stmt = stmt.where(TaicolName.order == adv_filters["order"])
+        if "class_name" in adv_filters:
+            stmt = stmt.where(TaicolName.class_name == adv_filters["class_name"])
+        if "genus" in adv_filters:
+            stmt = stmt.where(TaicolName.genus == adv_filters["genus"])
 
         rows = session.exec(stmt).all()
 
@@ -359,18 +406,27 @@ def _search_taicol(q: str, group: Optional[str]) -> list[dict]:
                 if matched_alt and matched_alt != cn:
                     display_cname = f"{matched_alt}({cn})"
 
-            # 同俗名多物種區分
+            # 同俗名多物種區分：只在有替代俗名時加括號
             elif cn and cname_counts.get(cn, 0) > 1:
                 alt = acc_row.alternative_name_c or ""
                 first_alt = alt.split(",")[0].strip() if alt else ""
                 if first_alt:
                     display_cname = f"{cn}({first_alt})"
-                else:
-                    display_cname = f"{cn}({acc_row.simple_name})"
 
             results.append(_taicol_to_response(acc_row, display_cname, matched_non_acc))
 
-        results.sort(key=lambda r: (not r["cname"], r["cname"]))
+        # 排序：精確匹配優先 → 前綴匹配 → 其他
+        def _sort_key(r):
+            cname = r.get("cname", "")
+            name = r.get("name", "")
+            # 精確匹配 cname 或 name
+            exact = 0 if (cname == q or name == q) else 1
+            # cname 以搜尋詞開頭
+            prefix = 0 if cname.startswith(q) else 1
+            # cname 長度（短的更相關）
+            return (exact, prefix, len(cname), cname)
+
+        results.sort(key=_sort_key)
         return results[:30]
 
 
@@ -439,6 +495,68 @@ def _fuzzy_search(q: str, group: Optional[str], exclude_ids: set[int] = None) ->
 
         results.sort(key=lambda r: r.get("fuzzy_match", {}).get("score", 99))
         return results[:10]
+
+
+@router.get("/api/search/rank")
+def search_by_rank(
+    q: str = Query(..., max_length=512),
+    rank: str = Query(..., max_length=20),
+    group: Optional[str] = Query(None, max_length=50),
+):
+    """篩選面板用：依指定 rank 搜尋，回傳簡單結果"""
+    if not q or len(q.strip()) < 1:
+        return []
+
+    q = q.strip()
+    variants = _normalize_tw(q)
+
+    with Session(engine) as session:
+        like_conditions = []
+        for v in variants:
+            pattern = f"%{_escape_like(v)}%"
+            like_conditions.extend([
+                TaicolName.common_name_c.like(pattern),
+                TaicolName.simple_name.like(pattern),
+            ])
+            if rank == "Family":
+                like_conditions.append(TaicolName.family_c.like(pattern))
+                like_conditions.append(TaicolName.family.like(pattern))
+            if rank == "Genus":
+                like_conditions.append(TaicolName.genus_c.like(pattern))
+
+        stmt = (
+            select(TaicolName)
+            .where(or_(*like_conditions))
+            .where(TaicolName.is_in_taiwan == "true")
+            .where(TaicolName.usage_status == "accepted")
+            .where(TaicolName.rank == rank)
+            .limit(20)
+        )
+
+        if group and group in TAXON_GROUP_FILTERS:
+            for field, value in TAXON_GROUP_FILTERS[group].items():
+                stmt = stmt.where(getattr(TaicolName, field) == value)
+
+        rows = session.exec(stmt).all()
+
+        seen = set()
+        results = []
+        for row in rows:
+            key = row.simple_name
+            if key in seen:
+                continue
+            seen.add(key)
+            results.append({
+                "name": row.simple_name or "",
+                "cname": row.common_name_c or "",
+                "family": row.family or "",
+                "family_cname": row.family_c or "",
+                "genus": row.genus or "",
+                "genus_c": row.genus_c or "",
+                "order": row.order or "",
+                "class_name": row.class_name or "",
+            })
+        return results
 
 
 def _search_legacy(q: str) -> list[dict]:

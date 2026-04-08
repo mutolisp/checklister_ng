@@ -2,7 +2,37 @@ import yaml from "js-yaml";
 import { selectedSpecies } from "$stores/speciesStore";
 import { convertFromDarwinCore } from "$lib/dwcMapper";
 import { ambiguousStore, unresolvedStore } from "$stores/importState";
+import { projectMetadata } from "$stores/metadataStore";
 import { get } from "svelte/store";
+
+/**
+ * 解析 YAML 檔案，回傳結構化資料（不寫入 store，供比較功能使用）
+ */
+export function parseChecklistYAML(text: string): { species: any[]; metadata: any } {
+  const parsed: any = yaml.load(text);
+  let list: any[] = [];
+  const metadata: any = {};
+
+  // 取得資料根（可能在頂層或 checklister-ng 底下）
+  let root = parsed;
+  if (parsed && typeof parsed === "object" && "checklister-ng" in parsed) {
+    root = parsed["checklister-ng"];
+  }
+
+  if (Array.isArray(root)) {
+    list = root;
+  } else if (root && typeof root === "object") {
+    if ("checklist" in root && Array.isArray(root["checklist"])) {
+      list = root["checklist"];
+    }
+    if (root["project"]) metadata.project = root["project"];
+    if (root["site"]) metadata.site = root["site"];
+    if (root["footprintWKT"]) metadata.footprintWKT = root["footprintWKT"];
+  }
+
+  const species = list.map(convertFromDarwinCore);
+  return { species, metadata };
+}
 
 export async function importYAMLText(yamlText: string): Promise<string | null> {
   try {
@@ -19,6 +49,16 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
         Array.isArray(parsed["checklister-ng"]?.checklist)
       ) {
         list = parsed["checklister-ng"]["checklist"];
+      }
+
+      // 讀取地圖/計畫 metadata
+      if (parsed["footprintWKT"] || parsed["project"] || parsed["site"]) {
+        projectMetadata.update(m => ({
+          ...m,
+          projectName: parsed["project"] || m.projectName,
+          siteName: parsed["site"] || m.siteName,
+          footprintWKT: parsed["footprintWKT"] || m.footprintWKT,
+        }));
       }
 
       if (list.length > 0) {

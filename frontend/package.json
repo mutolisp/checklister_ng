@@ -37,8 +37,11 @@
 		"vite": "^6.0.0"
 	},
 	"dependencies": {
+		"@tmcw/togeojson": "^7.1.2",
 		"fastest-levenshtein": "^1.0.16",
 		"js-yaml": "^4.1.0",
+		"togpx": "^0.5.4",
+		"tokml": "^0.4.0",
 		"uuid": "^11.1.0"
 	}
 }
