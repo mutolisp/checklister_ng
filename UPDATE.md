@@ -1,6 +1,6 @@
 # Update Log
 
-## 2026-04-09: TaiCOL Data Backfill & is_in_taiwan Fix
+## 2026-04-09: Search Sort Fix, Taxon CSV Backfill, is_in_taiwan & Windows Fix
 
 ### Common Name Backfill from Taxon CSV
 
@@ -13,10 +13,27 @@
 
 - Some records have `is_in_taiwan = 'true,true'` (multiple taxon_ids). Search queries changed from `== 'true'` to `LIKE '%true%'` across `search_api.py` and `taxonomy_api.py` to match these records.
 
+### Search Sort Priority Fix
+
+- Sort now uses raw `common_name_c` instead of display `cname` (which may include parenthesized alt names).
+- New priority: common_name_c exact → scientific name exact → common_name_c contains → alternative_name_c exact → alternative_name_c contains → prefix → name length.
+- Fixes: searching "玉山佛甲草" returns `Sedum morrisonense` first, not `Sedum cryptomerioides` (which has it as alt name).
+
+### Taxonomy Backfill Expanded
+
+- `_backfill_common_names()` now fills ALL missing taxonomy fields (family, family_c, kingdom, phylum, class, order, genus, genus_c, is_endemic, alien_type, iucn, redlist) from taxon CSV using `COALESCE(NULLIF(...))`.
+- Fixes 42,349 records that had empty family/kingdom/phylum.
+
 ### RWD z-index Fix
 
 - Search suggestion dropdown: `z-10` → `z-[9999]` to prevent being covered by detail view components on mobile.
 - Sticky toolbar: `z-30` → `z-[100]`.
+
+### Windows PyInstaller Fix
+
+- `run.py`: Redirect `sys.stdout`/`sys.stderr` to `os.devnull` when `None` (Windows `console=False` crash fix).
+- Check both `pandoc` and `pandoc.exe` for bundled binary path.
+- `uvicorn` log level set to `"warning"` to reduce output.
 
 ---
 

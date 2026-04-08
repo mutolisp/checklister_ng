@@ -2,6 +2,7 @@ VERSION     := 1.0.0
 APP_NAME    := checklister-ng
 DIST_DIR    := dist
 FRONTEND    := frontend
+PYTHON       := python3.11
 BACKEND_VENV := backend/venv
 
 # Platform detection
@@ -29,7 +30,7 @@ help:
 backend: $(BACKEND_VENV)/bin/activate
 
 $(BACKEND_VENV)/bin/activate: requirements.txt
-	python3 -m venv $(BACKEND_VENV)
+	$(PYTHON) -m venv $(BACKEND_VENV)
 	$(BACKEND_VENV)/bin/pip install --upgrade pip
 	$(BACKEND_VENV)/bin/pip install -r requirements.txt
 	touch $@
@@ -59,8 +60,9 @@ else
 endif
 
 # ─── macOS DMG ────────────────────────────────────────────
-pkg-dmg: frontend
-	pyinstaller checklister.spec --clean -y
+pkg-dmg: frontend backend
+	$(BACKEND_VENV)/bin/pip install -q pyinstaller
+	$(BACKEND_VENV)/bin/pyinstaller checklister.spec --clean -y
 	@echo "==> Creating DMG..."
 	rm -rf $(DIST_DIR)/dmg-staging
 	mkdir -p $(DIST_DIR)/dmg-staging

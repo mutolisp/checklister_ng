@@ -1,6 +1,6 @@
 # 更新紀錄
 
-## 2026-04-09：TaiCOL 俗名補齊與 is_in_taiwan 修正
+## 2026-04-09：搜尋排序修正、Taxon CSV 補齊、is_in_taiwan 與 Windows 修正
 
 ### 俗名補齊（Taxon CSV Backfill）
 
@@ -13,10 +13,27 @@
 
 - 部分記錄的 `is_in_taiwan` 為 `true,true`（多個 taxon_id）。搜尋查詢從 `== 'true'` 改為 `LIKE '%true%'`，套用於 `search_api.py` 和 `taxonomy_api.py`。
 
+### 搜尋排序優先級修正
+
+- 排序改用原始 `common_name_c` 而非顯示用的 `cname`（後者可能含括號區分）。
+- 新優先級：common_name_c 精確 → 學名精確 → common_name_c 包含 → alternative_name_c 精確 → alternative_name_c 包含 → 前綴 → 長度。
+- 修正：搜「玉山佛甲草」現在 `Sedum morrisonense` 排第一（原本被 `Sedum cryptomerioides` 透過 alt name 搶先）。
+
+### 分類資訊補齊擴展
+
+- `_backfill_common_names()` 現在補齊所有缺失的分類欄位（family, family_c, kingdom, phylum, class, order, genus, genus_c, is_endemic, alien_type, iucn, redlist），使用 `COALESCE(NULLIF(...))`。
+- 修正 42,349 筆缺少科名/界/門的記錄。
+
 ### RWD z-index 修正
 
 - 搜尋建議列表：`z-10` → `z-[9999]`，避免手機版被物種詳細頁元件蓋住。
 - Sticky 工具列：`z-30` → `z-[100]`。
+
+### Windows PyInstaller 修正
+
+- `run.py`：Windows `console=False` 時 `sys.stdout`/`sys.stderr` 為 None 會崩潰，重導向到 `os.devnull`。
+- 同時檢查 `pandoc` 和 `pandoc.exe` 路徑。
+- `uvicorn` log level 設為 `"warning"`。
 
 ---
 
