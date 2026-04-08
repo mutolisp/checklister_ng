@@ -114,6 +114,7 @@ def _taicol_to_response(
         "name": row.simple_name,
         "fullname": fullname,
         "cname": display_cname or row.common_name_c or "",
+        "_raw_cname": row.common_name_c or "",  # 排序用，不含括號區分
         "family": row.family or "",
         "family_cname": row.family_c or "",
         "iucn_category": row.redlist or row.iucn or "",
@@ -417,14 +418,23 @@ def _search_taicol(q: str, group: Optional[str], adv_filters: dict = None) -> li
 
         # 排序：精確匹配優先 → 前綴匹配 → 其他
         def _sort_key(r):
-            cname = r.get("cname", "")
+            raw_cname = r.get("_raw_cname", "")
+            alt_names = r.get("alternative_name_c", "") or ""
             name = r.get("name", "")
-            # 精確匹配 cname 或 name
-            exact = 0 if (cname == q or name == q) else 1
-            # cname 以搜尋詞開頭
-            prefix = 0 if cname.startswith(q) else 1
-            # cname 長度（短的更相關）
-            return (exact, prefix, len(cname), cname)
+            # 1. common_name_c 精確匹配
+            exact_cname = 0 if raw_cname == q else 1
+            # 2. scientific name 精確匹配
+            exact_name = 0 if name == q else 1
+            # 3. common_name_c 包含搜尋詞
+            cname_contains = 0 if q in raw_cname else 1
+            # 4. alternative_name_c 精確匹配（某個 alt name 等於搜尋詞）
+            alt_exact = 0 if any(a.strip() == q for a in alt_names.split(",")) else 1
+            # 5. alternative_name_c 包含搜尋詞
+            alt_contains = 0 if q in alt_names else 1
+            # 6. cname 以搜尋詞開頭
+            prefix = 0 if raw_cname.startswith(q) else 1
+            # 7. 名稱長度（短的更相關）
+            return (exact_cname, exact_name, cname_contains, alt_exact, alt_contains, prefix, len(raw_cname), raw_cname)
 
         results.sort(key=_sort_key)
         return results[:30]
