@@ -183,7 +183,7 @@
 <div class="flex flex-col h-screen">
 
 <!-- Zone A: sticky toolbar -->
-<div class="sticky top-0 z-30 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-8 py-4 space-y-4">
+<div class="sticky top-0 z-[100] bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 px-8 py-4 space-y-4">
     <div class="flex flex-wrap gap-2 items-center">
       <SearchBox />
       <LoadYAMLButton />

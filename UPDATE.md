@@ -1,5 +1,25 @@
 # Update Log
 
+## 2026-04-09: TaiCOL Data Backfill & is_in_taiwan Fix
+
+### Common Name Backfill from Taxon CSV
+
+- TaiCOL name CSV has ~30% of accepted species without `common_name_c`, but the taxon CSV has them.
+- `taicol_import.py` now auto-backfills missing common names from the taxon CSV (`TaiCOL_taxon_*.csv` in the same directory) after import, using `taxon_id` to match.
+- Example: `Sedum morrisonense` (玉山佛甲草) was missing in name CSV but present in taxon CSV.
+- Import output now reports `backfilled_names` count.
+
+### is_in_taiwan Multi-value Fix
+
+- Some records have `is_in_taiwan = 'true,true'` (multiple taxon_ids). Search queries changed from `== 'true'` to `LIKE '%true%'` across `search_api.py` and `taxonomy_api.py` to match these records.
+
+### RWD z-index Fix
+
+- Search suggestion dropdown: `z-10` → `z-[9999]` to prevent being covered by detail view components on mobile.
+- Sticky toolbar: `z-30` → `z-[100]`.
+
+---
+
 ## 2026-04-08: Checklist Comparison, Batch Import Rewrite, Search Sort & YAML Fix
 
 ### Checklist Comparison (`/compare`)

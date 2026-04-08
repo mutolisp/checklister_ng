@@ -1,4 +1,5 @@
 import csv
+import os
 import time
 from sqlmodel import Session, text
 from backend.db import engine, sqlite_file_path
@@ -108,6 +109,9 @@ def import_taicol_csv(csv_path: str, do_backup: bool = True) -> dict:
     # 建立索引
     _create_indexes()
 
+    # 從 taxon CSV 補齊缺少的俗名
+    backfilled = _backfill_common_names(csv_path)
+
     # 清空 fuzzy 快取
     try:
         from backend.api.search_api import invalidate_cname_cache
@@ -118,9 +122,114 @@ def import_taicol_csv(csv_path: str, do_backup: bool = True) -> dict:
     elapsed = time.time() - start
     return {
         "rows_imported": rows_imported,
+        "backfilled_names": backfilled,
         "time_elapsed": round(elapsed, 2),
         "backup_path": backup_path,
     }
+
+
+def _backfill_common_names(name_csv_path: str) -> int:
+    """從 taxon CSV 補齊 name CSV 中缺少的俗名
+
+    TaiCOL name CSV 有些物種沒有 common_name_c，但同目錄下的 taxon CSV 有。
+    用 taxon_id 對照補齊。
+    """
+    import sqlite3
+
+    # 找 taxon CSV：跟 name CSV 同目錄，檔名為 TaiCOL_taxon_*.csv
+    csv_dir = os.path.dirname(name_csv_path)
+    taxon_csvs = sorted(
+        [f for f in os.listdir(csv_dir) if f.startswith("TaiCOL_taxon") and f.endswith(".csv")],
+        reverse=True,
+    )
+    if not taxon_csvs:
+        return 0
+
+    taxon_csv_path = os.path.join(csv_dir, taxon_csvs[0])
+
+    # 讀取 taxon CSV 的 taxon_id → 完整資料對照
+    taxon_data = {}
+    try:
+        with open(taxon_csv_path, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                tid = row.get("taxon_id", "")
+                if tid:
+                    taxon_data[tid] = {
+                        "common_name_c": row.get("common_name_c", ""),
+                        "kingdom": row.get("kingdom", ""),
+                        "phylum": row.get("phylum", ""),
+                        "class": row.get("class", ""),
+                        "order": row.get("order", ""),
+                        "family": row.get("family", ""),
+                        "family_c": row.get("family_c", ""),
+                        "genus": row.get("genus", ""),
+                        "genus_c": row.get("genus_c", ""),
+                        "is_endemic": row.get("is_endemic", ""),
+                        "alien_type": row.get("alien_type", ""),
+                        "iucn": row.get("iucn", ""),
+                        "redlist": row.get("redlist", ""),
+                    }
+    except Exception:
+        return 0
+
+    if not taxon_data:
+        return 0
+
+    # 用 sqlite3 直接更新
+    db_path = sqlite_file_path
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    # 找所有缺少俗名或分類資訊的記錄
+    cur.execute("""
+        SELECT name_id, taxon_id FROM taicol_names
+        WHERE (common_name_c IS NULL OR common_name_c = ''
+               OR family IS NULL OR family = '')
+        AND taxon_id IS NOT NULL AND taxon_id != ''
+    """)
+    rows = cur.fetchall()
+
+    updated = 0
+    for name_id, taxon_id in rows:
+        tid = taxon_id.split(",")[0].strip()
+        td = taxon_data.get(tid)
+        if not td:
+            continue
+
+        # 組裝要更新的欄位（只補空值）
+        updates = []
+        params = []
+
+        for db_col, td_key in [
+            ("common_name_c", "common_name_c"),
+            ("kingdom", "kingdom"),
+            ("phylum", "phylum"),
+            ('"class"', "class"),
+            ('"order"', "order"),
+            ("family", "family"),
+            ("family_c", "family_c"),
+            ("genus", "genus"),
+            ("genus_c", "genus_c"),
+            ("is_endemic", "is_endemic"),
+            ("alien_type", "alien_type"),
+            ("iucn", "iucn"),
+            ("redlist", "redlist"),
+        ]:
+            val = td.get(td_key, "")
+            if val:
+                updates.append(f"{db_col} = COALESCE(NULLIF({db_col}, ''), ?)")
+                params.append(val)
+
+        if updates:
+            sql = f"UPDATE taicol_names SET {', '.join(updates)} WHERE name_id = ?"
+            params.append(name_id)
+            cur.execute(sql, params)
+            updated += 1
+
+    conn.commit()
+    conn.close()
+    return updated
 
 
 def _create_indexes():
@@ -147,5 +256,6 @@ if __name__ == "__main__":
     print(f"Importing {csv_path}...")
     result = import_taicol_csv(csv_path)
     print(f"Done: {result['rows_imported']} rows in {result['time_elapsed']}s")
+    print(f"Backfilled common names: {result.get('backfilled_names', 0)}")
     if result["backup_path"]:
         print(f"Backup: {result['backup_path']}")

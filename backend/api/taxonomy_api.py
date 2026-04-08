@@ -82,7 +82,7 @@ def _get_chinese_name(rank: str, latin_name: str, row_data: dict = None) -> str:
 
 def _build_stats_query(rank: str, parent_filters: dict) -> str:
     """建構統計查詢"""
-    where = "WHERE usage_status='accepted' AND is_in_taiwan='true' AND rank='Species'"
+    where = "WHERE usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank='Species'"
     for col, val in parent_filters.items():
         safe_col = f'"{col}"' if col == "order" else f'`{col}`' if col == "class" else col
         where += f" AND {safe_col} = '{val}'"
@@ -127,7 +127,7 @@ def get_children(
             elif rank == "genus":
                 extra_cols = ", MAX(genus_c) as genus_c"
 
-            where = "WHERE usage_status='accepted' AND is_in_taiwan='true' AND rank='Species'"
+            where = "WHERE usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank='Species'"
             for col, val in parent_filters.items():
                 safe_col = f'"{col}"' if col in ("order", "class") else col
                 where += f" AND {safe_col} = :parent_{col}"
@@ -213,7 +213,7 @@ def taxonomy_search(q: str = Query(..., max_length=512)):
                        name_author
                 FROM taicol_names
                 WHERE ({' OR '.join(like_conditions)})
-                AND usage_status='accepted' AND is_in_taiwan='true'
+                AND usage_status='accepted' AND is_in_taiwan LIKE '%true%'
                 AND rank IN ('Species', 'Subspecies', 'Variety', 'Genus', 'Family', 'Order', 'Class', 'Phylum')
                 ORDER BY
                     CASE rank
@@ -267,7 +267,7 @@ def taxonomy_search(q: str = Query(..., max_length=512)):
 
 def _get_species_list(session, parent_filters: dict) -> list:
     """取得物種列表"""
-    where = "WHERE usage_status='accepted' AND is_in_taiwan='true' AND rank='Species'"
+    where = "WHERE usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank='Species'"
     params = {}
     for col, val in parent_filters.items():
         safe_col = f'"{col}"' if col in ("order", "class") else col

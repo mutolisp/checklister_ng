@@ -268,7 +268,7 @@
 
   <!-- Search suggestions -->
   {#if suggestions.length}
-    <ul bind:this={suggestionBox} class="absolute z-10 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow max-h-60 overflow-y-auto w-full">
+    <ul bind:this={suggestionBox} class="absolute z-[9999] mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-60 overflow-y-auto w-full">
       {#each suggestions as item, i}
         <li>
           <button

@@ -33,7 +33,7 @@ def _get_cname_cache() -> dict[str, list[int]]:
                     select(TaicolName.common_name_c, TaicolName.name_id)
                     .where(TaicolName.common_name_c != "")
                     .where(TaicolName.common_name_c.is_not(None))
-                    .where(TaicolName.is_in_taiwan == "true")
+                    .where(TaicolName.is_in_taiwan.like("%true%"))
                     .where(TaicolName.usage_status == "accepted")
                 ).all()
                 for cname, name_id in rows:
@@ -277,7 +277,7 @@ def _search_taicol(q: str, group: Optional[str], adv_filters: dict = None) -> li
         stmt = (
             select(TaicolName)
             .where(or_(*like_conditions))
-            .where(TaicolName.is_in_taiwan == "true")
+            .where(TaicolName.is_in_taiwan.like("%true%"))
             .limit(100)
         )
 
@@ -331,7 +331,7 @@ def _search_taicol(q: str, group: Optional[str], adv_filters: dict = None) -> li
                 select(TaicolName)
                 .where(TaicolName.taxon_id.in_(list(need_resolve.keys())))
                 .where(TaicolName.usage_status == "accepted")
-                .where(TaicolName.is_in_taiwan == "true")
+                .where(TaicolName.is_in_taiwan.like("%true%"))
             ).all()
             for acc_row in resolved:
                 matched_non_acc = need_resolve.get(acc_row.taxon_id)
@@ -527,7 +527,7 @@ def search_by_rank(
         stmt = (
             select(TaicolName)
             .where(or_(*like_conditions))
-            .where(TaicolName.is_in_taiwan == "true")
+            .where(TaicolName.is_in_taiwan.like("%true%"))
             .where(TaicolName.usage_status == "accepted")
             .where(TaicolName.rank == rank)
             .limit(20)

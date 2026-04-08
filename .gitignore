@@ -1,6 +1,9 @@
 # Python virtual environments
 venv/
 */venv/
+__pycache__/
+*/__pycache__/
+*.pyc
 
 # Node dependencies
 frontend/node_modules/
@@ -8,3 +11,31 @@ frontend/node_modules/
 # SvelteKit build outputs
 frontend/.svelte-kit/
 frontend/build/
+
+# PyInstaller build artifacts
+build/
+dist/
+
+# Database backups
+backend/twnamelist.db.bak.*
+
+# TaiCOL raw data (users download themselves)
+references/TaiCOL_*.csv
+references/TaiCOL_*.zip
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# Environment files
+.env
+.env.*
+
+# OS files
+Thumbs.db

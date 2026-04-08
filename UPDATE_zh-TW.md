@@ -1,5 +1,25 @@
 # 更新紀錄
 
+## 2026-04-09：TaiCOL 俗名補齊與 is_in_taiwan 修正
+
+### 俗名補齊（Taxon CSV Backfill）
+
+- TaiCOL name CSV 約 30% 的 accepted 物種缺少 `common_name_c`，但 taxon CSV 有。
+- `taicol_import.py` 匯入後自動從同目錄的 taxon CSV（`TaiCOL_taxon_*.csv`）補齊缺少的俗名，以 `taxon_id` 對照。
+- 範例：`Sedum morrisonense`（玉山佛甲草）在 name CSV 中無俗名，taxon CSV 有。
+- 匯入輸出新增 `backfilled_names` 計數。
+
+### is_in_taiwan 多值修正
+
+- 部分記錄的 `is_in_taiwan` 為 `true,true`（多個 taxon_id）。搜尋查詢從 `== 'true'` 改為 `LIKE '%true%'`，套用於 `search_api.py` 和 `taxonomy_api.py`。
+
+### RWD z-index 修正
+
+- 搜尋建議列表：`z-10` → `z-[9999]`，避免手機版被物種詳細頁元件蓋住。
+- Sticky 工具列：`z-30` → `z-[100]`。
+
+---
+
 ## 2026-04-08：名錄比較、批次匯入改寫、搜尋排序與 YAML 修正
 
 ### 名錄比較（`/compare`）
