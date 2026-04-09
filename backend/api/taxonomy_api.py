@@ -244,9 +244,11 @@ def taxonomy_search(q: str = Query(..., max_length=512)):
                     display = sname
 
                 # 分類路徑（用於前端逐層展開）
+                # rank 鍵必須與 get_children 回傳的 rank_key 一致
                 path = []
-                for level in ["kingdom", "phylum", "class_name", "order", "family", "genus"]:
-                    val = r.get(level, "") or ""
+                for level in ["kingdom", "phylum", "class", "order", "family", "genus"]:
+                    db_key = "class_name" if level == "class" else level
+                    val = r.get(db_key, "") or ""
                     if val:
                         path.append({"rank": level, "value": val})
 
