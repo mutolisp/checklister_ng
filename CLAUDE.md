@@ -40,7 +40,7 @@ make clean               # 清除 build/dist 產物
 
 ### Backend (`backend/`)
 
-FastAPI app，在 `main.py` 註冊 routers 並 serve 前端靜態檔。含 CORS、rate limiting（slowapi）、logging。
+FastAPI app，在 `main.py` 註冊 routers 並 serve 前端靜態檔。含 CORS、rate limiting（slowapi）、logging。前端靜態檔透過 `StaticFiles` mount 處理，SPA fallback 透過 404 exception handler 實現（不使用 catch-all route 或 BaseHTTPMiddleware，避免攔截 `/docs`、`/openapi.json` 等 FastAPI 內建路由）。
 
 **API Routers：**
 - `api/search_api.py` — `GET /api/search?q=&group=&rank_filter=&endemic=&alien_type=&family_filter=&order_filter=&class_filter=&genus_filter=`
@@ -178,7 +178,7 @@ SQLite（`backend/twnamelist.db`）：
 
 - **Backend**: FastAPI, SQLModel, Uvicorn, PyYAML, Pandoc, rapidfuzz, slowapi, python-multipart
 - **Frontend**: SvelteKit 2, Svelte 5, Vite 6, Tailwind CSS 3, Flowbite Svelte, Leaflet, leaflet-draw, js-yaml, @tmcw/togeojson, togpx, tokml, terraformer, fastest-levenshtein
-- **Packaging**: PyInstaller
+- **Packaging**: PyInstaller, pystray, Pillow
 
 ## Planned
 

@@ -1,5 +1,36 @@
 # Update Log
 
+## 2026-04-09: System Tray, Icon Refresh, API Docs Fix, Pandoc Bundling
+
+### System Tray Icon (`run.py`)
+
+- Packaged app (PyInstaller) now shows a **system tray icon** (Windows taskbar / macOS menu bar).
+- Right-click menu: "開啟 Checklister-NG" (open browser), "結束" (quit server).
+- Double-click tray icon opens browser.
+- Development mode (`python run.py`) is unaffected; tray only activates inside PyInstaller bundle.
+- `--no-tray` flag to force disable.
+- Dependencies added: `pystray==0.19.5`, `Pillow==11.1.0`.
+
+### App Icon Refresh
+
+- New app icon (`icons/checklister-ng_icons.png`) and monochrome tray icon (`icons/checklister-ng_trayicon.png`).
+- `icons/gen_icons.py`: Generates `.ico` (Windows), `.icns` (macOS), and pre-scaled tray PNGs (16/22/32/44/64px) from source images.
+- `make icon`: Runs `gen_icons.py`.
+- Windows exe now has app icon (`checklister-ng.ico`); macOS app uses `checklister-ng.icns`.
+- Tray icon uses platform-specific pre-scaled PNGs (Windows: 32px, macOS: 44px @2x) for crisp rendering.
+
+### API Documentation Fix (`backend/main.py`)
+
+- **Root cause**: The SPA catch-all route (`/{full_path:path}`) and `BaseHTTPMiddleware` intercepted `/openapi.json` and `/docs`, returning the frontend `index.html` instead of Swagger UI.
+- **Fix**: Removed catch-all route and `BaseHTTPMiddleware`. Replaced with:
+  - `app.mount("/", StaticFiles(...))` for frontend static files (lower priority than FastAPI routes).
+  - `@app.exception_handler(404)` for SPA fallback (only triggers on true 404, not on `/docs`/`/openapi.json`).
+- `/documentation` page: Removed duplicate navbar (page had its own navbar on top of the shared layout navbar).
+
+### Pandoc Bundling Fix (Windows)
+
+Moved from previous entry — now part of this release:
+
 ## 2026-04-09: Windows DOCX Export Fix (Pandoc Bundling)
 
 ### Pandoc Bundling Fix (`checklister_win32.spec`)

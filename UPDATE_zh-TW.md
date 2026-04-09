@@ -1,5 +1,36 @@
 # 更新紀錄
 
+## 2026-04-09：System Tray、Icon 更新、API 文件修正、Pandoc 打包修正
+
+### System Tray Icon（`run.py`）
+
+- 打包後的 app（PyInstaller）現在會顯示 **system tray icon**（Windows 工作列 / macOS 選單列）。
+- 右鍵選單：「開啟 Checklister-NG」（開瀏覽器）、「結束」（關閉 server）。
+- 雙擊 tray icon 開啟瀏覽器。
+- 開發模式（`python run.py`）不受影響，tray 只在 PyInstaller bundle 內啟用。
+- `--no-tray` 旗標可強制停用。
+- 新增依賴：`pystray==0.19.5`、`Pillow==11.1.0`。
+
+### App Icon 更新
+
+- 新 app icon（`icons/checklister-ng_icons.png`）與單色 tray icon（`icons/checklister-ng_trayicon.png`）。
+- `icons/gen_icons.py`：從來源圖產生 `.ico`（Windows）、`.icns`（macOS）、預先縮放的 tray PNG（16/22/32/44/64px）。
+- `make icon`：執行 `gen_icons.py`。
+- Windows exe 現在有 app icon（`checklister-ng.ico`）；macOS app 使用 `checklister-ng.icns`。
+- Tray icon 使用各平台精確尺寸的 PNG（Windows: 32px, macOS: 44px @2x），避免模糊。
+
+### API 文件修正（`backend/main.py`）
+
+- **根本原因**：SPA catch-all route（`/{full_path:path}`）和 `BaseHTTPMiddleware` 攔截了 `/openapi.json` 與 `/docs`，回傳前端 `index.html` 而非 Swagger UI。
+- **修正**：移除 catch-all route 和 `BaseHTTPMiddleware`，改用：
+  - `app.mount("/", StaticFiles(...))` 處理前端靜態檔（優先級低於 FastAPI 路由）。
+  - `@app.exception_handler(404)` 做 SPA fallback（只在真正 404 時觸發，不影響 `/docs`/`/openapi.json`）。
+- `/documentation` 頁面：移除重複的 navbar（頁面自帶 navbar 與 layout 共用 navbar 重疊）。
+
+### Pandoc 打包修正（Windows）
+
+從前一條目移入——併入此次 release：
+
 ## 2026-04-09：Windows DOCX 匯出修正（Pandoc 打包問題）
 
 ### Pandoc 打包修正（`checklister_win32.spec`）
