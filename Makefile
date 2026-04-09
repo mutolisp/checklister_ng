@@ -9,7 +9,7 @@ BACKEND_VENV := backend/venv
 UNAME_S := $(shell uname -s)
 
 # ─── Default ──────────────────────────────────────────────
-.PHONY: all frontend backend pkg pkg-dmg pkg-win taicol clean help
+.PHONY: all frontend backend pkg pkg-dmg pkg-win taicol icon clean help
 
 all: backend frontend
 
@@ -24,6 +24,7 @@ help:
 	@echo "  make pkg-dmg      Build macOS .app + .dmg"
 	@echo "  make pkg-win      Build Windows .exe (run on Windows)"
 	@echo "  make taicol        Import TaiCOL CSV (auto-find latest or CSV=path)"
+	@echo "  make icon         Generate .ico/.icns from icons/checklister-ng_icons.png"
 	@echo "  make clean        Remove build artifacts"
 
 # ─── Backend ──────────────────────────────────────────────
@@ -90,6 +91,10 @@ taicol: backend
 	@if [ -z "$(CSV)" ]; then echo "Error: No TaiCOL CSV found in references/"; exit 1; fi
 	@echo "==> Importing TaiCOL from: $(CSV)"
 	$(BACKEND_VENV)/bin/python -m backend.services.taicol_import "$(CSV)"
+
+# ─── Icon ─────────────────────────────────────────────────
+icon:
+	$(BACKEND_VENV)/bin/python icons/gen_icons.py
 
 # ─── Clean ────────────────────────────────────────────────
 clean:

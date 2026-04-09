@@ -168,6 +168,12 @@ SQLite（`backend/twnamelist.db`）：
 - **Runtime PATH** (`run.py`): 偵測 `sys._MEIPASS` 內的 `pandoc`/`pandoc.exe`，自動加入 `PATH`。
 - **Windows subprocess** (`export.py`): `console=False` 模式下 pandoc subprocess 需加 `STARTUPINFO(SW_HIDE)`。
 
+## Development Rules
+
+- 改動現有程式碼（特別是 routing、middleware、共用邏輯等有 side effect 的部分）後，**必須驗證相關功能仍正常運作**，不能只測新功能。
+- 驗證方式：跑測試、用 httpx 打 endpoint、或手動確認受影響的路由。
+- 改完才發現壞了等於沒改。Measure twice, cut once。
+
 ## Key Dependencies
 
 - **Backend**: FastAPI, SQLModel, Uvicorn, PyYAML, Pandoc, rapidfuzz, slowapi, python-multipart

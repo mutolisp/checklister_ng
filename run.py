@@ -41,9 +41,15 @@ def _run_with_tray(host, port, app):
     import pystray
 
     base = get_base_path()
-    # 載入 icon
+    # 載入 tray icon（優先使用預先縮放的精確尺寸）
+    if sys.platform == "win32":
+        tray_candidates = ["icons/tray_32.png", "icons/tray_16.png"]
+    else:
+        tray_candidates = ["icons/tray_44.png", "icons/tray_22.png"]
+    tray_candidates += ["icons/checklister-ng_trayicon.png", "icons/checklister-ng.ico"]
+
     icon_path = None
-    for name in ["icons/checklister2.ico", "icons/checklister2.png"]:
+    for name in tray_candidates:
         p = os.path.join(base, name)
         if os.path.isfile(p):
             icon_path = p
@@ -51,7 +57,6 @@ def _run_with_tray(host, port, app):
     if icon_path:
         image = Image.open(icon_path)
     else:
-        # fallback: 產生一個簡單的 icon
         image = Image.new("RGB", (64, 64), color=(34, 139, 34))
 
     url = f"http://{host}:{port}"
