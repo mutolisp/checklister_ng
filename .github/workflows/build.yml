@@ -71,67 +71,71 @@ jobs:
           name: checklister-ng-macos-arm64
           path: dist/checklister-ng-macos-arm64_*.dmg
 
-  build-macos-intel:
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          lfs: true
-
-      - name: Get version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Pandoc
-        run: brew install pandoc
-
-      - name: Install Python dependencies
-        run: |
-          python -m venv backend/venv
-          source backend/venv/bin/activate
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Build frontend
-        run: |
-          cd frontend
-          npm install
-          npm run build
-
-      - name: Build macOS app
-        run: |
-          source backend/venv/bin/activate
-          pyinstaller checklister.spec --clean -y
-
-      - name: Create DMG
-        run: |
-          VERSION=${{ steps.version.outputs.VERSION }}
-          mkdir -p dist/dmg-staging
-          cp -R dist/checklister-ng.app dist/dmg-staging/
-          ln -s /Applications dist/dmg-staging/Applications
-          hdiutil create \
-            -volname "checklister-ng" \
-            -srcfolder dist/dmg-staging \
-            -ov -format UDZO \
-            dist/checklister-ng-macos-intel_${VERSION}.dmg
-          rm -rf dist/dmg-staging
-
-      - name: Upload DMG
-        uses: actions/upload-artifact@v4
-        with:
-          name: checklister-ng-macos-intel
-          path: dist/checklister-ng-macos-intel_*.dmg
+  # NOTE: build-macos-intel 已停用 (2026-04-09)
+  # GitHub Actions 已淘汰 macos-13 free runner，且 macOS Intel 使用者已極少。
+  # 若日後需要恢復，可改用 macos-13-large（付費 runner）。
+  #
+  # build-macos-intel:
+  #   runs-on: macos-13
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         lfs: true
+  #
+  #     - name: Get version from tag
+  #       id: version
+  #       run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+  #
+  #     - name: Setup Python
+  #       uses: actions/setup-python@v5
+  #       with:
+  #         python-version: '3.12'
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: '20'
+  #
+  #     - name: Install Pandoc
+  #       run: brew install pandoc
+  #
+  #     - name: Install Python dependencies
+  #       run: |
+  #         python -m venv backend/venv
+  #         source backend/venv/bin/activate
+  #         pip install --upgrade pip
+  #         pip install -r requirements.txt
+  #         pip install pyinstaller
+  #
+  #     - name: Build frontend
+  #       run: |
+  #         cd frontend
+  #         npm install
+  #         npm run build
+  #
+  #     - name: Build macOS app
+  #       run: |
+  #         source backend/venv/bin/activate
+  #         pyinstaller checklister.spec --clean -y
+  #
+  #     - name: Create DMG
+  #       run: |
+  #         VERSION=${{ steps.version.outputs.VERSION }}
+  #         mkdir -p dist/dmg-staging
+  #         cp -R dist/checklister-ng.app dist/dmg-staging/
+  #         ln -s /Applications dist/dmg-staging/Applications
+  #         hdiutil create \
+  #           -volname "checklister-ng" \
+  #           -srcfolder dist/dmg-staging \
+  #           -ov -format UDZO \
+  #           dist/checklister-ng-macos-intel_${VERSION}.dmg
+  #         rm -rf dist/dmg-staging
+  #
+  #     - name: Upload DMG
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: checklister-ng-macos-intel
+  #         path: dist/checklister-ng-macos-intel_*.dmg
 
   build-windows:
     runs-on: windows-latest
@@ -198,7 +202,7 @@ jobs:
           path: dist/checklister-ng-windows_x64_*.exe
 
   release:
-    needs: [build-macos-arm, build-macos-intel, build-windows]
+    needs: [build-macos-arm, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -208,10 +212,10 @@ jobs:
         with:
           name: checklister-ng-macos-arm64
 
-      - name: Download macOS Intel artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: checklister-ng-macos-intel
+      # - name: Download macOS Intel artifact
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: checklister-ng-macos-intel
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
@@ -223,6 +227,5 @@ jobs:
         with:
           files: |
             checklister-ng-macos-arm64_*.dmg
-            checklister-ng-macos-intel_*.dmg
             checklister-ng-windows_x64_*.exe
           generate_release_notes: true
