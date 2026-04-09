@@ -61,29 +61,24 @@ _frontend_dir = os.environ.get(
     os.path.join(os.path.dirname(__file__), "..", "frontend", "build")
 )
 if os.path.isdir(_frontend_dir):
-    app.mount("/_app", StaticFiles(directory=os.path.join(_frontend_dir, "_app")), name="static")
+    # SvelteKit 打包的 JS/CSS chunks
+    _app_dir = os.path.join(_frontend_dir, "_app")
+    if os.path.isdir(_app_dir):
+        app.mount("/_app", StaticFiles(directory=_app_dir), name="static_app")
 
-    # SPA fallback 用 Starlette middleware 處理，不會搶 FastAPI 內建路由
-    from starlette.middleware.base import BaseHTTPMiddleware
-    from starlette.responses import Response
+    # 前端根目錄靜態檔（favicon.png 等），掛在最後作為 fallback
+    app.mount("/", StaticFiles(directory=_frontend_dir), name="static_root")
 
-    class _SPAFallbackMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            response = await call_next(request)
-            # 只有 GET 且 404 且不是 API/靜態資源時才 fallback 到 index.html
-            if (response.status_code == 404
-                    and request.method == "GET"
-                    and not request.url.path.startswith(("/api/", "/_app/"))):
-                index = os.path.join(_frontend_dir, "index.html")
-                if os.path.isfile(index):
-                    return FileResponse(index)
-            return response
+    # SPA fallback：靜態檔找不到時（404），回傳 index.html
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from fastapi.responses import PlainTextResponse
 
-    app.add_middleware(_SPAFallbackMiddleware)
-
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_frontend(full_path: str):
-        file_path = os.path.join(_frontend_dir, full_path)
-        if full_path and os.path.isfile(file_path):
-            return FileResponse(file_path)
-        return Response(status_code=404)
+    @app.exception_handler(StarletteHTTPException)
+    async def _spa_fallback(request, exc):
+        if (exc.status_code == 404
+                and request.method == "GET"
+                and not request.url.path.startswith(("/api/", "/_app/"))):
+            index = os.path.join(_frontend_dir, "index.html")
+            if os.path.isfile(index):
+                return FileResponse(index)
+        return PlainTextResponse(str(exc.detail), status_code=exc.status_code)
