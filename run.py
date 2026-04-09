@@ -35,6 +35,71 @@ def wait_for_server(host, port, timeout=10):
     return False
 
 
+def _run_with_tray(host, port, app):
+    """啟動 server + system tray icon（Windows/macOS 打包時使用）"""
+    from PIL import Image
+    import pystray
+
+    base = get_base_path()
+    # 載入 icon
+    icon_path = None
+    for name in ["icons/checklister2.ico", "icons/checklister2.png"]:
+        p = os.path.join(base, name)
+        if os.path.isfile(p):
+            icon_path = p
+            break
+    if icon_path:
+        image = Image.open(icon_path)
+    else:
+        # fallback: 產生一個簡單的 icon
+        image = Image.new("RGB", (64, 64), color=(34, 139, 34))
+
+    url = f"http://{host}:{port}"
+
+    def open_browser(icon, item):
+        webbrowser.open(url)
+
+    def quit_app(icon, item):
+        icon.stop()
+        os._exit(0)
+
+    menu = pystray.Menu(
+        pystray.MenuItem("開啟 Checklister-NG", open_browser, default=True),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem(f"伺服器: {url}", None, enabled=False),
+        pystray.Menu.SEPARATOR,
+        pystray.MenuItem("結束", quit_app),
+    )
+
+    icon = pystray.Icon("checklister-ng", image, "Checklister-NG", menu)
+
+    def start_server():
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+
+    thread = threading.Thread(target=start_server, daemon=True)
+    thread.start()
+
+    if wait_for_server(host, port):
+        webbrowser.open(url)
+
+    # pystray.Icon.run() 會 block 主線程（這是必要的）
+    icon.run()
+
+
+def _run_without_tray(host, port, app):
+    """開發模式：不使用 system tray，直接啟動 server"""
+    def start_server():
+        uvicorn.run(app, host=host, port=port, log_level="warning")
+
+    thread = threading.Thread(target=start_server, daemon=True)
+    thread.start()
+
+    if wait_for_server(host, port):
+        webbrowser.open(f"http://{host}:{port}")
+
+    thread.join()
+
+
 def main():
     base = get_base_path()
 
@@ -53,21 +118,22 @@ def main():
     parser = argparse.ArgumentParser(description="Run the Checklister-NG backend")
     parser.add_argument("--host", default="127.0.0.1", help="Host interface to bind")
     parser.add_argument("--port", type=int, default=8964, help="Port number to listen on")
+    parser.add_argument("--no-tray", action="store_true", help="不使用 system tray icon")
     args = parser.parse_args()
 
     # import app 在環境變數設定之後，確保路徑正確
     from backend.main import app
 
-    def start_server(host, port):
-        uvicorn.run(app, host=host, port=port, log_level="warning")
-
-    thread = threading.Thread(target=start_server, args=(args.host, args.port), daemon=True)
-    thread.start()
-
-    if wait_for_server(args.host, args.port):
-        webbrowser.open(f"http://{args.host}:{args.port}")
-
-    thread.join()
+    # PyInstaller 打包時預設使用 tray；開發模式或 --no-tray 時不使用
+    use_tray = getattr(sys, '_MEIPASS', None) and not args.no_tray
+    if use_tray:
+        try:
+            _run_with_tray(args.host, args.port, app)
+        except ImportError:
+            # pystray 或 PIL 不可用時 fallback
+            _run_without_tray(args.host, args.port, app)
+    else:
+        _run_without_tray(args.host, args.port, app)
 
 if __name__ == "__main__":
     main()
