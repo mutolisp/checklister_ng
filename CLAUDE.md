@@ -161,6 +161,13 @@ SQLite（`backend/twnamelist.db`）：
 - Query length limits（q: 512, taxon_id: 20）
 - Export temp file cleanup（BackgroundTasks）
 
+### Packaging (PyInstaller)
+
+- **macOS** (`checklister.spec`): `which pandoc` → `os.path.realpath()` 解析 symlink，包進 `.app` bundle。
+- **Windows** (`checklister_win32.spec`): `_find_real_pandoc()` 依序搜尋 Chocolatey 實際安裝路徑、`%LOCALAPPDATA%\Pandoc\`（winget 預設）、`C:\Program Files\Pandoc\`，以檔案大小（>1MB）過濾 Chocolatey shim。CI 用 Chocolatey，本機開發用 winget。
+- **Runtime PATH** (`run.py`): 偵測 `sys._MEIPASS` 內的 `pandoc`/`pandoc.exe`，自動加入 `PATH`。
+- **Windows subprocess** (`export.py`): `console=False` 模式下 pandoc subprocess 需加 `STARTUPINFO(SW_HIDE)`。
+
 ## Key Dependencies
 
 - **Backend**: FastAPI, SQLModel, Uvicorn, PyYAML, Pandoc, rapidfuzz, slowapi, python-multipart

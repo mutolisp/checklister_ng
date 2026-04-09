@@ -1,5 +1,23 @@
 # 更新紀錄
 
+## 2026-04-09：Windows DOCX 匯出修正（Pandoc 打包問題）
+
+### Pandoc 打包修正（`checklister_win32.spec`）
+
+- **根本原因**：GitHub Actions CI 用 `choco install pandoc`（Chocolatey）安裝。`shutil.which('pandoc')` 回傳的是 Chocolatey 的 shim（`C:\ProgramData\chocolatey\bin\pandoc.exe`，約 50KB 轉導程式），不是真正的 pandoc binary（約 80MB）。shim 被 PyInstaller 解壓後無法找到實際執行檔，導致 DOCX 匯出失敗。本機用 `winget install JohnMacFarlane.Pandoc` 安裝到 `%LOCALAPPDATA%\Pandoc\` 則無此問題。
+- **修正**：新增 `_find_real_pandoc()` 函式，依序搜尋已知路徑（`chocolatey/lib/pandoc/tools/`、`%LOCALAPPDATA%\Pandoc\`、`C:\Program Files\Pandoc\`），以檔案大小（>1MB）區分真正的 binary 與 shim。同時涵蓋 CI（Chocolatey）與本機（winget）兩種情境。
+- Build 時印出 pandoc 路徑與大小，方便 CI 除錯。
+
+### Windows Subprocess 修正（`backend/api/export.py`）
+
+- Windows `console=False` 模式下，pandoc subprocess 加上 `STARTUPINFO`（`SW_HIDE`），避免 windowed app 呼叫 console 程式時出錯。
+
+### CI 驗證（`.github/workflows/build.yml`）
+
+- Chocolatey 安裝後加上 `where pandoc` + `pandoc --version`，在 CI log 中驗證 pandoc 可用性。
+
+---
+
 ## 2026-04-09：搜尋排序修正、Taxon CSV 補齊、is_in_taiwan 與 Windows 修正
 
 ### 俗名補齊（Taxon CSV Backfill）

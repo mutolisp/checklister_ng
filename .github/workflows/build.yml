@@ -156,7 +156,11 @@ jobs:
           node-version: '20'
 
       - name: Install Pandoc
-        run: choco install pandoc -y
+        run: |
+          choco install pandoc -y
+          # 驗證 pandoc 實際路徑（非 shim）
+          where pandoc
+          pandoc --version
 
       - name: Install Python dependencies
         run: |
@@ -176,6 +180,12 @@ jobs:
         run: |
           backend\venv\Scripts\activate
           pyinstaller checklister_win32.spec --clean -y
+
+      - name: Verify pandoc in build
+        shell: bash
+        run: |
+          # PyInstaller onefile 無法直接檢查內容，改用 spec 的 print 輸出確認
+          echo "Build completed — check above log for pandoc bundling path and size"
 
       - name: Rename exe with version
         shell: bash

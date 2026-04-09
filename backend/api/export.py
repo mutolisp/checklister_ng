@@ -436,9 +436,16 @@ async def export(request: Request, background_tasks: BackgroundTasks):
             elif fmt == "docx":
                 docx_path = base_path + ".docx"
                 reference_path = os.path.join(_get_base_path(), "backend", "api", "reference.docx")
+                # Windows console=False 時需要隱藏子程序視窗
+                kwargs = {}
+                if sys.platform == "win32":
+                    si = subprocess.STARTUPINFO()
+                    si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                    si.wShowWindow = 0  # SW_HIDE
+                    kwargs["startupinfo"] = si
                 result = subprocess.run(
                     ["pandoc", md_path, "--reference-doc", reference_path, "-o", docx_path],
-                    capture_output=True, text=True, timeout=30
+                    capture_output=True, text=True, timeout=30, **kwargs
                 )
                 if result.returncode != 0:
                     return PlainTextResponse(

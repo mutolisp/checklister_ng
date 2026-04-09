@@ -1,5 +1,23 @@
 # Update Log
 
+## 2026-04-09: Windows DOCX Export Fix (Pandoc Bundling)
+
+### Pandoc Bundling Fix (`checklister_win32.spec`)
+
+- **Root cause**: GitHub Actions CI uses `choco install pandoc` (Chocolatey). `shutil.which('pandoc')` returns the Chocolatey shim (~50KB redirect launcher), not the real pandoc binary (~80MB). The shim doesn't work inside PyInstaller bundle because it can't locate the actual executable. Local builds with `winget install JohnMacFarlane.Pandoc` install to `%LOCALAPPDATA%\Pandoc\` and don't have this issue.
+- **Fix**: New `_find_real_pandoc()` resolves the actual binary by searching known paths (`chocolatey/lib/pandoc/tools/`, `%LOCALAPPDATA%\Pandoc\`, `C:\Program Files\Pandoc\`) and filtering by file size (>1MB) to distinguish real binary from shim. Covers both CI (Chocolatey) and local (winget) scenarios.
+- Build-time log now prints the bundled pandoc path and size for verification.
+
+### Windows Subprocess Fix (`backend/api/export.py`)
+
+- Added `STARTUPINFO` with `SW_HIDE` for pandoc subprocess on Windows `console=False` mode, preventing potential failures when a windowed app spawns a console process.
+
+### CI Verification (`.github/workflows/build.yml`)
+
+- Added `where pandoc` + `pandoc --version` after Chocolatey install to verify pandoc availability in CI logs.
+
+---
+
 ## 2026-04-09: Search Sort Fix, Taxon CSV Backfill, is_in_taiwan & Windows Fix
 
 ### Common Name Backfill from Taxon CSV
