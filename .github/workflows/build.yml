@@ -1,0 +1,129 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 只在 push tag（如 v1.0.0）時觸發
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Pandoc
+        run: brew install pandoc
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv backend/venv
+          source backend/venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Build macOS app
+        run: |
+          source backend/venv/bin/activate
+          pyinstaller checklister.spec --clean -y
+
+      - name: Create DMG
+        run: |
+          mkdir -p dist/dmg-staging
+          cp -R dist/checklister-ng.app dist/dmg-staging/
+          ln -s /Applications dist/dmg-staging/Applications
+          hdiutil create \
+            -volname "checklister-ng" \
+            -srcfolder dist/dmg-staging \
+            -ov -format UDZO \
+            dist/checklister-ng-macos.dmg
+          rm -rf dist/dmg-staging
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: checklister-ng-macos
+          path: dist/checklister-ng-macos.dmg
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Pandoc
+        run: choco install pandoc -y
+
+      - name: Install Python dependencies
+        run: |
+          python -m venv backend\venv
+          backend\venv\Scripts\activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Build Windows exe
+        run: |
+          backend\venv\Scripts\activate
+          pyinstaller checklister_win32.spec --clean -y
+
+      - name: Upload exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: checklister-ng-windows
+          path: dist/checklister-ng.exe
+
+  release:
+    needs: [build-macos, build-windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: checklister-ng-macos
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: checklister-ng-windows
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            checklister-ng-macos.dmg
+            checklister-ng.exe
+          generate_release_notes: true
