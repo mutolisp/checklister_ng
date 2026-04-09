@@ -439,8 +439,16 @@ async def export(request: Request, background_tasks: BackgroundTasks):
                 # 檢查 pandoc 和 reference.docx 是否存在
                 pandoc_cmd = shutil.which("pandoc")
                 if not pandoc_cmd:
+                    # fallback: 直接檢查 bundle 目錄
+                    base = _get_base_path()
+                    for name in ["pandoc.exe", "pandoc"]:
+                        candidate = os.path.join(base, name)
+                        if os.path.isfile(candidate):
+                            pandoc_cmd = candidate
+                            break
+                if not pandoc_cmd:
                     return PlainTextResponse(
-                        f"找不到 pandoc。PATH={os.environ.get('PATH', '')[:500]}",
+                        f"找不到 pandoc。base={_get_base_path()}, PATH={os.environ.get('PATH', '')[:300]}",
                         status_code=500
                     )
                 if not os.path.isfile(reference_path):
@@ -455,6 +463,22 @@ async def export(request: Request, background_tasks: BackgroundTasks):
                     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     si.wShowWindow = 0  # SW_HIDE
                     kwargs["startupinfo"] = si
+                # 先測試 pandoc 是否能執行
+                try:
+                    ver = subprocess.run(
+                        [pandoc_cmd, "--version"],
+                        capture_output=True, text=True, timeout=10, **kwargs
+                    )
+                    if ver.returncode != 0:
+                        return PlainTextResponse(
+                            f"pandoc --version failed (rc={ver.returncode}): stdout={ver.stdout[:200]} stderr={ver.stderr[:200]}",
+                            status_code=500
+                        )
+                except Exception as e:
+                    return PlainTextResponse(
+                        f"pandoc cannot start {type(e).__name__}: {e}, cmd={pandoc_cmd}",
+                        status_code=500
+                    )
                 try:
                     result = subprocess.run(
                         [pandoc_cmd, md_path, "--reference-doc", reference_path, "-o", docx_path],
@@ -462,12 +486,12 @@ async def export(request: Request, background_tasks: BackgroundTasks):
                     )
                 except Exception as e:
                     return PlainTextResponse(
-                        f"Pandoc 執行例外: {type(e).__name__}: {e}",
+                        f"Pandoc exception {type(e).__name__}: {e}",
                         status_code=500
                     )
                 if result.returncode != 0:
                     return PlainTextResponse(
-                        f"Pandoc 轉換失敗 (rc={result.returncode}): {result.stderr}",
+                        f"Pandoc conversion failed (rc={result.returncode}): stdout={result.stdout[:200]} stderr={result.stderr[:200]}",
                         status_code=500
                     )
                 with zipfile.ZipFile(zip_path, "w") as zipf:
