@@ -9,6 +9,30 @@
   let synonyms: any[] = [];
   let synonymsLoading = false;
 
+  // 檢索表
+  let keyText = '';
+  let keyLoading = false;
+
+  async function fetchKey(genus: string) {
+    if (!genus) { keyText = ''; return; }
+    keyLoading = true;
+    try {
+      const res = await fetch(`/api/key/${encodeURIComponent(genus)}`);
+      if (res.ok) {
+        keyText = await res.text();
+      } else {
+        keyText = '';
+      }
+    } catch {
+      keyText = '';
+    }
+    keyLoading = false;
+  }
+
+  // 從學名取屬名
+  $: genusName = species?.name?.split(' ')[0] || species?.genus || '';
+  $: fetchKey(genusName);
+
   async function fetchSynonyms(taxonId: string) {
     if (!taxonId) { synonyms = []; return; }
     synonymsLoading = true;
@@ -151,6 +175,16 @@
       <p class="text-sm text-gray-400 dark:text-gray-500 italic">尚無同物異名資料</p>
     {/if}
   </Card>
+
+  <!-- 檢索表 Identification Key -->
+  {#if keyText}
+  <Card class="max-w-none" size="xl">
+    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+      檢索表 <span class="text-sm font-normal text-gray-500">({genusName})</span>
+    </h3>
+    <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">{keyText}</pre>
+  </Card>
+  {/if}
 
   <!-- C3: 外部連結 -->
   <Card class="max-w-none" size="xl">

@@ -33,6 +33,7 @@ make taicol              # 匯入 TaiCOL CSV（自動找 references/TaiCOL_name_
 make pkg                 # 自動偵測平台打包（macOS → DMG, Windows → EXE）
 make pkg-dmg             # 打包 macOS DMG
 make pkg-win             # 打包 Windows EXE（需在 Windows 執行）
+make icon                # 從 icons/checklister-ng_icons.png 產生 .ico/.icns/tray PNG
 make clean               # 清除 build/dist 產物
 ```
 
@@ -77,6 +78,7 @@ SvelteKit + adapter-static + Tailwind CSS + Flowbite：
 - `src/routes/map/+page.svelte` — 樣區地圖編輯器（Leaflet + 繪製/匯入/匯出 GPX/KML/WKT/GeoJSON）
 - `src/routes/compare/+page.svelte` — 名錄比較（2-10 份名錄：共同種/獨有種/多樣性指數/相似度矩陣）
 - `src/routes/admin/+page.svelte` — TaiCOL 名錄 CSV 上傳管理
+- `src/routes/documentation/+page.svelte` — API 文件（iframe 嵌入 FastAPI Swagger UI `/docs`）
 
 **名錄表格（table view）：**
 - `src/lib/SearchBox.svelte` — 搜尋 + 統一篩選面板（高階分類群 icon + 限定特定分類群 + 特有性/原生外來）
@@ -167,6 +169,9 @@ SQLite（`backend/twnamelist.db`）：
 - **Windows** (`checklister_win32.spec`): `_find_real_pandoc()` 依序搜尋 Chocolatey 實際安裝路徑、`%LOCALAPPDATA%\Pandoc\`（winget 預設）、`C:\Program Files\Pandoc\`，以檔案大小（>1MB）過濾 Chocolatey shim。CI 用 Chocolatey，本機開發用 winget。
 - **Runtime PATH** (`run.py`): 偵測 `sys._MEIPASS` 內的 `pandoc`/`pandoc.exe`，自動加入 `PATH`。
 - **Windows subprocess** (`export.py`): `console=False` 模式下 pandoc subprocess 需加 `STARTUPINFO(SW_HIDE)`。
+- **System Tray** (`run.py`): PyInstaller 打包時自動啟用 pystray tray icon（右鍵: 開啟/結束）。開發模式不啟用。`--no-tray` 可停用。
+- **Icon** (`icons/gen_icons.py`): 從 `checklister-ng_icons.png` 產生 `.ico`/`.icns` + 從 `checklister-ng_trayicon.png` 產生 tray PNG。`make icon` 執行。
+- **CI/CD** (`.github/workflows/build.yml`): macOS ARM + Windows。macOS Intel 已停用（macos-13 runner 淘汰，保留為註解）。
 
 ## Development Rules
 
@@ -182,6 +187,8 @@ SQLite（`backend/twnamelist.db`）：
 
 ## Planned
 
+- **分類樹批次加入名錄**: 從分類樹加入指定分類群下所有物種（含 filter: 原生/歸化/入侵/特有），需新增 `species_count` + `species_under` API
+- **進階篩選批次加入**: 「限定特定分類群」選定後，批次加入該分類群下所有物種
 - **i18n**: 正體中文 / English / Japanese 語言切換
 - **MCP Server**: 抽出 core 層，FastAPI + MCP 共用邏輯
 - **檢索表**: PDF OCR 解析二分法檢索表，掛到分類樹節點
