@@ -2,6 +2,8 @@
 
 次世代物種名錄產生器 — A next-generation species checklist generator
 
+[![Build & Release](https://github.com/mutolisp/checklister_ng/actions/workflows/build.yml/badge.svg)](https://github.com/mutolisp/checklister_ng/actions/workflows/build.yml) 
+
 ## 簡介
 
 Checklister-NG 是一套整合臺灣物種名錄資料的名錄產生工具，支援所有生物類群（維管束植物、鳥類、昆蟲、真菌等）。主要功能包括：
