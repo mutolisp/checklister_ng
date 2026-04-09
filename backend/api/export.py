@@ -436,6 +436,18 @@ async def export(request: Request, background_tasks: BackgroundTasks):
             elif fmt == "docx":
                 docx_path = base_path + ".docx"
                 reference_path = os.path.join(_get_base_path(), "backend", "api", "reference.docx")
+                # 檢查 pandoc 和 reference.docx 是否存在
+                pandoc_cmd = shutil.which("pandoc")
+                if not pandoc_cmd:
+                    return PlainTextResponse(
+                        f"找不到 pandoc。PATH={os.environ.get('PATH', '')[:500]}",
+                        status_code=500
+                    )
+                if not os.path.isfile(reference_path):
+                    return PlainTextResponse(
+                        f"找不到 reference.docx: {reference_path}",
+                        status_code=500
+                    )
                 # Windows console=False 時需要隱藏子程序視窗
                 kwargs = {}
                 if sys.platform == "win32":
@@ -443,13 +455,19 @@ async def export(request: Request, background_tasks: BackgroundTasks):
                     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
                     si.wShowWindow = 0  # SW_HIDE
                     kwargs["startupinfo"] = si
-                result = subprocess.run(
-                    ["pandoc", md_path, "--reference-doc", reference_path, "-o", docx_path],
-                    capture_output=True, text=True, timeout=30, **kwargs
-                )
+                try:
+                    result = subprocess.run(
+                        [pandoc_cmd, md_path, "--reference-doc", reference_path, "-o", docx_path],
+                        capture_output=True, text=True, timeout=30, **kwargs
+                    )
+                except Exception as e:
+                    return PlainTextResponse(
+                        f"Pandoc 執行例外: {type(e).__name__}: {e}",
+                        status_code=500
+                    )
                 if result.returncode != 0:
                     return PlainTextResponse(
-                        f"Pandoc 轉換失敗: {result.stderr}",
+                        f"Pandoc 轉換失敗 (rc={result.returncode}): {result.stderr}",
                         status_code=500
                     )
                 with zipfile.ZipFile(zip_path, "w") as zipf:
