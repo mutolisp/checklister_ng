@@ -6,7 +6,7 @@
 
   function selectOption(name: string, option: any) {
     selectedSpecies.update((current) => {
-      const ids = new Set(current.map((d: any) => d.taxon_id));
+      const ids = new Set(current.map(d => d.taxon_id));
       if (!ids.has(option.taxon_id)) {
         return [...current, option];
       }

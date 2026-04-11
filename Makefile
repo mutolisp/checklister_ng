@@ -9,7 +9,7 @@ BACKEND_VENV := backend/venv
 UNAME_S := $(shell uname -s)
 
 # ─── Default ──────────────────────────────────────────────
-.PHONY: all frontend backend pkg pkg-dmg pkg-win taicol icon clean help
+.PHONY: all frontend backend pkg pkg-dmg pkg-win taicol icon clean help test
 
 all: backend frontend
 
@@ -23,6 +23,7 @@ help:
 	@echo "  make pkg          Build platform package (dmg on macOS)"
 	@echo "  make pkg-dmg      Build macOS .app + .dmg"
 	@echo "  make pkg-win      Build Windows .exe (run on Windows)"
+	@echo "  make test          Run regression tests (pytest)"
 	@echo "  make taicol        Import TaiCOL CSV (auto-find latest or CSV=path)"
 	@echo "  make icon         Generate .ico/.icns from icons/checklister-ng_icons.png"
 	@echo "  make clean        Remove build artifacts"
@@ -83,6 +84,10 @@ pkg-dmg: frontend backend
 pkg-win: frontend
 	pyinstaller checklister_win32.spec --clean -y
 	@echo "==> Done: $(DIST_DIR)/$(APP_NAME).exe"
+
+# ─── Test ─────────────────────────────────────────────────
+test: backend
+	$(BACKEND_VENV)/bin/python -m pytest tests/ -v
 
 # ─── TaiCOL Import ────────────────────────────────────────
 CSV ?= $(shell ls -t references/TaiCOL_name_*.csv 2>/dev/null | head -1)

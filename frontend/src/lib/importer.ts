@@ -1,5 +1,5 @@
 import yaml from "js-yaml";
-import { selectedSpecies } from "$stores/speciesStore";
+import { selectedSpecies, type ChecklistItem } from "$stores/speciesStore";
 import { convertFromDarwinCore } from "$lib/dwcMapper";
 import { ambiguousStore, unresolvedStore } from "$stores/importState";
 import { migrationStore } from "$stores/importState";
@@ -63,11 +63,11 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
       }
 
       if (list.length > 0) {
-        const restored = list.map(convertFromDarwinCore);
+        const restored = list.map(convertFromDarwinCore) as ChecklistItem[];
 
         // 偵測舊版資料（有 _legacy_id 或缺少 taxon_id）
         const needsMigration = restored.filter((d: any) => d._legacy_id || !d.taxon_id);
-        const readyItems = restored.filter((d: any) => d.taxon_id && !d._legacy_id);
+        const readyItems = restored.filter(d => d.taxon_id && !d._legacy_id);
 
         if (needsMigration.length > 0) {
           // 用學名批次查詢 API 取得新的 taxon_id
@@ -80,10 +80,10 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
         if (existing.length > 0) {
           const shouldMerge = confirm("目前已有名錄資料，是否要合併匯入的資料？\n✅ 確定合併\n❌ 取消取代");
           if (shouldMerge) {
-            const existingIds = new Set(existing.map((d: any) => d.taxon_id));
+            const existingIds = new Set(existing.map(d => d.taxon_id));
             const merged = [...existing];
             for (const item of readyItems) {
-              if (!existingIds.has((item as any).taxon_id)) {
+              if (!existingIds.has(item.taxon_id)) {
                 merged.push(item);
               }
             }
@@ -140,8 +140,8 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
     }
 
     const existing = get(selectedSpecies);
-    const existingIds = new Set(existing.map((d: any) => d.taxon_id));
-    const merged = [...existing, ...resolved.filter((d: any) => !existingIds.has(d.taxon_id))];
+    const existingIds = new Set(existing.map(d => d.taxon_id));
+    const merged: ChecklistItem[] = [...existing, ...resolved.filter(d => !existingIds.has(d.taxon_id))];
     selectedSpecies.set(merged);
 
     ambiguousStore.set(ambiguous);

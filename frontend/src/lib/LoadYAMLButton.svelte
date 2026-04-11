@@ -120,7 +120,7 @@
 
   function selectAmbiguousOption(name: string, item: any) {
     selectedSpecies.update(current => {
-      if (!current.find(entry => (entry as any).taxon_id === item.taxon_id)) {
+      if (!current.find(entry => entry.taxon_id === item.taxon_id)) {
         return [...current, item];
       }
       return current;
@@ -146,12 +146,17 @@
       ...current,
       {
         id: -(Date.now()),
+        taxon_id: "",
         name, fullname: name, cname: name,
+        alternative_name_c: "",
         family: "", family_cname: "",
-        iucn_category: "", endemic: 0,
-        source: "未收錄", pt_name: "",
-        taxon_id: "", usage_status: "unresolved",
-      }
+        kingdom: "", phylum: "", class_name: "", order: "",
+        genus: "", pt_name: "",
+        iucn_category: "", redlist: "", cites: "", protected: "",
+        is_hybrid: "", nomenclature_name: "",
+        endemic: 0, source: "未收錄",
+        usage_status: "unresolved",
+      } as any
     ]);
     pendingUnresolved = pendingUnresolved.filter(n => n !== name);
   }

@@ -208,6 +208,8 @@ SQLite（`backend/twnamelist.db`）：
 - 改動現有程式碼（特別是 routing、middleware、共用邏輯等有 side effect 的部分）後，**必須驗證相關功能仍正常運作**，不能只測新功能。
 - 驗證方式：跑測試、用 httpx 打 endpoint、或手動確認受影響的路由。
 - 改完才發現壞了等於沒改。Measure twice, cut once。
+- 使用者提出需求時，若 scope 不清楚（影響範圍、邊界條件、實作方式、向下相容），**先引導釐清再動手**。
+- 前端資料欄位一律用 **snake_case**（匹配 API 回傳），DwC camelCase 只在匯出時透過 `dwcMapper` 轉換。
 
 ## Key Dependencies
 

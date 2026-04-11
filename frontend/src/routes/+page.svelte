@@ -68,7 +68,7 @@
 
   function removeSpecies(id: string) {
     const current = get(selectedSpecies);
-    selectedSpecies.set(current.filter(item => (item as any).taxon_id !== id));
+    selectedSpecies.set(current.filter(item => item.taxon_id !== id));
   }
 
   function exportYAML() {
@@ -252,7 +252,7 @@
         // 如果刪除的是當前顯示的，選下一個或回到名錄
         if (id === activeSpeciesId) {
           const remaining = get(selectedSpecies);
-          activeSpeciesId = remaining.length > 0 ? (remaining[0] as any).taxon_id : null;
+          activeSpeciesId = remaining.length > 0 ? remaining[0].taxon_id : null;
           if (!activeSpeciesId) backToTable();
         }
       }}
