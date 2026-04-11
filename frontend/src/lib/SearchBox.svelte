@@ -12,6 +12,21 @@
   let suggestions: any[] = [];
   let selectedGroup = "";
 
+  function iucnStyle(cat: string): string {
+    const c = (cat || '').replace(/^N(?=LC|DD|VU|NT|EN|CR)/, '');
+    switch (c) {
+      case 'EX': return 'background:#000;color:#fff';
+      case 'EW': return 'background:#542344;color:#fff';
+      case 'CR': return 'background:#d81e05;color:#fff';
+      case 'EN': return 'background:#fc7f3f;color:#000';
+      case 'VU': return 'background:#f9e814;color:#000';
+      case 'NT': return 'background:#cce226;color:#000';
+      case 'LC': return 'background:#60c659;color:#000';
+      case 'DD': return 'background:#d1d1c6;color:#000';
+      default:   return 'background:#e5e7eb;color:#000';
+    }
+  }
+
   // 篩選面板
   let showFilter = false;
   let filterRank = "";
@@ -298,7 +313,8 @@
             {#if item.source === '歸化'}<Badge color="yellow" class="text-xs ml-1">歸化</Badge>{/if}
             {#if item.source === '栽培'}<Badge color="blue" class="text-xs ml-1">栽培</Badge>{/if}
             {#if item.endemic === 1}<Badge color="purple" class="text-xs ml-1">臺灣特有</Badge>{/if}
-            {#if item.iucn_category}<Badge color="dark" class="text-xs ml-1">{item.iucn_category}</Badge>{/if}
+            {#if item.redlist}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ml-1" style={iucnStyle(item.redlist)}>TW:{item.redlist}</span>{/if}
+            {#if item.iucn_category}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ml-1" style={iucnStyle(item.iucn_category)}>IUCN:{item.iucn_category}</span>{/if}
           </button>
         </li>
       {/each}

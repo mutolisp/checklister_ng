@@ -16,6 +16,7 @@ dwc_field_map = {
     "abundance": "individualCount",
     "source": "establishmentMeans",
     "iucn_category": "iucnStatus",
+    "redlist": "redlistCategory",
     "endemic": "endemic",
     "occurrenceID": "occurrenceID",
     "eventDate": "eventDate",

@@ -60,15 +60,21 @@
     }
   }
 
-  function iucnColor(cat: string): string {
-    switch (cat) {
-      case 'CR': return 'red';
-      case 'EN': return 'red';
-      case 'VU': return 'yellow';
-      case 'NT': return 'yellow';
-      case 'LC': return 'green';
-      case 'DD': return 'dark';
-      default: return 'dark';
+  // IUCN 官方色系
+  function iucnStyle(cat: string): string {
+    // 國內紅皮書 NVU→VU, NCR→CR, NLC→LC 等（只去掉 N+大寫 的前綴，不影響 NT, NE）
+    const c = (cat || '').replace(/^N(?=LC|DD|VU|NT|EN|CR)/, '');
+    switch (c) {
+      case 'EX': return 'background:#000;color:#fff';        // 黑
+      case 'EW': return 'background:#542344;color:#fff';     // 深紫
+      case 'CR': return 'background:#d81e05;color:#fff';     // 紅
+      case 'EN': return 'background:#fc7f3f;color:#000';     // 橘
+      case 'VU': return 'background:#f9e814;color:#000';     // 黃
+      case 'NT': return 'background:#cce226;color:#000';     // 黃綠
+      case 'LC': return 'background:#60c659;color:#000';     // 綠
+      case 'DD': return 'background:#d1d1c6;color:#000';     // 灰
+      case 'NE': return 'background:#fff;color:#000;border:1px solid #ccc';
+      default:   return 'background:#e5e7eb;color:#000';     // 淺灰（NA, NLC 等）
     }
   }
 
@@ -142,10 +148,15 @@
           {#if species.endemic === 1}
             <Badge color="purple">臺灣特有</Badge>
           {/if}
+          {#if species.redlist}
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold" style={iucnStyle(species.redlist)}>
+              TW: {species.redlist}
+            </span>
+          {/if}
           {#if species.iucn_category}
-            <Badge color={iucnColor(species.iucn_category)}>
+            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold" style={iucnStyle(species.iucn_category)}>
               IUCN: {species.iucn_category}
-            </Badge>
+            </span>
           {/if}
         </div>
       </div>

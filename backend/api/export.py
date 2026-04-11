@@ -295,12 +295,12 @@ def _render_group(
             indent = "  " * depth
             parts = [
                 f"{indent}{sp_counter}. {item.get('cname', '')}",
-                f" {format_scientific_name_markdown(item.get('fullname', ''))} "
+                f" {format_scientific_name_markdown(item.get('fullname', ''), item.get('kingdom', ''))} "
             ]
             if item.get("endemic") == 1: parts.append("#")
             if item.get("source") == "歸化": parts.append("*")
             if item.get("source") == "栽培": parts.append("†")
-            if item.get("iucn_category"): parts.append(item["iucn_category"])
+            if item.get("redlist"): parts.append(item["redlist"])
             lines.append(" ".join(parts))
             sp_counter += 1
         return counter, sp_counter

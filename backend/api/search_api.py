@@ -117,7 +117,8 @@ def _taicol_to_response(
         "_raw_cname": row.common_name_c or "",  # 排序用，不含括號區分
         "family": row.family or "",
         "family_cname": row.family_c or "",
-        "iucn_category": row.redlist or row.iucn or "",
+        "iucn_category": row.iucn or "",
+        "redlist": row.redlist or "",
         "endemic": 1 if row.is_endemic == "true" else 0,
         "source": ALIEN_TYPE_MAP.get(row.alien_type or "", row.alien_type or ""),
         "pt_name": _build_pt_name(row),
