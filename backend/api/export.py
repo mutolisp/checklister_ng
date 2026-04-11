@@ -395,16 +395,14 @@ def _render_group(
     """遞迴渲染分群結構"""
 
     if depth >= len(levels):
-        # 已到最底層，輸出物種
+        # 已到最底層，輸出物種（不用 markdown list，用純文字編號避免 pandoc 解析問題）
         sorted_items = sorted(items, key=lambda x: x.get("fullname", ""))
         for item in sorted_items:
-            indent = "    " * depth
-            # 格式：編號. 學名 俗名 特有性/來源 保育狀態
             sci_name = format_scientific_name_markdown(
                 item.get("fullname", ""), item.get("kingdom", ""), item.get("nomenclature_name", ""))
             cname = item.get("cname", "")
 
-            parts = [f"{indent}{sp_counter}. {sci_name}"]
+            parts = [f"{sp_counter}. {sci_name}"]
             if cname:
                 parts.append(cname)
 
@@ -466,9 +464,9 @@ def _render_group(
             lines.append("")
             counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group, conservation_fields)
         elif is_last_group_level or (depth > 0 and depth == len(levels) - 1):
-            # 最底層分群（通常是科）：用編號列表
+            # 最底層分群（通常是科）：用 bold + 編號
             lines.append("")
-            lines.append(f"{counter}. **{display}** ({species_count})")
+            lines.append(f"**{counter}. {display}** ({species_count})")
             lines.append("")
             counter += 1
             _, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group, conservation_fields)
