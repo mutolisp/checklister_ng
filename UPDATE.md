@@ -1,5 +1,64 @@
 # Update Log
 
+## 2026-04-11e: Export Overhaul, Admin UX, cultured→圈養
+
+### Export Format Changes
+- **Species order**: 學名 → 俗名 → 特有性/來源 → 保育狀態（was 俗名 → 學名）
+- **Conservation separator**: 分號分隔 `NLC; IUCN:LC; CITES:II; 保育類:III`（was 空格）
+- **圈養 symbol**: 動物 `cultured` → `‡`（圈養），植物 → `†`（栽培）。Header 加「‡ 代表圈養種」
+- **Conservation stats in header**: 自動統計物種屬性（特有種/原生/歸化/栽培/圈養）+ 保育統計（依勾選：紅皮書/IUCN/CITES/保育類），排除 LC/NLC/NE/NA 安全等級
+- **CSV export**: 新增「匯出 CSV (DwC)」選項，欄位名用 Darwin Core terms（UTF-8 BOM）
+- **`_enrich_checklist()`**: 匯出前統一從 DB 補齊舊資料缺少的 `*_c` common name 欄位（所有格式：YAML/CSV/MD/DOCX）
+
+### Backend Mapper (mapper.py)
+- Expanded to 36 DwC field mappings: `kingdom_c→kingdomVernacularName`, `phylum_c→phylumVernacularName`, `class_c→classVernacularName`, `order_c→orderVernacularName`, `cites→CITES`, `protected→protectionStatus`, `is_hybrid→isHybrid`, `alien_status_note→establishmentRemarks` etc.
+
+### Search API — cultured → 圈養/栽培
+- `_map_alien_type()`: `cultured` + `kingdom=Animalia` → `圈養`，otherwise `栽培`
+- Frontend: SearchBox, SpeciesDetailPanel, TaxonTreeNode, TaxonSpeciesPopup all handle `圈養` badge
+
+### TaiCOL URL
+- SpeciesDetailPanel: TaiCOL link changed from keyword search to direct taxon URL `taicol.tw/zh-hant/taxon/{taxon_id}` (fallback to keyword search if no taxon_id)
+
+### Admin Editor UX
+- **CITES**: Changed from text `<Input>` to `<Select>` dropdown: I (禁止商業貿易), II (限制貿易), III (個別國家列入), I/II, NC (非列入)
+- **alien_status_note**: Changed from single text input to list-based management — dropdown (native/naturalized/invasive/cultured) + citation input + 「新增」button. Listed below with delete ✕. Type validates against species' `alien_type` (mismatch shows warning). Stored as `type: citation|type: citation` format
+- **Alt name drag-and-drop**: Drag alt name → drop on primary name field to swap. Drag between alt names to reorder. Drag handle `⠿` with blue highlight feedback
+- **Select placeholders**: All dropdown selects (原生/歸化, 紅皮書, IUCN, CITES, 保育類) removed empty `—` option, use `placeholder="選擇..."` instead
+- **AdminAddModal step 2**: Taxonomy levels filtered by rank — creating a Family only shows Kingdom→Order (not Genus). `RANK_TO_LEVEL` mapping handles sub-ranks (Subfamily→family, Suborder→order etc.)
+
+### Key API
+- `_load_genera()`: Scans directory on every call (no cache) — new key files detected without server restart
+- Key popup + SpeciesDetailPanel: Added attribution「資料來源：臺灣維管束植物簡誌」
+
+## 2026-04-11d: Taxonomy Tree — Virus Realm Hierarchy, Autonym, Key Popup
+
+### Virus Realm Hierarchy
+- Top-level taxonomy now shows viruses as a single "病毒 Viruses" node (`rank_key=viruses`)
+- Expanding viruses shows 6 Realm nodes (Duplodnaviria, Monodnaviria, Riboviria, Ribozyviria, Varidnaviria, Viruses realm incertae sedis)
+- Expanding a Realm shows its Kingdom children, then normal hierarchy (phylum → class → order → family → genus)
+- `VIRUS_KINGDOM_TO_REALM` mapping table in taxonomy_api.py
+- Taxonomy search path includes Viruses → Realm prefix for virus species
+
+### Infraspecific Taxa + Autonym Handling
+- Taxonomy tree species list now includes Subspecies, Variety, Form (was Species-only)
+- Stats count: "N種 M種下" — species_count uses `rank='Species'` only, infraspecific_count separate
+- Autonym detection: infraspecific epithet == specific epithet → marked `is_autonym: true`
+- Frontend: autonym rows displayed at `opacity-50` with "(Variety, autonym)" label
+- Search API already had nominal infraspecific dedup (line 376-392), no change needed
+
+### Identification Key Popup
+- `KeyPopup.svelte` (new): centered popup showing dichotomous key text from `/api/key/{genus}`
+- `keyStore.ts` (new): fetches `/api/key` (623 genera) once, stores as `availableKeys: Set<string>`
+- Genus nodes with available keys show amber "檢索表" badge button
+- Popup uses flexbox centering (`fixed inset-0 flex items-center justify-center`)
+
+### Popup Centering Fix
+- `TaxonSpeciesPopup.svelte` and `KeyPopup.svelte` changed from `translate-x/y` to flexbox wrapper for reliable centering regardless of DOM nesting depth
+
+### Node Display Cleanup
+- Removed redundant rank label text from node names (rank already shown in Badge)
+
 ## 2026-04-11c: Taxonomy Tree Enhancements
 
 ### Taxonomy Tree — Species Popup + Add to Checklist

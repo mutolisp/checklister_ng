@@ -68,16 +68,12 @@
   fetchFullData();
 </script>
 
-<!-- Backdrop -->
-<button
-  class="fixed inset-0 bg-black bg-opacity-30 z-[9998]"
-  on:click={onClose}
-  aria-label="關閉"
-></button>
+<!-- Backdrop + centering wrapper -->
+<div class="fixed inset-0 z-[9998] bg-black bg-opacity-30 flex items-center justify-center"
+  on:click|self={onClose} role="dialog">
 
 <!-- Popup -->
-<div class="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-  bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700
+<div class="bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700
   w-[90vw] max-w-lg max-h-[80vh] overflow-y-auto">
 
   <!-- Header -->
@@ -106,7 +102,7 @@
       <!-- 物種狀態 -->
       <div class="flex flex-wrap gap-1.5">
         {#if fullData.source}
-          <Badge color={fullData.source === '原生' ? 'green' : fullData.source === '歸化' ? 'yellow' : fullData.source === '栽培' ? 'blue' : 'dark'} class="text-xs">{fullData.source}</Badge>
+          <Badge color={fullData.source === '原生' ? 'green' : fullData.source === '歸化' ? 'yellow' : (fullData.source === '栽培' || fullData.source === '圈養') ? 'blue' : 'dark'} class="text-xs">{fullData.source}</Badge>
         {/if}
         {#if fullData.endemic === 1}
           <Badge color="purple" class="text-xs">臺灣特有</Badge>
@@ -184,4 +180,5 @@
       </Button>
     {/if}
   </div>
+</div>
 </div>

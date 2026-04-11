@@ -76,7 +76,7 @@
     switch (source) {
       case '原生': return 'green';
       case '歸化': return 'yellow';
-      case '栽培': return 'blue';
+      case '栽培': case '圈養': return 'blue';
       default: return 'dark';
     }
   }
@@ -111,7 +111,9 @@
   // 所有類群共用
   $: gbifUrl = `https://www.gbif.org/species/search?q=${encodeURIComponent(scientificName)}`;
   $: inatUrl = `https://www.inaturalist.org/taxa/search?q=${encodeURIComponent(scientificName)}`;
-  $: taicolUrl = `https://taicol.tw/zh-hant/catalogue?keyword=${encodeURIComponent(primaryCname)}&name-select=equal`;
+  $: taicolUrl = species?.taxon_id
+    ? `https://taicol.tw/zh-hant/taxon/${species.taxon_id}`
+    : `https://taicol.tw/zh-hant/catalogue?keyword=${encodeURIComponent(primaryCname)}&name-select=equal`;
   $: wikispeciesUrl = `https://species.wikimedia.org/wiki/${encodeURIComponent(scientificName.replace(/ /g, '_'))}`;
   $: ncbiUrl = `https://www.ncbi.nlm.nih.gov/taxonomy/?term=${encodeURIComponent(scientificName)}`;
 
@@ -274,9 +276,10 @@
   <!-- 檢索表 Identification Key -->
   {#if keyText}
   <Card class="max-w-none" size="xl">
-    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">
+    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-1">
       檢索表 <span class="text-sm font-normal text-gray-500">({genusName})</span>
     </h3>
+    <p class="text-xs text-gray-400 dark:text-gray-500 mb-3">資料來源：臺灣維管束植物簡誌</p>
     <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">{keyText}</pre>
   </Card>
   {/if}

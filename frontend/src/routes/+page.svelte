@@ -204,6 +204,8 @@
           <FileWordOutline class="w-4 h-4 me-2" />匯出 Word (.docx)</DropdownItem>
         <DropdownItem on:click={() => exportData('markdown')}>
           <FileOutline class="w-4 h-4 me-2" />匯出 Markdown (.md)</DropdownItem>
+        <DropdownItem on:click={() => exportData('csv')}>
+          <FileOutline class="w-4 h-4 me-2" />匯出 CSV (DwC)</DropdownItem>
         <DropdownItem on:click={exportYAML}>
           <FileCodeOutline class="w-4 h-4 me-2" />匯出 DwC YAML</DropdownItem>
         <DropdownDivider />

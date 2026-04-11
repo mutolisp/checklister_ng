@@ -311,7 +311,7 @@
             {/if}
             {#if item.source === '原生'}<Badge color="green" class="text-xs ml-1">原生</Badge>{/if}
             {#if item.source === '歸化'}<Badge color="yellow" class="text-xs ml-1">歸化</Badge>{/if}
-            {#if item.source === '栽培'}<Badge color="blue" class="text-xs ml-1">栽培</Badge>{/if}
+            {#if item.source === '栽培' || item.source === '圈養'}<Badge color="blue" class="text-xs ml-1">{item.source}</Badge>{/if}
             {#if item.endemic === 1}<Badge color="purple" class="text-xs ml-1">臺灣特有</Badge>{/if}
             {#if item.redlist}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ml-1" style={iucnStyle(item.redlist)}>TW:{item.redlist}</span>{/if}
             {#if item.iucn_category}<span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-semibold ml-1" style={iucnStyle(item.iucn_category)}>IUCN:{item.iucn_category}</span>{/if}

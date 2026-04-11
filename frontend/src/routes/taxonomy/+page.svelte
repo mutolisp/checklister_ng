@@ -3,6 +3,7 @@
   import TaxonTreeNode from '$lib/TaxonTreeNode.svelte';
   import { debounce } from '$lib/utils';
   import { clearAll as clearExpandedNodes } from '$stores/taxonomyStore';
+  import { loadAvailableKeys } from '$stores/keyStore';
 
   let roots: any[] | null = null;
   let loading = false;
@@ -78,6 +79,7 @@
   }
 
   loadKingdoms();
+  loadAvailableKeys();
 </script>
 
 <div class="max-w-5xl mx-auto p-6">

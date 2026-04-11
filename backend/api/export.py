@@ -16,6 +16,7 @@ from backend.db import engine
 from backend.models.schema import PlantType, PlantName
 
 from backend.api.formatter import format_scientific_name_markdown
+from backend.models.schema import TaicolName
 import sys
 
 def _get_base_path():
@@ -160,6 +161,57 @@ def _detect_group(item: dict) -> str:
     return "_default"
 
 
+def _enrich_checklist(checklist: list[dict]) -> list[dict]:
+    """從 DB 補齊 checklist 中缺少的 common name 欄位（kingdom_c, phylum_c, class_c, order_c, family_c 等）"""
+    # 收集需要補齊的 taxon_id
+    needs_enrich = [item for item in checklist if item.get("taxon_id") and not item.get("kingdom_c")]
+    if not needs_enrich:
+        return checklist
+
+    taxon_ids = [item["taxon_id"] for item in needs_enrich]
+
+    # 批次查 DB
+    enrichment = {}
+    from sqlmodel import text as sql_text
+    with Session(engine) as session:
+        # 分批（避免 SQL 過長）
+        for i in range(0, len(taxon_ids), 500):
+            batch = taxon_ids[i:i+500]
+            placeholders = ", ".join(f":t{j}" for j in range(len(batch)))
+            params = {f"t{j}": tid for j, tid in enumerate(batch)}
+            rows = session.exec(sql_text(f"""
+                SELECT taxon_id, kingdom_c, phylum_c, class_c, order_c, family_c, genus_c
+                FROM taicol_names
+                WHERE taxon_id IN ({placeholders})
+                AND usage_status = 'accepted'
+                AND (kingdom_c IS NOT NULL AND kingdom_c != '')
+            """).bindparams(**params)).all()
+            for row in rows:
+                tid = row[0]
+                if tid not in enrichment:
+                    enrichment[tid] = {
+                        "kingdom_c": row[1] or "",
+                        "phylum_c": row[2] or "",
+                        "class_c": row[3] or "",
+                        "order_c": row[4] or "",
+                        "family_c": row[5] or "",
+                        "genus_c": row[6] or "",
+                    }
+
+    # 補齊
+    for item in checklist:
+        tid = item.get("taxon_id", "")
+        if tid in enrichment:
+            for k, v in enrichment[tid].items():
+                if v and not item.get(k):
+                    item[k] = v
+                # family_cname 也補（前端用這個名字）
+                if k == "family_c" and v and not item.get("family_cname"):
+                    item["family_cname"] = v
+
+    return checklist
+
+
 def _get_field_display(item: dict, field: str) -> str:
     """取得階層欄位的顯示文字（common name + Latin name）"""
     if field == "family":
@@ -245,6 +297,17 @@ def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str
     total_species = len(checklist)
     total_families = len({(item.get("family", ""), _detect_group(item)) for item in checklist})
 
+    # 統計
+    from collections import Counter
+    endemic_count = sum(1 for it in checklist if it.get("endemic") == 1)
+    source_counts = Counter(it.get("source", "") for it in checklist if it.get("source"))
+
+    cf = conservation_fields if conservation_fields is not None else ["redlist"]
+    redlist_counts = Counter(it.get("redlist", "") for it in checklist if it.get("redlist")) if "redlist" in cf else Counter()
+    iucn_counts = Counter(it.get("iucn_category", "") for it in checklist if it.get("iucn_category")) if "iucn_category" in cf else Counter()
+    cites_counts = Counter(it.get("cites", "") for it in checklist if it.get("cites")) if "cites" in cf else Counter()
+    protected_counts = Counter(it.get("protected", "") for it in checklist if it.get("protected")) if "protected" in cf else Counter()
+
     lines = []
     # Header with metadata
     title = metadata.get("project", "") or "物種名錄"
@@ -253,7 +316,41 @@ def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str
         lines.append(f"**樣區：** {metadata['site']}")
     lines.append("")
     lines.append(f"本名錄共有 {total_families} 科、{total_species} 種。"
-                 f"\"#\" 代表特有種，\"*\" 代表歸化種，\"†\" 代表栽培種。")
+                 f"\"#\" 代表特有種，\"*\" 代表歸化種，\"†\" 代表栽培種，\"‡\" 代表圈養種。")
+
+    # 屬性統計
+    stat_parts = []
+    if endemic_count:
+        stat_parts.append(f"特有種 {endemic_count}")
+    for src in ["原生", "歸化", "栽培", "圈養"]:
+        if source_counts.get(src):
+            stat_parts.append(f"{src} {source_counts[src]}")
+    if stat_parts:
+        lines.append(f"物種屬性：{'、'.join(stat_parts)}。")
+
+    # 保育統計（排除 LC/NLC 等安全等級）
+    skip_cats = {"LC", "NLC", "NE", "NA", ""}
+    conservation_stats = []
+    if redlist_counts:
+        rl_parts = [f"{cat} {cnt}" for cat, cnt in sorted(redlist_counts.items()) if cat not in skip_cats]
+        if rl_parts:
+            conservation_stats.append(f"臺灣紅皮書：{'、'.join(rl_parts)}")
+    if iucn_counts:
+        iucn_parts = [f"{cat} {cnt}" for cat, cnt in sorted(iucn_counts.items()) if cat not in skip_cats]
+        if iucn_parts:
+            conservation_stats.append(f"IUCN：{'、'.join(iucn_parts)}")
+    if cites_counts:
+        cites_parts = [f"附錄{cat} {cnt}" for cat, cnt in sorted(cites_counts.items()) if cat]
+        if cites_parts:
+            conservation_stats.append(f"CITES：{'、'.join(cites_parts)}")
+    if protected_counts:
+        prot_map = {"I": "瀕臨絕種", "II": "珍貴稀有", "III": "其他應予保育", "1": "文資法珍稀"}
+        p_parts = [f"{prot_map.get(cat, cat)} {cnt}" for cat, cnt in sorted(protected_counts.items()) if cat]
+        if p_parts:
+            conservation_stats.append(f"保育類：{'、'.join(p_parts)}")
+    if conservation_stats:
+        lines.append(f"保育統計：{'；'.join(conservation_stats)}。")
+
     lines.append("")
 
     counter = 1
@@ -302,14 +399,27 @@ def _render_group(
         sorted_items = sorted(items, key=lambda x: x.get("fullname", ""))
         for item in sorted_items:
             indent = "  " * depth
-            parts = [
-                f"{indent}{sp_counter}. {item.get('cname', '')}",
-                f" {format_scientific_name_markdown(item.get('fullname', ''), item.get('kingdom', ''), item.get('nomenclature_name', ''))} "
-            ]
-            if item.get("endemic") == 1: parts.append("#")
-            if item.get("source") == "歸化": parts.append("*")
-            if item.get("source") == "栽培": parts.append("†")
-            # 保育狀態依匯出設定
+            # 格式：編號. 學名 俗名 特有性/來源 保育狀態
+            sci_name = format_scientific_name_markdown(
+                item.get("fullname", ""), item.get("kingdom", ""), item.get("nomenclature_name", ""))
+            cname = item.get("cname", "")
+
+            parts = [f"{indent}{sp_counter}. {sci_name}"]
+            if cname:
+                parts.append(cname)
+
+            # 特有性 + 來源
+            if item.get("endemic") == 1:
+                parts.append("#")
+            source = item.get("source", "")
+            if source == "歸化":
+                parts.append("*")
+            elif source == "圈養":
+                parts.append("‡")
+            elif source == "栽培":
+                parts.append("†")
+
+            # 保育狀態依匯出設定，用分號分隔
             cf = conservation_fields if conservation_fields is not None else ["redlist"]
             status_parts = []
             if "redlist" in cf and item.get("redlist"):
@@ -320,9 +430,9 @@ def _render_group(
                 status_parts.append(f"CITES:{item['cites']}")
             if "protected" in cf and item.get("protected"):
                 p = item["protected"]
-                status_parts.append("文資法珍稀" if p == "1" else f"保育類{p}")
+                status_parts.append("文資法珍稀" if p == "1" else f"保育類:{p}")
             if status_parts:
-                parts.append(" ".join(status_parts))
+                parts.append("; ".join(status_parts))
             lines.append(" ".join(parts))
             sp_counter += 1
         return counter, sp_counter
@@ -403,6 +513,9 @@ async def export(request: Request, background_tasks: BackgroundTasks):
     levels_override = [l.strip() for l in levels_param.split(",") if l.strip()] if levels_param else None
     conservation_fields = [f.strip() for f in conservation_param.split(",") if f.strip()] if conservation_param else None
 
+    # 補齊舊資料中缺少的 common name 欄位
+    checklist = _enrich_checklist(checklist)
+
     if fmt == "yaml":
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
         yaml_data: dict = {"checklist": dwc_checklist}
@@ -415,11 +528,14 @@ async def export(request: Request, background_tasks: BackgroundTasks):
         return PlainTextResponse(yaml.dump(yaml_data, allow_unicode=True))
 
     elif fmt == "csv":
-        with tempfile.NamedTemporaryFile(mode="w+", delete=False, newline='', suffix=".csv") as f:
-            writer = csv.DictWriter(f, fieldnames=checklist[0].keys())
-            writer.writeheader()
-            writer.writerows(checklist)
+        dwc_checklist = [convert_to_dwc(item) for item in checklist]
+        with tempfile.NamedTemporaryFile(mode="w+", delete=False, newline='', suffix=".csv", encoding="utf-8-sig") as f:
+            if dwc_checklist:
+                writer = csv.DictWriter(f, fieldnames=dwc_checklist[0].keys())
+                writer.writeheader()
+                writer.writerows(dwc_checklist)
             f.flush()
+            background_tasks.add_task(os.unlink, f.name)
             return FileResponse(f.name, media_type="text/csv", filename="checklist.csv")
 
     elif fmt in ["markdown", "docx"]:

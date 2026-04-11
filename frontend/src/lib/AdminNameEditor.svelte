@@ -33,6 +33,7 @@
     original = { ...record };
     form = { ...record };
     altNames = parseAltNames(record.alternative_name_c);
+    noteEntries = parseNoteEntries(record.alien_status_note);
     rankQuery = record.rank || '';
     saveError = '';
     saveSuccess = '';
@@ -88,7 +89,6 @@
   ];
 
   const alienOptions = [
-    { value: '', name: '—' },
     { value: 'native', name: '原生 native' },
     { value: 'naturalized', name: '歸化 naturalized' },
     { value: 'invasive', name: '入侵 invasive' },
@@ -96,7 +96,6 @@
   ];
 
   const redlistOptions = [
-    { value: '', name: '—' },
     { value: 'EX', name: 'EX (滅絕)' },
     { value: 'EW', name: 'EW (野外滅絕)' },
     { value: 'RE', name: 'RE (區域滅絕)' },
@@ -111,7 +110,6 @@
   ];
 
   const iucnOptions = [
-    { value: '', name: '—' },
     { value: 'EX', name: 'EX (Extinct)' },
     { value: 'EW', name: 'EW (Extinct in the Wild)' },
     { value: 'RE', name: 'RE (Regionally Extinct)' },
@@ -126,12 +124,61 @@
   ];
 
   const protectedOptions = [
-    { value: '', name: '—' },
     { value: 'I', name: 'I (瀕臨絕種保育類)' },
     { value: 'II', name: 'II (珍貴稀有保育類)' },
     { value: 'III', name: 'III (其他應予保育類)' },
     { value: '1', name: '文資法公告珍貴稀有植物' },
   ];
+
+  const citesOptions = [
+    { value: 'I', name: 'I (禁止商業貿易)' },
+    { value: 'II', name: 'II (限制貿易)' },
+    { value: 'III', name: 'III (個別國家列入)' },
+    { value: 'I/II', name: 'I/II' },
+    { value: 'NC', name: 'NC (非列入)' },
+  ];
+
+  // 來源參考文獻：解析 "type: citation|type: citation" 為條列
+  const alienNoteTypes = [
+    { value: 'native', name: '原生 native' },
+    { value: 'naturalized', name: '歸化 naturalized' },
+    { value: 'invasive', name: '入侵 invasive' },
+    { value: 'cultured', name: '栽培 cultured' },
+  ];
+
+  let noteEntries: { type: string; citation: string }[] = [];
+  let newNoteType = '';
+  let newNoteCitation = '';
+
+  function parseNoteEntries(raw: string): { type: string; citation: string }[] {
+    if (!raw) return [];
+    return raw.split('|').map(s => s.trim()).filter(Boolean).map(entry => {
+      const m = entry.match(/^([^:]+):\s*(.+)$/);
+      return m ? { type: m[1].trim(), citation: m[2].trim() } : { type: '', citation: entry };
+    });
+  }
+
+  function serializeNoteEntries(entries: { type: string; citation: string }[]): string {
+    return entries.map(e => e.type ? `${e.type}: ${e.citation}` : e.citation).join('|');
+  }
+
+  function addNoteEntry() {
+    if (!newNoteCitation.trim()) return;
+    const t = newNoteType || form.alien_type || '';
+    noteEntries = [...noteEntries, { type: t, citation: newNoteCitation.trim() }];
+    form.alien_status_note = serializeNoteEntries(noteEntries);
+    newNoteCitation = '';
+  }
+
+  function removeNoteEntry(i: number) {
+    noteEntries = noteEntries.filter((_, idx) => idx !== i);
+    form.alien_status_note = serializeNoteEntries(noteEntries);
+  }
+
+  // alien_type 變更時，預設 newNoteType 連動
+  $: if (form.alien_type) {
+    newNoteType = form.alien_type;
+  }
 
   // 別名管理
   let altNames: string[] = [];
@@ -152,6 +199,50 @@
   function removeAltName(index: number) {
     altNames = altNames.filter((_, i) => i !== index);
     syncAltNames();
+  }
+
+  // 拖拉：別名 → 俗名互換 + 別名間排序
+  let dragIndex: number | null = null;
+  let dragOverPrimary = false;
+  let dragOverIndex: number | null = null;
+
+  function handleDragStart(index: number) {
+    dragIndex = index;
+  }
+
+  function handleDropOnPrimary() {
+    if (dragIndex === null) return;
+    const draggedName = altNames[dragIndex];
+    if (!draggedName) { dragOverPrimary = false; return; }
+    const oldPrimary = form.common_name_c;
+    form.common_name_c = draggedName;
+    altNames[dragIndex] = oldPrimary;
+    altNames = [...altNames];
+    syncAltNames();
+    dragIndex = null;
+    dragOverPrimary = false;
+  }
+
+  function handleDropOnAlt(targetIndex: number) {
+    if (dragIndex === null || dragIndex === targetIndex) {
+      dragOverIndex = null;
+      return;
+    }
+    // 從原位置移除，插入到目標位置
+    const item = altNames[dragIndex];
+    const arr = altNames.filter((_, i) => i !== dragIndex);
+    const insertAt = dragIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    arr.splice(insertAt, 0, item);
+    altNames = arr;
+    syncAltNames();
+    dragIndex = null;
+    dragOverIndex = null;
+  }
+
+  function handleDragEnd() {
+    dragIndex = null;
+    dragOverPrimary = false;
+    dragOverIndex = null;
   }
 
   function computeDiff(): Record<string, { old: string; new: string }> {
@@ -236,6 +327,7 @@
 
   function handleCancel() {
     form = { ...original };
+    noteEntries = parseNoteEntries(original.alien_status_note);
     saveError = '';
     saveSuccess = '';
   }
@@ -340,12 +432,24 @@
       </div>
     </div>
 
+    <!-- 俗名（可接受別名拖入） -->
     <div>
       <Label for="common_name_c" class="mb-1">俗名</Label>
-      <Input id="common_name_c" bind:value={form.common_name_c} size="sm" />
+      <div
+        class="rounded border-2 transition-colors {dragOverPrimary ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/20' : 'border-transparent'}"
+        on:dragover|preventDefault={() => { dragOverPrimary = true; }}
+        on:dragleave={() => { dragOverPrimary = false; }}
+        on:drop|preventDefault={handleDropOnPrimary}
+        role="region"
+      >
+        <Input id="common_name_c" bind:value={form.common_name_c} size="sm" />
+      </div>
+      {#if altNames.length > 0}
+        <p class="text-xs text-gray-400 mt-0.5">可將別名拖曳至此交換</p>
+      {/if}
     </div>
 
-    <!-- 別名（多筆） -->
+    <!-- 別名（可拖曳，多筆） -->
     <div>
       <div class="flex items-center gap-2 mb-1">
         <Label class="mb-0">別名</Label>
@@ -359,7 +463,17 @@
         <p class="text-xs text-gray-400 italic">無別名。點「+ 新增」加入。</p>
       {/if}
       {#each altNames as name, i}
-        <div class="flex gap-2 mb-1">
+        <div
+          class="flex gap-2 mb-1 items-center rounded transition-colors
+            {dragOverIndex === i ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-300' : 'border border-transparent'}"
+          draggable="true"
+          on:dragstart={() => handleDragStart(i)}
+          on:dragover|preventDefault={() => { dragOverIndex = i; }}
+          on:dragleave={() => { if (dragOverIndex === i) dragOverIndex = null; }}
+          on:drop|preventDefault={() => handleDropOnAlt(i)}
+          on:dragend={handleDragEnd}
+        >
+          <span class="cursor-grab text-gray-400 hover:text-gray-600 select-none" title="拖曳排序或拖至俗名交換">⠿</span>
           <Input
             size="sm"
             bind:value={altNames[i]}
@@ -434,31 +548,55 @@
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <Label for="alien_type" class="mb-1">原生/歸化</Label>
-          <Select id="alien_type" items={alienOptions} bind:value={form.alien_type} size="sm" />
+          <Select id="alien_type" items={alienOptions} bind:value={form.alien_type} size="sm" placeholder="選擇..." />
         </div>
         <div>
           <Label for="redlist" class="mb-1">國內紅皮書</Label>
-          <Select id="redlist" items={redlistOptions} bind:value={form.redlist} size="sm" />
+          <Select id="redlist" items={redlistOptions} bind:value={form.redlist} size="sm" placeholder="選擇..." />
         </div>
         <div>
           <Label for="iucn" class="mb-1">IUCN 等級</Label>
-          <Select id="iucn" items={iucnOptions} bind:value={form.iucn} size="sm" />
+          <Select id="iucn" items={iucnOptions} bind:value={form.iucn} size="sm" placeholder="選擇..." />
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
           <Label for="cites" class="mb-1">CITES</Label>
-          <Input id="cites" bind:value={form.cites} size="sm" placeholder="I / II / III" />
+          <Select id="cites" items={citesOptions} bind:value={form.cites} size="sm" placeholder="選擇..." />
         </div>
         <div>
           <Label for="protected" class="mb-1">保育類/珍稀植物</Label>
-          <Select id="protected" items={protectedOptions} bind:value={form.protected} size="sm" />
+          <Select id="protected" items={protectedOptions} bind:value={form.protected} size="sm" placeholder="選擇..." />
         </div>
-        <div>
-          <Label for="alien_status_note" class="mb-1">來源參考文獻</Label>
-          <Input id="alien_status_note" bind:value={form.alien_status_note} size="sm" placeholder="e.g. native: Author, Year" />
+      </div>
+
+      <!-- 來源參考文獻 -->
+      <div>
+        <Label class="mb-1">來源參考文獻</Label>
+        <div class="flex gap-2 items-end">
+          <div class="w-36">
+            <Select size="sm" items={alienNoteTypes} bind:value={newNoteType} placeholder="類型" />
+          </div>
+          <div class="flex-1">
+            <Input size="sm" bind:value={newNoteCitation} placeholder="Author, Year" on:keydown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addNoteEntry(); }}} />
+          </div>
+          <Button size="sm" color="blue" on:click={addNoteEntry} disabled={!newNoteCitation.trim()}>新增</Button>
         </div>
+        {#if noteEntries.length > 0}
+          <ul class="mt-2 space-y-1">
+            {#each noteEntries as entry, i}
+              <li class="flex items-center gap-2 text-sm bg-gray-50 dark:bg-gray-700 rounded px-2 py-1">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400 w-20 shrink-0">{entry.type}</span>
+                <span class="flex-1 text-gray-700 dark:text-gray-300">{entry.citation}</span>
+                {#if form.alien_type && entry.type && entry.type !== form.alien_type}
+                  <span class="text-xs text-red-500 shrink-0" title="類型與原生/歸化不一致">不一致</span>
+                {/if}
+                <button class="text-red-400 hover:text-red-600 text-xs shrink-0 px-1" on:click={() => removeNoteEntry(i)} title="刪除">✕</button>
+              </li>
+            {/each}
+          </ul>
+        {/if}
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-5 gap-2">

@@ -69,13 +69,17 @@ TAXON_GROUP_FILTERS = {
     "Animalia": {"kingdom": "Animalia"},
 }
 
-# alien_type → source 映射
+# alien_type → source 映射（cultured 依 kingdom 區分栽培/圈養）
 ALIEN_TYPE_MAP = {
     "native": "原生",
     "naturalized": "歸化",
     "invasive": "歸化",
-    "cultured": "栽培",
 }
+
+def _map_alien_type(alien_type: str, kingdom: str) -> str:
+    if alien_type == "cultured":
+        return "圈養" if kingdom == "Animalia" else "栽培"
+    return ALIEN_TYPE_MAP.get(alien_type or "", alien_type or "")
 
 
 def _escape_like(s: str) -> str:
@@ -120,7 +124,7 @@ def _taicol_to_response(
         "iucn_category": row.iucn or "",
         "redlist": row.redlist or "",
         "endemic": 1 if row.is_endemic == "true" else 0,
-        "source": ALIEN_TYPE_MAP.get(row.alien_type or "", row.alien_type or ""),
+        "source": _map_alien_type(row.alien_type or "", row.kingdom or ""),
         "pt_name": _build_pt_name(row),
         "taxon_id": row.taxon_id or "",
         "usage_status": "accepted",

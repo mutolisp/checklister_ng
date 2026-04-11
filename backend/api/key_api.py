@@ -17,20 +17,15 @@ def _get_key_dir():
     return os.path.join(_get_base_path(), "references", "key_to_sp")
 
 
-# 啟動時建立可用屬名集合（大小寫敏感）
-_available_genera: set[str] | None = None
-
-
-def _load_genera():
-    global _available_genera
+# 可用屬名集合（每次查詢時重新掃描目錄，確保新增檔案可即時偵測）
+def _load_genera() -> set[str]:
     key_dir = _get_key_dir()
     if os.path.isdir(key_dir):
-        _available_genera = {
+        return {
             f for f in os.listdir(key_dir)
             if os.path.isfile(os.path.join(key_dir, f))
         }
-    else:
-        _available_genera = set()
+    return set()
 
 
 @router.get("/api/key/{genus}")
@@ -40,13 +35,12 @@ async def get_key(genus: str):
     if not re.match(r'^[A-Za-z]+$', genus):
         return PlainTextResponse("Invalid genus name", status_code=400)
 
-    if _available_genera is None:
-        _load_genera()
+    available = _load_genera()
 
     # 首字大寫
     genus_normalized = genus[0].upper() + genus[1:].lower() if len(genus) > 1 else genus.upper()
 
-    if genus_normalized not in _available_genera:
+    if genus_normalized not in available:
         return PlainTextResponse("", status_code=404)
 
     key_path = os.path.join(_get_key_dir(), genus_normalized)
@@ -59,6 +53,4 @@ async def get_key(genus: str):
 @router.get("/api/key")
 async def list_genera():
     """列出所有有檢索表的屬名"""
-    if _available_genera is None:
-        _load_genera()
-    return sorted(_available_genera)
+    return sorted(_load_genera())

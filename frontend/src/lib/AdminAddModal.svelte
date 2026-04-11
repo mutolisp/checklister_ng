@@ -357,7 +357,7 @@
   // 關閉時 reset
   $: if (!open) reset();
 
-  const taxonLevels = [
+  const allTaxonLevels = [
     { key: 'kingdom', label: '界 Kingdom' },
     { key: 'phylum', label: '門 Phylum' },
     { key: 'class', label: '綱 Class' },
@@ -365,6 +365,27 @@
     { key: 'family', label: '科 Family' },
     { key: 'genus', label: '屬 Genus' },
   ];
+
+  // rank → 該 rank 在階層中對應的 key（含同級）
+  const RANK_TO_LEVEL: Record<string, string> = {
+    'Kingdom': 'kingdom', 'Subkingdom': 'kingdom', 'Infrakingdom': 'kingdom', 'Superkingdom': 'kingdom',
+    'Realm': 'kingdom',
+    'Phylum': 'phylum', 'Subphylum': 'phylum', 'Superphylum': 'phylum', 'Infraphylum': 'phylum',
+    'Class': 'class', 'Subclass': 'class', 'Superclass': 'class', 'Infraclass': 'class', 'Megaclass': 'class',
+    'Order': 'order', 'Suborder': 'order', 'Superorder': 'order', 'Infraorder': 'order',
+    'Family': 'family', 'Subfamily': 'family', 'Superfamily': 'family', 'Epifamily': 'family',
+    'Tribe': 'family', 'Subtribe': 'family',
+    'Genus': 'genus', 'Subgenus': 'genus', 'Section': 'genus', 'Subsection': 'genus',
+  };
+
+  // 根據 rank 過濾：只顯示該 rank 上層的階層（不含自身及以下）
+  $: taxonLevels = (() => {
+    const levelKey = RANK_TO_LEVEL[rank];
+    if (!levelKey) return allTaxonLevels;  // Species 等種下階層 → 全部顯示
+    const idx = allTaxonLevels.findIndex(l => l.key === levelKey);
+    if (idx <= 0) return [];  // Kingdom → 不需要填上層
+    return allTaxonLevels.slice(0, idx);
+  })();
 </script>
 
 <Modal bind:open size="lg" title="新增分類群" autoclose={false}>

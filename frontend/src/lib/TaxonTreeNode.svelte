@@ -5,7 +5,9 @@
   import { formatScientificName } from '$lib/formatter';
   import { selectedSpecies } from '$stores/speciesStore';
   import { expandedNodes, nodeKey, markExpanded, markCollapsed } from '$stores/taxonomyStore';
+  import { availableKeys } from '$stores/keyStore';
   import TaxonSpeciesPopup from '$lib/TaxonSpeciesPopup.svelte';
+  import KeyPopup from '$lib/KeyPopup.svelte';
 
   export let node: any;
   export let depth: number = 0;
@@ -22,6 +24,8 @@
   const myKey = nodeKey(node.rank_key, node.name);
 
   const rankColors: Record<string, string> = {
+    '未定': 'dark',
+    '病毒域': 'red',
     '界': 'red',
     '門': 'yellow',
     '綱': 'green',
@@ -75,9 +79,18 @@
       loading = true;
       try {
         const childRank = node.child_rank;
-        let url = `/api/taxonomy/children?rank=${childRank}`;
-        url += `&parent_rank=${node.rank_key}`;
-        url += `&parent_value=${encodeURIComponent(node.name)}`;
+        let url: string;
+        if (node.rank_key === 'viruses') {
+          // 病毒頂層 → 載入 realm
+          url = `/api/taxonomy/children?rank=realm`;
+        } else if (node.rank_key === 'realm') {
+          // Realm → 載入 kingdom
+          url = `/api/taxonomy/children?rank=virus_kingdom&parent_rank=realm&parent_value=${encodeURIComponent(node.name)}`;
+        } else {
+          url = `/api/taxonomy/children?rank=${childRank}`;
+          url += `&parent_rank=${node.rank_key}`;
+          url += `&parent_value=${encodeURIComponent(node.name)}`;
+        }
         const res = await fetch(url);
         if (res.ok) {
           children = await res.json();
@@ -106,6 +119,10 @@
   let popupSpecies: any = null;
   function openPopup(sp: any) { popupSpecies = sp; }
   function closePopup() { popupSpecies = null; }
+
+  // 檢索表 popup
+  let showKeyPopup = false;
+  $: hasKey = node.rank_key === 'genus' && $availableKeys.has(node.name);
 
   // 快速加入名錄
   async function quickAdd(sp: any, e: Event) {
@@ -150,11 +167,20 @@
     <span class="flex-1">
       {#if node.name_c}
         <span class="font-medium text-gray-900 dark:text-white">{node.name_c}</span>
-        <span class="text-gray-500 dark:text-gray-400 ml-1">{node.rank} <i>{node.name}</i></span>
+        <span class="text-gray-500 dark:text-gray-400 ml-1"><i>{node.name}</i></span>
       {:else}
-        <span class="font-medium text-gray-900 dark:text-white">{node.rank} <i>{node.name}</i></span>
+        <span class="font-medium text-gray-900 dark:text-white"><i>{node.name}</i></span>
       {/if}
       <span class="text-gray-400 dark:text-gray-500 text-sm ml-2">{statsText}</span>
+      {#if hasKey}
+        <button
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+            bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200
+            hover:bg-amber-200 dark:hover:bg-amber-800 ml-1"
+          on:click|stopPropagation={() => { showKeyPopup = true; }}
+          title="檢索表"
+        >檢索表</button>
+      {/if}
     </span>
 
     {#if loading}
@@ -170,12 +196,16 @@
     {#if isSpeciesList}
       <div style="padding-left: {(depth + 1) * 24}px" class="pb-2">
         {#each children as sp}
-          <div class="py-1.5 px-4 text-sm flex items-center gap-1.5 flex-wrap group hover:bg-gray-50 dark:hover:bg-gray-800/50">
+          <div class="py-1.5 px-4 text-sm flex items-center gap-1.5 flex-wrap group hover:bg-gray-50 dark:hover:bg-gray-800/50
+            {sp.is_autonym ? 'opacity-50' : ''}">
             <button class="flex items-center gap-1.5 flex-wrap text-left" on:click={() => openPopup(sp)}>
               <span class="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer">{sp.cname || '—'}</span>
               <span class="text-gray-500">{@html formatScientificName(sp.name)}</span>
               {#if sp.author}
                 <span class="text-gray-400 text-xs">{sp.author}</span>
+              {/if}
+              {#if sp.rank && sp.rank !== 'Species'}
+                <span class="text-gray-400 text-xs">({sp.rank}{sp.is_autonym ? ', autonym' : ''})</span>
               {/if}
             </button>
             {#if sp.endemic}
@@ -186,7 +216,7 @@
             {:else if sp.alien_type === 'invasive'}
               <Badge color="red" class="text-xs">入侵</Badge>
             {:else if sp.alien_type === 'cultured'}
-              <Badge color="blue" class="text-xs">栽培</Badge>
+              <Badge color="blue" class="text-xs">{sp.kingdom === 'Animalia' ? '圈養' : '栽培'}</Badge>
             {:else if sp.alien_type === 'native'}
               <Badge color="green" class="text-xs">原生</Badge>
             {/if}
@@ -224,4 +254,8 @@
 
 {#if popupSpecies}
   <TaxonSpeciesPopup species={popupSpecies} onClose={closePopup} />
+{/if}
+
+{#if showKeyPopup}
+  <KeyPopup genus={node.name} onClose={() => { showKeyPopup = false; }} />
 {/if}
