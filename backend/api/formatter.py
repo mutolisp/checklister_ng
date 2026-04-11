@@ -1,23 +1,24 @@
 import re
 
-# 動物界的 kingdom 名稱
-_ANIMAL_KINGDOMS = {"Animalia"}
 
-# 判斷是否為動物界
-def _is_animal(kingdom: str) -> bool:
-    return (kingdom or "") in _ANIMAL_KINGDOMS
+def _use_zoological_format(nomenclature_name: str = "", kingdom: str = "") -> bool:
+    """判斷是否使用動物學格式（ICZN）。其他（ICN/ICNP/ICVCN/空）用植物式。"""
+    if nomenclature_name:
+        return nomenclature_name.upper() == "ICZN"
+    # fallback: 用 kingdom 判斷
+    return (kingdom or "") == "Animalia"
 
 
-def format_scientific_name_markdown(fullname: str, kingdom: str = "") -> str:
+def format_scientific_name_markdown(fullname: str, kingdom: str = "", nomenclature_name: str = "") -> str:
     """Format scientific name for Markdown.
-    植物/真菌: *Genus species* var. *epithet* Author
-    動物: *Genus species epithet* (Author, Year)
+    ICN/ICNP/ICVCN（植物/真菌/原核/病毒）: *Genus species* var. *epithet* Author
+    ICZN（動物）: *Genus species epithet* (Author, Year)
     """
     remaining = fullname.strip()
     if not remaining:
         return fullname
 
-    if _is_animal(kingdom):
+    if _use_zoological_format(nomenclature_name, kingdom):
         return _format_animal_markdown(remaining)
     return _format_botanical_markdown(remaining)
 

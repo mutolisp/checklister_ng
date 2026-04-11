@@ -1,5 +1,69 @@
 # Update Log
 
+## 2026-04-11: Admin DB Management, QA Checks, Species Fields, Identification Keys
+
+### Admin Name Management (`/admin` → 名錄管理 Tab)
+
+- **Search + Edit**: Search by common/scientific name → load full record → edit with diff preview + confirmation popup → audit log (`admin_audit` table)
+- **Cascade**: Changing `usage_status` to `accepted` auto-detects existing accepted name → popup to choose `not-accepted` or `misapplied` for the old one → atomic update
+- **Add New**: 4-step modal: (0) check-similar (exact + fuzzy matching) → (1) basic info (auto-parse scientific name + rank from suffix) → (2) taxonomy hierarchy (cascade autocomplete + auto-fill parent levels) → (3) vernacular name + status + references
+- **Taxonomy Move**: Graft a taxon under a different parent (e.g., move genus from family A to family B). Preview affected records → confirm → batch update all child records' hierarchy fields
+- **References**: `name_references` table linked by `name_id`. CRUD API + display in species detail panel
+- **Rank autocomplete**: 42 ranks from DB, searchable input
+- **Field visibility**: Family Chinese name only shown at Family rank; Genus Chinese name only at Genus rank; conservation fields only at Species level and below
+- **is_in_taiwan lock**: If a taxon has children present in Taiwan, the "現存於臺灣" checkbox is locked (greyed out)
+- **Taxonomy breadcrumb links**: Each level in the hierarchy path is clickable → navigates to that taxon's edit page
+
+### Data Quality Checks (`/admin` → 資料品質 Tab)
+
+- **9 automated checks** (Phase 1):
+  - A1: Missing hierarchy fields (15 records)
+  - A2: Hierarchy gaps (0)
+  - A3: Orphan taxon_id — no accepted name (1)
+  - A4: Multiple accepted per taxon (0)
+  - B3: Duplicate scientific names (80)
+  - B5: Inconsistent common names (0)
+  - B6: Empty common names for accepted species (20,531)
+  - D1: Inconsistent hierarchy values (0)
+  - D3: Inconsistent Chinese family names (0)
+- **Export**: Per-check CSV download + full report DOCX (via Pandoc)
+- **Navigation**: Click `name_id` in QA results → jump to name editor
+
+### New Species Fields (from TaiCOL CSV)
+
+- `nomenclature_name`: ICN / ICZN / ICNP / ICVCN — used for export formatting (ICZN → zoological trinomial, others → botanical with var./subsp.)
+- `cites`: CITES appendix I/II/III (5,789 records)
+- `is_fossil`, `is_terrestrial`, `is_freshwater`, `is_brackish`, `is_marine`: habitat tags
+- `alien_status_note`: source references for alien type determination (displayed as table, split by `|`)
+- All fields displayed in species detail panel + editable in admin
+
+### Species Detail Panel Redesign
+
+- **Block 1 — 物種狀態**: Native/endemic badges + habitat tags + source references (tabular) + nomenclature code
+- **Block 2 — 保育狀態**: Taiwan Redlist + IUCN + CITES (separate badges with official IUCN color scheme)
+- **References section**: Between identification key and external links
+- **IUCN color scheme**: EX(black), EW(purple), CR(red), EN(orange), VU(yellow), NT(yellow-green), LC(green), DD(grey). Taiwan redlist N-prefix auto-stripped for color matching (NVU→VU color, but NT kept as NT)
+
+### Identification Keys (`references/key_to_sp/`)
+
+- 623 genera, 7,060 lines of dichotomous keys
+- `GET /api/key/{genus}` — returns key text; `GET /api/key` — lists all genera
+- Displayed in species detail panel between synonyms and external links
+- Bundled in PyInstaller packages
+
+### Export Format by Nomenclature Code
+
+- `format_scientific_name_markdown()` now accepts `nomenclature_name` parameter
+- ICN/ICNP/ICVCN → botanical: `*Genus species* var. *epithet* Author`
+- ICZN → zoological: `*Genus species epithet* (Author, Year)` (no infraspecific rank abbreviation)
+- Markdown/DOCX export uses `redlist` (Taiwan) instead of `iucn_category`
+
+### Code Review Skill
+
+- `/checklister-code-review` — 35-check comprehensive review covering all API endpoints, routes, formatter, DB model consistency, and security
+
+---
+
 ## 2026-04-09: System Tray, Icon Refresh, API Docs Fix, Pandoc Bundling
 
 ### System Tray Icon (`run.py`)

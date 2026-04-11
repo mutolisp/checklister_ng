@@ -15,6 +15,9 @@ EDITABLE_FIELDS = {
     "simple_name", "name_author", "formatted_name", "rank", "usage_status",
     "common_name_c", "alternative_name_c", "family_c", "genus_c",
     "is_in_taiwan", "is_endemic", "alien_type", "iucn", "redlist",
+    "nomenclature_name", "cites", "is_fossil",
+    "is_terrestrial", "is_freshwater", "is_brackish", "is_marine",
+    "alien_status_note",
 }
 
 # 所有欄位（用於 SELECT）
@@ -25,6 +28,9 @@ ALL_COLUMNS = [
     "is_endemic", "alien_type", "iucn", "redlist",
     "kingdom", "phylum", 'class', '"order"', "family", "family_c",
     "genus", "genus_c",
+    "nomenclature_name", "cites", "is_fossil",
+    "is_terrestrial", "is_freshwater", "is_brackish", "is_marine",
+    "alien_status_note",
 ]
 
 # SQL 安全的欄位名
@@ -62,6 +68,7 @@ async def search_name(q: str = Query(..., min_length=1, max_length=200)):
            OR alternative_name_c LIKE :q
            OR simple_name LIKE :q
         ORDER BY
+            CASE usage_status WHEN 'accepted' THEN 0 ELSE 1 END,
             CASE WHEN common_name_c = :exact THEN 0
                  WHEN simple_name = :exact THEN 1
                  ELSE 2 END,

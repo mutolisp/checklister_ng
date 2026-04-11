@@ -51,6 +51,27 @@
 
   $: fetchSynonyms(species?.taxon_id);
 
+  // 參考文獻
+  let references: any[] = [];
+  async function fetchReferences(nameId: number) {
+    if (!nameId) { references = []; return; }
+    try {
+      const res = await fetch(`/api/admin/references/${nameId}`);
+      if (res.ok) references = await res.json();
+      else references = [];
+    } catch { references = []; }
+  }
+  $: fetchReferences(species?.id);
+
+  // 棲地標籤
+  $: habitatTags = [
+    species?.is_terrestrial === 'true' && '陸域',
+    species?.is_freshwater === 'true' && '淡水',
+    species?.is_brackish === 'true' && '半鹹水',
+    species?.is_marine === 'true' && '海洋',
+    species?.is_fossil === 'true' && '化石',
+  ].filter(Boolean);
+
   function sourceColor(source: string): string {
     switch (source) {
       case '原生': return 'green';
@@ -139,26 +160,77 @@
         </table>
       </div>
 
-      <div>
-        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">物種狀態</h3>
-        <div class="flex flex-wrap gap-2">
-          {#if species.source}
-            <Badge color={sourceColor(species.source)}>{species.source}</Badge>
+      <div class="space-y-4">
+        <!-- Block 1: 物種狀態 -->
+        <div>
+          <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">物種狀態</h3>
+          <div class="flex flex-wrap gap-2">
+            {#if species.source}
+              <Badge color={sourceColor(species.source)}>{species.source}</Badge>
+            {/if}
+            {#if species.endemic === 1}
+              <Badge color="purple">臺灣特有</Badge>
+            {/if}
+          </div>
+
+          <!-- 棲地 -->
+          {#if habitatTags.length > 0}
+            <div class="flex flex-wrap gap-1 mt-2">
+              {#each habitatTags as tag}
+                <Badge color="blue" class="text-xs">{tag}</Badge>
+              {/each}
+            </div>
           {/if}
-          {#if species.endemic === 1}
-            <Badge color="purple">臺灣特有</Badge>
+
+          <!-- 來源參考文獻 -->
+          {#if species.alien_status_note}
+            <div class="mt-2">
+              <p class="text-xs font-semibold text-gray-500 mb-1">來源參考文獻</p>
+              <table class="text-xs w-full">
+                <tbody>
+                  {#each species.alien_status_note.split('|') as entry}
+                    {@const parts = entry.trim().match(/^([^:]+):\s*(.+)$/)}
+                    <tr class="border-t border-gray-100 dark:border-gray-700">
+                      {#if parts}
+                        <td class="py-1 pr-2 text-gray-500 whitespace-nowrap">{parts[1].trim()}</td>
+                        <td class="py-1 text-gray-700 dark:text-gray-300">{parts[2].trim()}</td>
+                      {:else}
+                        <td class="py-1 text-gray-700 dark:text-gray-300" colspan="2">{entry.trim()}</td>
+                      {/if}
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
           {/if}
-          {#if species.redlist}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold" style={iucnStyle(species.redlist)}>
-              TW: {species.redlist}
-            </span>
-          {/if}
-          {#if species.iucn_category}
-            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold" style={iucnStyle(species.iucn_category)}>
-              IUCN: {species.iucn_category}
-            </span>
+
+          <!-- 命名法規 -->
+          {#if species.nomenclature_name}
+            <p class="text-xs text-gray-400 mt-1">命名法規: {species.nomenclature_name}</p>
           {/if}
         </div>
+
+        <!-- Block 2: 保育狀態 -->
+        {#if species.redlist || species.iucn_category || species.cites}
+        <div>
+          <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">保育狀態</h3>
+          <div class="flex flex-wrap gap-2">
+            {#if species.redlist}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold" style={iucnStyle(species.redlist)}>
+                臺灣紅皮書: {species.redlist}
+              </span>
+            {/if}
+            {#if species.iucn_category}
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold" style={iucnStyle(species.iucn_category)}>
+                IUCN: {species.iucn_category}
+              </span>
+            {/if}
+            {#if species.cites}
+              <Badge color="red">CITES 附錄 {species.cites}</Badge>
+            {/if}
+          </div>
+        </div>
+        {/if}
       </div>
     </div>
   </Card>
@@ -194,6 +266,29 @@
       檢索表 <span class="text-sm font-normal text-gray-500">({genusName})</span>
     </h3>
     <pre class="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap font-mono leading-relaxed overflow-x-auto">{keyText}</pre>
+  </Card>
+  {/if}
+
+  <!-- 參考文獻 -->
+  {#if references.length > 0}
+  <Card class="max-w-none" size="xl">
+    <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-3">參考文獻</h3>
+    <ul class="space-y-2">
+      {#each references as ref}
+        <li class="text-sm text-gray-700 dark:text-gray-300">
+          <span>{ref.citation}</span>
+          {#if ref.doi}
+            <a href="https://doi.org/{ref.doi}" target="_blank" class="text-blue-600 hover:underline ml-1 text-xs">DOI</a>
+          {/if}
+          {#if ref.url}
+            <a href={ref.url} target="_blank" class="text-blue-600 hover:underline ml-1 text-xs">連結</a>
+          {/if}
+          {#if ref.note}
+            <span class="text-xs text-gray-400 ml-1">({ref.note})</span>
+          {/if}
+        </li>
+      {/each}
+    </ul>
   </Card>
   {/if}
 

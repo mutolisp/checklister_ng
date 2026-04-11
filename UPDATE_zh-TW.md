@@ -1,5 +1,59 @@
 # 更新紀錄
 
+## 2026-04-11：名錄管理介面、資料品質檢核、物種欄位擴充、檢索表
+
+### 名錄管理介面（`/admin` → 名錄管理 Tab）
+
+- **搜尋 + 編輯**：搜尋俗名/學名 → 載入完整記錄 → 編輯（diff 預覽 + 確認 popup）→ 寫入 audit log
+- **Cascade 連動**：usage_status 改為 accepted 時，自動偵測原 accepted name → popup 讓使用者選 not-accepted 或 misapplied → 原子性更新
+- **新增分類群**：四步驟 modal：(0) 比對確認（精確+模糊）→ (1) 基本資訊（自動解析學名、依字尾判斷 rank）→ (2) 分類階層（聯動 autocomplete + 自動填入上層）→ (3) 俗名、狀態、參考文獻
+- **分類群搬移**：嫁接功能，預覽影響範圍 → 確認 → 批次更新所有子記錄階層欄位
+- **參考文獻**：`name_references` 表，用 name_id 關聯。CRUD API + 物種詳細頁顯示
+- **Rank autocomplete**：42 個 rank，可搜尋
+- **欄位條件顯示**：科中文名僅 Family rank、屬中文名僅 Genus rank、保育欄位僅 Species 以下
+- **現存於臺灣鎖定**：底下有臺灣分類群時 checkbox 灰色不可修改
+- **分類階層超連結**：每層可點擊跳到該分類群編輯
+
+### 資料品質檢核（`/admin` → 資料品質 Tab）
+
+- **9 項自動檢核**：缺階層欄位(15)、階層斷層(0)、孤立 taxon_id(1)、多 accepted(0)、重複學名(80)、俗名不一致(0)、空俗名(20,531)、階層值不一致(0)、中文名不一致(0)
+- **匯出**：單項 CSV 下載 + 全部報告 DOCX
+- **跳轉**：點 name_id 直接跳到名錄編輯
+
+### 物種欄位擴充（從 TaiCOL CSV 補入）
+
+- `nomenclature_name`：命名法規（ICN/ICZN/ICNP/ICVCN），用於匯出格式判斷
+- `cites`：CITES 附錄（5,789 筆）
+- `is_fossil`/`is_terrestrial`/`is_freshwater`/`is_brackish`/`is_marine`：棲地標籤
+- `alien_status_note`：來源參考文獻（以表格呈現，`|` 分隔多筆）
+- 前端物種詳細頁 + admin 編輯器同步顯示
+
+### 物種詳細頁重新設計
+
+- **Block 1 — 物種狀態**：原生/特有 badge + 棲地標籤 + 來源參考文獻（表格）+ 命名法規
+- **Block 2 — 保育狀態**：臺灣紅皮書 + IUCN + CITES（IUCN 官方色系）
+- **參考文獻區塊**：位於檢索表與外部連結之間
+- **IUCN 色系**：EX(黑)、EW(紫)、CR(紅)、EN(橘)、VU(黃)、NT(黃綠)、LC(綠)、DD(灰)。國內紅皮書 N 前綴自動去除配色
+
+### 檢索表（`references/key_to_sp/`）
+
+- 623 屬、7,060 行二歧式檢索表
+- `GET /api/key/{genus}` 回傳文字；`GET /api/key` 列表
+- 物種詳細頁：同物異名與外部連結之間顯示
+- PyInstaller 打包包含
+
+### 匯出格式依命名法規區分
+
+- ICN/ICNP/ICVCN → 植物式：`*Genus species* var. *epithet* Author`
+- ICZN → 動物式：`*Genus species epithet* (Author, Year)`（種下不加縮寫）
+- Markdown/DOCX 匯出改用 `redlist`（臺灣紅皮書）
+
+### Code Review Skill
+
+- `/checklister-code-review`：35 項全面性檢核（API、路由、格式化、DB model、安全性）
+
+---
+
 ## 2026-04-09：System Tray、Icon 更新、API 文件修正、Pandoc 打包修正
 
 ### System Tray Icon（`run.py`）

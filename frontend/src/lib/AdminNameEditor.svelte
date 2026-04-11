@@ -422,6 +422,35 @@
           <Select id="iucn" items={iucnOptions} bind:value={form.iucn} size="sm" />
         </div>
       </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <Label for="cites" class="mb-1">CITES</Label>
+          <Input id="cites" bind:value={form.cites} size="sm" placeholder="I / II / III" />
+        </div>
+        <div>
+          <Label for="alien_status_note" class="mb-1">來源參考文獻</Label>
+          <Input id="alien_status_note" bind:value={form.alien_status_note} size="sm" placeholder="e.g. native: Author, Year" />
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+        {#each [
+          ['is_terrestrial', '陸域'],
+          ['is_freshwater', '淡水'],
+          ['is_brackish', '半鹹水'],
+          ['is_marine', '海洋'],
+          ['is_fossil', '化石'],
+        ] as [field, label]}
+          <div class="flex items-center gap-2">
+            <input type="checkbox"
+              checked={form[field] === 'true'}
+              on:change={(e) => { form[field] = e.currentTarget.checked ? 'true' : 'false'; }}
+              class="w-4 h-4 text-blue-600 rounded" />
+            <span class="text-sm">{label}</span>
+          </div>
+        {/each}
+      </div>
     {/if}
 
     <!-- 操作按鈕 -->

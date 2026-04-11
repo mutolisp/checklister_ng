@@ -295,7 +295,7 @@ def _render_group(
             indent = "  " * depth
             parts = [
                 f"{indent}{sp_counter}. {item.get('cname', '')}",
-                f" {format_scientific_name_markdown(item.get('fullname', ''), item.get('kingdom', ''))} "
+                f" {format_scientific_name_markdown(item.get('fullname', ''), item.get('kingdom', ''), item.get('nomenclature_name', ''))} "
             ]
             if item.get("endemic") == 1: parts.append("#")
             if item.get("source") == "歸化": parts.append("*")

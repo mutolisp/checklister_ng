@@ -33,6 +33,14 @@ FIELD_MAP = {
     "family_c": "family_c",
     "genus": "genus",
     "genus_c": "genus_c",
+    "nomenclature_name": "nomenclature_name",
+    "cites": "cites",
+    "is_fossil": "is_fossil",
+    "is_terrestrial": "is_terrestrial",
+    "is_freshwater": "is_freshwater",
+    "is_brackish": "is_brackish",
+    "is_marine": "is_marine",
+    "alien_status_note": "alien_status_note",
 }
 
 

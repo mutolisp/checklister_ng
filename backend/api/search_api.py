@@ -131,6 +131,14 @@ def _taicol_to_response(
         "order": row.order or "",
         "genus": row.genus or "",
         "genus_c": row.genus_c or "",
+        "nomenclature_name": getattr(row, "nomenclature_name", "") or "",
+        "cites": getattr(row, "cites", "") or "",
+        "is_fossil": getattr(row, "is_fossil", "") or "",
+        "is_terrestrial": getattr(row, "is_terrestrial", "") or "",
+        "is_freshwater": getattr(row, "is_freshwater", "") or "",
+        "is_brackish": getattr(row, "is_brackish", "") or "",
+        "is_marine": getattr(row, "is_marine", "") or "",
+        "alien_status_note": getattr(row, "alien_status_note", "") or "",
     }
 
     # 若原始匹配是 non-accepted，附上異名資訊供前端顯示

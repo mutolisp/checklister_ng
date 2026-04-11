@@ -4,6 +4,7 @@
   import AdminNameEditor from '$lib/AdminNameEditor.svelte';
   import AdminNameList from '$lib/AdminNameList.svelte';
   import AdminAddModal from '$lib/AdminAddModal.svelte';
+  import AdminQAPanel from '$lib/AdminQAPanel.svelte';
 
   // ─── CSV 匯入 ───
   let file: File | null = null;
@@ -111,6 +112,18 @@
       const res = await fetch(`/api/admin/taxon/${encodeURIComponent(taxonId)}/names`);
       if (res.ok) taxonNames = await res.json();
     } catch {}
+  }
+
+  async function handleQANavigate(nameId: number) {
+    // 從 QA 面板點擊 name_id 跳到名錄管理
+    await loadName(nameId);
+    if (selectedRecord?.taxon_id) {
+      try {
+        const res = await fetch(`/api/admin/taxon/${encodeURIComponent(selectedRecord.taxon_id)}/names`);
+        if (res.ok) taxonNames = await res.json();
+      } catch {}
+      searchQuery = selectedRecord.simple_name || '';
+    }
   }
 
   async function handleSaved() {
@@ -236,6 +249,11 @@
           {/if}
         </Card>
       </div>
+    </TabItem>
+
+    <!-- Tab 3: 資料品質 -->
+    <TabItem title="資料品質">
+      <AdminQAPanel onNavigate={handleQANavigate} />
     </TabItem>
   </Tabs>
 

@@ -54,4 +54,12 @@ class TaicolName(SQLModel, table=True):
     family_c: Optional[str] = None
     genus: Optional[str] = None
     genus_c: Optional[str] = None
+    nomenclature_name: Optional[str] = None
+    cites: Optional[str] = None
+    is_fossil: Optional[str] = None
+    is_terrestrial: Optional[str] = None
+    is_freshwater: Optional[str] = None
+    is_brackish: Optional[str] = None
+    is_marine: Optional[str] = None
+    alien_status_note: Optional[str] = None
 
