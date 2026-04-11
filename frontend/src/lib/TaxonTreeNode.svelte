@@ -8,6 +8,7 @@
   import { availableKeys } from '$stores/keyStore';
   import TaxonSpeciesPopup from '$lib/TaxonSpeciesPopup.svelte';
   import KeyPopup from '$lib/KeyPopup.svelte';
+  import BatchAddModal from '$lib/BatchAddModal.svelte';
 
   export let node: any;
   export let depth: number = 0;
@@ -124,6 +125,10 @@
   let showKeyPopup = false;
   $: hasKey = node.rank_key === 'genus' && $availableKeys.has(node.name);
 
+  // 批次加入
+  let showBatchAdd = false;
+  $: canBatchAdd = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'].includes(node.rank_key);
+
   // 快速加入名錄
   async function quickAdd(sp: any, e: Event) {
     e.stopPropagation();
@@ -156,7 +161,7 @@
 
 <div class="border-b border-gray-100 dark:border-gray-700" style="padding-left: {depth * 24}px" bind:this={el}>
   <button
-    class="w-full text-left py-3 px-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors
+    class="w-full text-left py-3 px-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group
       {highlighted ? 'bg-blue-50 dark:bg-blue-900/30' : ''}"
     on:click={toggle}
   >
@@ -180,6 +185,16 @@
           on:click|stopPropagation={() => { showKeyPopup = true; }}
           title="檢索表"
         >檢索表</button>
+      {/if}
+      {#if canBatchAdd}
+        <button
+          class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium
+            bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200
+            hover:bg-blue-200 dark:hover:bg-blue-800 ml-1
+            opacity-0 group-hover:opacity-100 transition-opacity"
+          on:click|stopPropagation={() => { showBatchAdd = true; }}
+          title="批次加入此分類群下所有物種"
+        >+批次加入</button>
       {/if}
     </span>
 
@@ -258,4 +273,8 @@
 
 {#if showKeyPopup}
   <KeyPopup genus={node.name} onClose={() => { showKeyPopup = false; }} />
+{/if}
+
+{#if showBatchAdd}
+  <BatchAddModal bind:open={showBatchAdd} rank={node.rank_key} name={node.name} nameC={node.name_c || ''} />
 {/if}

@@ -217,11 +217,16 @@ SQLite（`backend/twnamelist.db`）：
 - **Frontend**: SvelteKit 2, Svelte 5, Vite 6, Tailwind CSS 3, Flowbite Svelte, Leaflet, leaflet-draw, js-yaml, @tmcw/togeojson, togpx, tokml, terraformer, fastest-levenshtein
 - **Packaging**: PyInstaller, pystray, Pillow
 
+## Done (from Planned)
+
+- ~~**分類樹批次加入名錄**~~: `BatchAddModal` + `GET /api/taxonomy/species_under` + `species_count`，含篩選（來源/特有/紅皮書/CITES/保育類）、500 筆警告、5000 筆上限、loading 進度
+- ~~**進階篩選批次加入**~~: SearchBox 「限定特定分類群」設定後顯示「+批次加入」按鈕，復用 BatchAddModal
+
 ## Planned
 
-- **分類樹批次加入名錄**: 從分類樹加入指定分類群下所有物種（含 filter: 原生/歸化/入侵/特有），需新增 `species_count` + `species_under` API
-- **進階篩選批次加入**: 「限定特定分類群」選定後，批次加入該分類群下所有物種
 - **i18n**: 正體中文 / English / Japanese 語言切換
 - **MCP Server**: 抽出 core 層，FastAPI + MCP 共用邏輯
-- **檢索表**: PDF OCR 解析二分法檢索表，掛到分類樹節點
+- **檢索表 OCR**: PDF OCR 解析二分法檢索表，掛到分類樹節點（目前僅維管束植物簡誌純文字版）
 - **Superfamily/Subfamily**: TaiCOL 種下中間階層匯出支援
+- **資料庫更新流程**: TaiCOL 定期更新機制（版本比對、差異匯入、changelog）
+- **程式更新機制**: 版本檢查、自動更新提示（GitHub Release 比對）

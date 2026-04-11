@@ -398,7 +398,7 @@ def _render_group(
         # 已到最底層，輸出物種
         sorted_items = sorted(items, key=lambda x: x.get("fullname", ""))
         for item in sorted_items:
-            indent = "  " * depth
+            indent = "    " * depth
             # 格式：編號. 學名 俗名 特有性/來源 保育狀態
             sci_name = format_scientific_name_markdown(
                 item.get("fullname", ""), item.get("kingdom", ""), item.get("nomenclature_name", ""))
@@ -511,6 +511,10 @@ async def export(request: Request, background_tasks: BackgroundTasks):
         return PlainTextResponse("⚠️ checklist 為空", status_code=400)
 
     levels_override = [l.strip() for l in levels_param.split(",") if l.strip()] if levels_param else None
+    # 強制依正確階層順序排列
+    if levels_override:
+        LEVEL_ORDER = ["kingdom", "phylum", "class_name", "order", "family", "genus", "pt_name"]
+        levels_override.sort(key=lambda x: LEVEL_ORDER.index(x) if x in LEVEL_ORDER else 999)
     conservation_fields = [f.strip() for f in conservation_param.split(",") if f.strip()] if conservation_param else None
 
     # 補齊舊資料中缺少的 common name 欄位

@@ -1,8 +1,9 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, Query
-from sqlmodel import Session, text
+from sqlmodel import Session, text, select
 from backend.db import engine
+from backend.models.schema import TaicolName
 
 logger = logging.getLogger(__name__)
 
@@ -464,3 +465,102 @@ def _get_species_list(session, parent_filters: dict) -> list:
             "kingdom": row.kingdom or "",
         })
     return results
+
+
+# ── 批次加入 API ──────────────────────────────────────────
+
+def _build_species_filter(rank: str, name: str, endemic: bool, alien_type: str,
+                          redlist: str = "", iucn: str = "", cites: str = "", protected: str = ""):
+    """建構批次加入的 WHERE 條件"""
+    col_map = {
+        "kingdom": "kingdom",
+        "phylum": "phylum",
+        "class": '"class"',
+        "order": '"order"',
+        "family": "family",
+        "genus": "genus",
+    }
+    db_col = col_map.get(rank)
+    if not db_col:
+        return None, {}
+
+    conditions = [
+        "usage_status='accepted'",
+        "is_in_taiwan LIKE '%true%'",
+        "rank IN ('Species','Subspecies','Variety','Form')",
+        f"{db_col} = :taxon_name",
+    ]
+    params = {"taxon_name": name}
+
+    if endemic:
+        conditions.append("is_endemic = 'true'")
+    if alien_type:
+        conditions.append("alien_type = :alien_type")
+        params["alien_type"] = alien_type
+    if redlist:
+        conditions.append("redlist = :redlist")
+        params["redlist"] = redlist
+    if iucn:
+        conditions.append("iucn = :iucn")
+        params["iucn"] = iucn
+    if cites:
+        conditions.append("cites = :cites")
+        params["cites"] = cites
+    if protected:
+        conditions.append("protected = :protected")
+        params["protected"] = protected
+
+    return " AND ".join(conditions), params
+
+
+@router.get("/api/taxonomy/species_count",
+            summary="計算分類群下物種數",
+            description="回傳指定分類群下的物種數量（用於批次加入前確認）")
+def species_count(
+    rank: str = Query(...),
+    name: str = Query(...),
+    endemic: bool = Query(False),
+    alien_type: str = Query(""),
+    redlist: str = Query(""),
+    iucn: str = Query(""),
+    cites: str = Query(""),
+    protected: str = Query(""),
+):
+    where, params = _build_species_filter(rank, name, endemic, alien_type, redlist, iucn, cites, protected)
+    if not where:
+        return {"count": 0}
+
+    with Session(engine) as session:
+        row = session.exec(
+            text(f"SELECT COUNT(*) FROM taicol_names WHERE {where}").bindparams(**params)
+        ).one()
+        return {"count": row[0]}
+
+
+@router.get("/api/taxonomy/species_under",
+            summary="取得分類群下所有物種",
+            description="回傳指定分類群下所有物種的完整資料（與 search API 相同格式），用於批次加入名錄")
+def species_under(
+    rank: str = Query(...),
+    name: str = Query(...),
+    endemic: bool = Query(False),
+    alien_type: str = Query(""),
+    redlist: str = Query(""),
+    iucn: str = Query(""),
+    cites: str = Query(""),
+    protected: str = Query(""),
+    limit: int = Query(2000, le=5000),
+):
+    from backend.api.search_api import _taicol_to_response
+
+    where, params = _build_species_filter(rank, name, endemic, alien_type, redlist, iucn, cites, protected)
+    if not where:
+        return []
+
+    with Session(engine) as session:
+        stmt = select(TaicolName).where(
+            text(where).bindparams(**params)
+        ).order_by(TaicolName.simple_name).limit(limit)
+        rows = session.exec(stmt).all()
+
+        return [_taicol_to_response(row) for row in rows]

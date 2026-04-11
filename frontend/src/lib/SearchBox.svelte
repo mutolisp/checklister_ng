@@ -6,6 +6,7 @@
   import { debounce } from "$lib/utils";
   import { selectedSpecies } from "$stores/speciesStore";
   import { formatScientificName } from '$lib/formatter';
+  import BatchAddModal from '$lib/BatchAddModal.svelte';
 
   const dispatch = createEventDispatcher();
   let query = "";
@@ -36,6 +37,7 @@
   let filterSuggestions: any[] = [];
   let filterEndemic = false;
   let filterAlienType = "";
+  let showBatchAdd = false;
 
   const taxonGroups = [
     { value: "", label: "所有類群", icon: "🌍" },
@@ -358,8 +360,12 @@
           {#if filterRank}
             {#if filterTaxonName}
               <div class="flex items-center gap-2 px-3 py-2 bg-blue-50 dark:bg-blue-900/30 rounded border border-blue-200 dark:border-blue-700">
-                <span class="text-sm">{filterTaxonDisplay}</span>
-                <button class="text-gray-400 hover:text-red-500" on:click={() => { filterTaxonName = ""; filterTaxonDisplay = ""; }}>
+                <span class="text-sm flex-1">{filterTaxonDisplay}</span>
+                <button
+                  class="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0"
+                  on:click={() => { showBatchAdd = true; }}
+                >+批次加入</button>
+                <button class="text-gray-400 hover:text-red-500 shrink-0" on:click={() => { filterTaxonName = ""; filterTaxonDisplay = ""; }}>
                   <CloseOutline class="w-3 h-3" />
                 </button>
               </div>
@@ -419,3 +425,12 @@
     </div>
   </svelte:fragment>
 </Modal>
+
+{#if showBatchAdd && filterTaxonName && filterRank}
+  <BatchAddModal
+    bind:open={showBatchAdd}
+    rank={filterRank.toLowerCase()}
+    name={filterTaxonName}
+    nameC={filterTaxonDisplay}
+  />
+{/if}
