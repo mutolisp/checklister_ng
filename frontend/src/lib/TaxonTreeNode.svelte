@@ -1,17 +1,25 @@
 <script lang="ts">
-  import { Badge } from 'flowbite-svelte';
-  import { ChevronDownOutline, ChevronRightOutline } from 'flowbite-svelte-icons';
+  import { onMount, tick } from 'svelte';
+  import { Badge, Button } from 'flowbite-svelte';
+  import { ChevronDownOutline, ChevronRightOutline, PlusOutline, CheckOutline } from 'flowbite-svelte-icons';
   import { formatScientificName } from '$lib/formatter';
+  import { selectedSpecies } from '$stores/speciesStore';
+  import { expandedNodes, nodeKey, markExpanded, markCollapsed } from '$stores/taxonomyStore';
+  import TaxonSpeciesPopup from '$lib/TaxonSpeciesPopup.svelte';
 
   export let node: any;
   export let depth: number = 0;
   export let expandPath: { rank: string; value: string }[] = [];
-  export let collapseAll: number = 0;  // 遞增觸發全部收合
+  export let collapseAll: number = 0;
+  export let scrollTarget: string = '';  // "rank:value" of node to scroll to
 
   let expanded = false;
   let children: any[] | null = null;
   let loading = false;
-  let lastExpandPathId = "";  // 避免重複觸發
+  let lastExpandPathId = "";
+  let el: HTMLDivElement;
+
+  const myKey = nodeKey(node.rank_key, node.name);
 
   const rankColors: Record<string, string> = {
     '界': 'red',
@@ -22,18 +30,23 @@
     '屬': 'dark',
   };
 
-  // 檢查此節點是否在展開路徑上
+  // 開啟時檢查 localStorage 是否有記錄
+  onMount(() => {
+    if ($expandedNodes.has(myKey)) {
+      doExpand();
+    }
+  });
+
+  // expandPath 自動展開
   function isOnExpandPath(): boolean {
     if (!expandPath || expandPath.length === 0) return false;
     return expandPath.some(p => p.rank === node.rank_key && p.value === node.name);
   }
 
-  // 產生 expandPath 的唯一 ID
   function pathId(): string {
     return expandPath.map(p => `${p.rank}:${p.value}`).join('/');
   }
 
-  // 當 expandPath 變化且匹配此節點時，自動展開（只觸發一次）
   $: {
     const currentPathId = pathId();
     if (expandPath.length > 0 && isOnExpandPath() && currentPathId !== lastExpandPathId) {
@@ -44,9 +57,17 @@
     }
   }
 
+  // Scroll into view when this node is the target
+  $: if (scrollTarget && scrollTarget === myKey && el) {
+    tick().then(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  }
+
   // 全部收合
   $: if (collapseAll > 0) {
     expanded = false;
+    // 不清 children cache，只收合顯示
   }
 
   async function doExpand() {
@@ -69,14 +90,43 @@
       loading = false;
     }
     expanded = true;
+    markExpanded(node.rank_key, node.name);
   }
 
   function toggle() {
     if (expanded) {
       expanded = false;
+      markCollapsed(node.rank_key, node.name);
     } else {
       doExpand();
     }
+  }
+
+  // 物種 popup
+  let popupSpecies: any = null;
+  function openPopup(sp: any) { popupSpecies = sp; }
+  function closePopup() { popupSpecies = null; }
+
+  // 快速加入名錄
+  async function quickAdd(sp: any, e: Event) {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(sp.name)}`);
+      if (!res.ok) return;
+      const results = await res.json();
+      const match = results.find((r: any) => r.name === sp.name || r.taxon_id === sp.taxon_id) || results[0];
+      if (!match) return;
+      selectedSpecies.update((current: any[]) => {
+        if (!current.some((s: any) => s.taxon_id === match.taxon_id)) {
+          return [...current, match];
+        }
+        return current;
+      });
+    } catch { /* ignore */ }
+  }
+
+  function isInChecklist(taxonId: string): boolean {
+    return $selectedSpecies.some((s: any) => s.taxon_id === taxonId);
   }
 
   $: statsText = Object.entries(node.stats || {})
@@ -87,7 +137,7 @@
   $: highlighted = isOnExpandPath();
 </script>
 
-<div class="border-b border-gray-100 dark:border-gray-700" style="padding-left: {depth * 24}px">
+<div class="border-b border-gray-100 dark:border-gray-700" style="padding-left: {depth * 24}px" bind:this={el}>
   <button
     class="w-full text-left py-3 px-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors
       {highlighted ? 'bg-blue-50 dark:bg-blue-900/30' : ''}"
@@ -120,12 +170,14 @@
     {#if isSpeciesList}
       <div style="padding-left: {(depth + 1) * 24}px" class="pb-2">
         {#each children as sp}
-          <div class="py-1.5 px-4 text-sm flex items-center gap-2 flex-wrap">
-            <span class="text-gray-900 dark:text-white">{sp.cname || '—'}</span>
-            <span class="text-gray-500">{@html formatScientificName(sp.name)}</span>
-            {#if sp.author}
-              <span class="text-gray-400 text-xs">{sp.author}</span>
-            {/if}
+          <div class="py-1.5 px-4 text-sm flex items-center gap-1.5 flex-wrap group hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <button class="flex items-center gap-1.5 flex-wrap text-left" on:click={() => openPopup(sp)}>
+              <span class="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer">{sp.cname || '—'}</span>
+              <span class="text-gray-500">{@html formatScientificName(sp.name)}</span>
+              {#if sp.author}
+                <span class="text-gray-400 text-xs">{sp.author}</span>
+              {/if}
+            </button>
             {#if sp.endemic}
               <Badge color="purple" class="text-xs">特有</Badge>
             {/if}
@@ -141,13 +193,35 @@
             {#if sp.iucn}
               <Badge color="dark" class="text-xs">{sp.iucn}</Badge>
             {/if}
+            {#if sp.protected}
+              <Badge color="purple" class="text-xs">{sp.protected === '1' ? '珍稀' : `保育${sp.protected}`}</Badge>
+            {/if}
+            <span class="ml-auto shrink-0">
+              {#if isInChecklist(sp.taxon_id)}
+                <span class="inline-flex items-center text-xs text-green-600 dark:text-green-400 gap-0.5">
+                  <CheckOutline class="w-3 h-3" />已加入
+                </span>
+              {:else}
+                <button
+                  class="inline-flex items-center text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                  on:click|stopPropagation={(e) => quickAdd(sp, e)}
+                  title="加入名錄"
+                >
+                  <PlusOutline class="w-3 h-3" />加入
+                </button>
+              {/if}
+            </span>
           </div>
         {/each}
       </div>
     {:else}
       {#each children as child}
-        <svelte:self node={child} depth={depth + 1} {expandPath} {collapseAll} />
+        <svelte:self node={child} depth={depth + 1} {expandPath} {collapseAll} {scrollTarget} />
       {/each}
     {/if}
   {/if}
 </div>
+
+{#if popupSpecies}
+  <TaxonSpeciesPopup species={popupSpecies} onClose={closePopup} />
+{/if}

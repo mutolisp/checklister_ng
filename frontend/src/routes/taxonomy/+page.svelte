@@ -1,8 +1,8 @@
 <script lang="ts">
   import { Button, Card, Spinner, Input } from 'flowbite-svelte';
-  import { ArrowsCollapseOutline } from 'flowbite-svelte-icons';
   import TaxonTreeNode from '$lib/TaxonTreeNode.svelte';
   import { debounce } from '$lib/utils';
+  import { clearAll as clearExpandedNodes } from '$stores/taxonomyStore';
 
   let roots: any[] | null = null;
   let loading = false;
@@ -14,6 +14,9 @@
 
   // Expand path tracking
   let expandPath: { rank: string; value: string }[] = [];
+
+  // Scroll target: "rank:value" to scroll into view after expand
+  let scrollTarget = '';
 
   // Collapse all counter (increment to trigger)
   let collapseAll = 0;
@@ -55,6 +58,9 @@
     if (path.length > 0) {
       // 先收合全部，再展開新路徑
       collapseAll++;
+      // 設定 scroll target 為路徑最後一個節點
+      const last = path[path.length - 1];
+      scrollTarget = `${last.rank}:${last.value}`;
       // 等一個 tick 讓收合生效
       setTimeout(() => {
         expandPath = [...path];
@@ -67,6 +73,8 @@
   function doCollapseAll() {
     collapseAll++;
     expandPath = [];
+    scrollTarget = '';
+    clearExpandedNodes();
   }
 
   loadKingdoms();
@@ -124,7 +132,7 @@
     <Card class="max-w-none p-0 overflow-hidden" size="xl">
       <div class="divide-y divide-gray-100 dark:divide-gray-700">
         {#each roots as node}
-          <TaxonTreeNode {node} depth={0} {expandPath} {collapseAll} />
+          <TaxonTreeNode {node} depth={0} {expandPath} {collapseAll} {scrollTarget} />
         {/each}
       </div>
     </Card>

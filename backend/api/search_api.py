@@ -126,9 +126,13 @@ def _taicol_to_response(
         "usage_status": "accepted",
         "alternative_name_c": row.alternative_name_c or "",
         "kingdom": row.kingdom or "",
+        "kingdom_c": getattr(row, "kingdom_c", "") or "",
         "phylum": row.phylum or "",
+        "phylum_c": getattr(row, "phylum_c", "") or "",
         "class_name": row.class_name or "",
+        "class_c": getattr(row, "class_c", "") or "",
         "order": row.order or "",
+        "order_c": getattr(row, "order_c", "") or "",
         "genus": row.genus or "",
         "genus_c": row.genus_c or "",
         "nomenclature_name": getattr(row, "nomenclature_name", "") or "",
@@ -139,6 +143,8 @@ def _taicol_to_response(
         "is_brackish": getattr(row, "is_brackish", "") or "",
         "is_marine": getattr(row, "is_marine", "") or "",
         "alien_status_note": getattr(row, "alien_status_note", "") or "",
+        "protected": getattr(row, "protected", "") or "",
+        "is_hybrid": getattr(row, "is_hybrid", "") or "",
     }
 
     # 若原始匹配是 non-accepted，附上異名資訊供前端顯示
@@ -573,7 +579,13 @@ def search_by_rank(
                 "genus": row.genus or "",
                 "genus_c": row.genus_c or "",
                 "order": row.order or "",
+                "order_c": getattr(row, "order_c", "") or "",
                 "class_name": row.class_name or "",
+                "class_c": getattr(row, "class_c", "") or "",
+                "kingdom": row.kingdom or "",
+                "kingdom_c": getattr(row, "kingdom_c", "") or "",
+                "phylum": row.phylum or "",
+                "phylum_c": getattr(row, "phylum_c", "") or "",
             })
         return results
 

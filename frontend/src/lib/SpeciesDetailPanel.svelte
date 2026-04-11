@@ -105,8 +105,8 @@
   // 俗名：取第一個（去掉括號中的第二俗名）
   $: primaryCname = (species?.cname || '').replace(/\(.*\)$/, '').trim();
 
-  // 判斷是否為植物（用於顯示植物專用連結）
-  $: isPlant = species?.kingdom === 'Plantae' || species?.phylum === 'Tracheophyta' || species?.pt_name;
+  // 判斷是否為植物（用於顯示植物專用連結）— 僅以 kingdom 判斷
+  $: isPlant = species?.kingdom === 'Plantae';
 
   // 所有類群共用
   $: gbifUrl = `https://www.gbif.org/species/search?q=${encodeURIComponent(scientificName)}`;
@@ -171,6 +171,9 @@
             {#if species.endemic === 1}
               <Badge color="purple">臺灣特有</Badge>
             {/if}
+            {#if species.is_hybrid === 'true'}
+              <Badge color="pink">雜交種</Badge>
+            {/if}
           </div>
 
           <!-- 棲地 -->
@@ -211,7 +214,7 @@
         </div>
 
         <!-- Block 2: 保育狀態 -->
-        {#if species.redlist || species.iucn_category || species.cites}
+        {#if species.redlist || species.iucn_category || species.cites || species.protected}
         <div>
           <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">保育狀態</h3>
           <div class="flex flex-wrap gap-2">
@@ -227,6 +230,15 @@
             {/if}
             {#if species.cites}
               <Badge color="red">CITES 附錄 {species.cites}</Badge>
+            {/if}
+            {#if species.protected}
+              <Badge color="purple">
+                {#if species.protected === '1'}
+                  文資法珍貴稀有植物
+                {:else}
+                  保育類 {species.protected}
+                {/if}
+              </Badge>
             {/if}
           </div>
         </div>

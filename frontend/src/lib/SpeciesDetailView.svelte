@@ -5,15 +5,15 @@
   import SpeciesDetailPanel from '$lib/SpeciesDetailPanel.svelte';
 
   export let species: any[] = [];
-  export let activeSpeciesId: number | null = null;
-  export let onSelectSpecies: (id: number) => void = () => {};
+  export let activeSpeciesId: string | null = null;
+  export let onSelectSpecies: (id: string) => void = () => {};
   export let onBack: () => void = () => {};
-  export let onDelete: (id: number) => void = () => {};
+  export let onDelete: (id: string) => void = () => {};
 
   let detailContainer: HTMLDivElement;
   let mobileDrawerOpen = false;
 
-  $: activeItem = species.find(s => s.id === activeSpeciesId) || null;
+  $: activeItem = species.find(s => s.taxon_id === activeSpeciesId) || null;
 
   // 切換物種時重置 C 區 scroll + 關閉手機 drawer
   $: if (activeSpeciesId && detailContainer) {
@@ -21,7 +21,7 @@
     mobileDrawerOpen = false;
   }
 
-  function handleSelectSpecies(id: number) {
+  function handleSelectSpecies(id: string) {
     onSelectSpecies(id);
     mobileDrawerOpen = false;
   }

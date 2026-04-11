@@ -124,7 +124,7 @@ GROUP_ORDER = [
     "Gastropoda", "Bivalvia",  # 軟體
 ]
 
-# 分類群中文名
+# 分類群 common names
 GROUP_NAMES = {
     "Tracheophyta": "維管束植物",
     "Bryophyta": "苔蘚植物",
@@ -161,9 +161,9 @@ def _detect_group(item: dict) -> str:
 
 
 def _get_field_display(item: dict, field: str) -> str:
-    """取得階層欄位的顯示文字（中文名 + 拉丁名）"""
+    """取得階層欄位的顯示文字（common name + Latin name）"""
     if field == "family":
-        fc = item.get("family_cname", "") or ""
+        fc = item.get("family_cname", "") or item.get("family_c", "") or ""
         fl = item.get("family", "") or ""
         return f"{fc} ({fl})" if fc else fl
     elif field == "pt_name":
@@ -192,19 +192,26 @@ def _get_field_display(item: dict, field: str) -> str:
         return cls
     elif field == "class_name":
         cls = item.get("class_name", "") or ""
+        cls_c = item.get("class_c", "") or ""
         if item.get("phylum") == "Tracheophyta" and cls in PLANT_CLASS_NAMES:
             return PLANT_CLASS_NAMES[cls]
-        return cls
+        return f"{cls_c} ({cls})" if cls_c else cls
     elif field == "order":
-        return item.get("order", "") or ""
+        oc = item.get("order_c", "") or ""
+        ol = item.get("order", "") or ""
+        return f"{oc} ({ol})" if oc else ol
     elif field == "genus":
         gc = item.get("genus_c", "") or ""
         gl = item.get("genus", "") or ""
         return f"{gc} ({gl})" if gc else gl
     elif field == "phylum":
-        return item.get("phylum", "") or ""
+        pc = item.get("phylum_c", "") or ""
+        pl = item.get("phylum", "") or ""
+        return f"{pc} ({pl})" if pc else pl
     elif field == "kingdom":
-        return item.get("kingdom", "") or ""
+        kc = item.get("kingdom_c", "") or ""
+        kl = item.get("kingdom", "") or ""
+        return f"{kc} ({kl})" if kc else kl
     return item.get(field, "") or ""
 
 
@@ -218,7 +225,7 @@ def _get_field_sort_key(item: dict, field: str) -> str:
     return item.get(field, "") or ""
 
 
-def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str]] = None, metadata: dict = None) -> str:
+def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str]] = None, metadata: dict = None, conservation_fields: Optional[list[str]] = None) -> str:
     """從名錄產生 Markdown 文字，支援多分類群和可配置階層"""
     if metadata is None:
         metadata = {}
@@ -271,7 +278,8 @@ def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str
         # 依階層遞迴分群
         counter, sp_counter = _render_group(
             lines, group_items, levels, 0, counter, sp_counter,
-            single_group=(len(sorted_groups) == 1)
+            single_group=(len(sorted_groups) == 1),
+            conservation_fields=conservation_fields,
         )
 
     return "\n".join(lines)
@@ -285,6 +293,7 @@ def _render_group(
     counter: int,
     sp_counter: int,
     single_group: bool = False,
+    conservation_fields: Optional[list[str]] = None,
 ) -> tuple[int, int]:
     """遞迴渲染分群結構"""
 
@@ -300,7 +309,20 @@ def _render_group(
             if item.get("endemic") == 1: parts.append("#")
             if item.get("source") == "歸化": parts.append("*")
             if item.get("source") == "栽培": parts.append("†")
-            if item.get("redlist"): parts.append(item["redlist"])
+            # 保育狀態依匯出設定
+            cf = conservation_fields if conservation_fields is not None else ["redlist"]
+            status_parts = []
+            if "redlist" in cf and item.get("redlist"):
+                status_parts.append(item["redlist"])
+            if "iucn_category" in cf and item.get("iucn_category"):
+                status_parts.append(f"IUCN:{item['iucn_category']}")
+            if "cites" in cf and item.get("cites"):
+                status_parts.append(f"CITES:{item['cites']}")
+            if "protected" in cf and item.get("protected"):
+                p = item["protected"]
+                status_parts.append("文資法珍稀" if p == "1" else f"保育類{p}")
+            if status_parts:
+                parts.append(" ".join(status_parts))
             lines.append(" ".join(parts))
             sp_counter += 1
         return counter, sp_counter
@@ -332,20 +354,20 @@ def _render_group(
             lines.append("")
             lines.append(heading)
             lines.append("")
-            counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group)
+            counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group, conservation_fields)
         elif is_last_group_level or (depth > 0 and depth == len(levels) - 1):
             # 最底層分群（通常是科）：用編號列表
             lines.append("")
             lines.append(f"{counter}. **{display}** ({species_count})")
             lines.append("")
             counter += 1
-            _, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group)
+            _, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group, conservation_fields)
         else:
             # 中間層
             lines.append("")
             lines.append(f"{'#' * min(depth + 2, 4)} {display}")
             lines.append("")
-            counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group)
+            counter, sp_counter = _render_group(lines, group_items, levels, depth + 1, counter, sp_counter, single_group, conservation_fields)
 
     return counter, sp_counter
 
@@ -372,12 +394,14 @@ async def export(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
     fmt = request.query_params.get("format", "markdown")
     levels_param = request.query_params.get("levels", "")
+    conservation_param = request.query_params.get("conservation_fields", "")
     checklist = body.get("checklist", [])
 
     if not checklist:
         return PlainTextResponse("⚠️ checklist 為空", status_code=400)
 
     levels_override = [l.strip() for l in levels_param.split(",") if l.strip()] if levels_param else None
+    conservation_fields = [f.strip() for f in conservation_param.split(",") if f.strip()] if conservation_param else None
 
     if fmt == "yaml":
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
@@ -404,7 +428,7 @@ async def export(request: Request, background_tasks: BackgroundTasks):
             "site": body.get("site", ""),
             "footprintWKT": body.get("footprintWKT", ""),
         }
-        md_text = _generate_markdown(checklist, levels_override, export_metadata)
+        md_text = _generate_markdown(checklist, levels_override, export_metadata, conservation_fields)
 
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
 

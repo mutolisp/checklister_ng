@@ -220,7 +220,7 @@
 
   function selectSuggestion(item: any) {
     selectedSpecies.update(current => {
-      if (!current.find(entry => entry.id === item.id)) {
+      if (!current.find(entry => (entry as any).taxon_id === item.taxon_id)) {
         return [...current, item];
       }
       return current;

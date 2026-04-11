@@ -47,9 +47,13 @@ class TaicolName(SQLModel, table=True):
     iucn: Optional[str] = None
     redlist: Optional[str] = None
     kingdom: Optional[str] = None
+    kingdom_c: Optional[str] = None
     phylum: Optional[str] = None
+    phylum_c: Optional[str] = None
     class_name: Optional[str] = Field(default=None, sa_column_kwargs={"name": "class"})
+    class_c: Optional[str] = None
     order: Optional[str] = None
+    order_c: Optional[str] = None
     family: Optional[str] = None
     family_c: Optional[str] = None
     genus: Optional[str] = None
@@ -62,4 +66,6 @@ class TaicolName(SQLModel, table=True):
     is_brackish: Optional[str] = None
     is_marine: Optional[str] = None
     alien_status_note: Optional[str] = None
+    protected: Optional[str] = None
+    is_hybrid: Optional[str] = None
 

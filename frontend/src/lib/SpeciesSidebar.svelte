@@ -4,10 +4,10 @@
   import { ArrowLeftOutline } from 'flowbite-svelte-icons';
 
   export let species: any[] = [];
-  export let activeSpeciesId: number | null = null;
-  export let onSelectSpecies: (id: number) => void = () => {};
+  export let activeSpeciesId: string | null = null;
+  export let onSelectSpecies: (id: string) => void = () => {};
   export let onBack: () => void = () => {};
-  export let onDelete: (id: number) => void = () => {};
+  export let onDelete: (id: string) => void = () => {};
 
   let filterText = "";
 
@@ -32,7 +32,7 @@
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       if (activeSpeciesId) {
         e.preventDefault();
-        const item = species.find(s => s.id === activeSpeciesId);
+        const item = species.find(s => s.taxon_id === activeSpeciesId);
         const name = item ? `${item.cname} (${item.name})` : '';
         if (confirm(`確定要從名錄中刪除「${name}」嗎？`)) {
           onDelete(activeSpeciesId);
@@ -73,8 +73,8 @@
     {#each filteredSpecies as item}
       <button
         class="w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors
-          {activeSpeciesId === item.id ? 'bg-blue-50 dark:bg-blue-900 border-l-4 border-l-blue-500' : ''}"
-        on:click={() => onSelectSpecies(item.id)}
+          {activeSpeciesId === item.taxon_id ? 'bg-blue-50 dark:bg-blue-900 border-l-4 border-l-blue-500' : ''}"
+        on:click={() => onSelectSpecies(item.taxon_id)}
       >
         <div class="font-medium text-sm text-gray-900 dark:text-white">{item.cname}</div>
         <div class="text-xs text-gray-500 dark:text-gray-400 italic truncate">{item.name || item.fullname}</div>

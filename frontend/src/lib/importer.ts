@@ -2,6 +2,7 @@ import yaml from "js-yaml";
 import { selectedSpecies } from "$stores/speciesStore";
 import { convertFromDarwinCore } from "$lib/dwcMapper";
 import { ambiguousStore, unresolvedStore } from "$stores/importState";
+import { migrationStore } from "$stores/importState";
 import { projectMetadata } from "$stores/metadataStore";
 import { get } from "svelte/store";
 
@@ -63,24 +64,35 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
 
       if (list.length > 0) {
         const restored = list.map(convertFromDarwinCore);
-        const existing = get(selectedSpecies);
 
+        // 偵測舊版資料（有 _legacy_id 或缺少 taxon_id）
+        const needsMigration = restored.filter((d: any) => d._legacy_id || !d.taxon_id);
+        const readyItems = restored.filter((d: any) => d.taxon_id && !d._legacy_id);
+
+        if (needsMigration.length > 0) {
+          // 用學名批次查詢 API 取得新的 taxon_id
+          const migrated = await migrateLegacyItems(needsMigration);
+          readyItems.push(...migrated.resolved);
+          // migrated.ambiguous 交給 migrationStore 讓使用者選擇
+        }
+
+        const existing = get(selectedSpecies);
         if (existing.length > 0) {
           const shouldMerge = confirm("目前已有名錄資料，是否要合併匯入的資料？\n✅ 確定合併\n❌ 取消取代");
           if (shouldMerge) {
-            const existingIds = new Set(existing.map((d) => d.id));
+            const existingIds = new Set(existing.map((d: any) => d.taxon_id));
             const merged = [...existing];
-            for (const item of restored) {
-              if (!existingIds.has(item.id)) {
+            for (const item of readyItems) {
+              if (!existingIds.has((item as any).taxon_id)) {
                 merged.push(item);
               }
             }
             selectedSpecies.set(merged);
           } else {
-            selectedSpecies.set(restored);
+            selectedSpecies.set(readyItems);
           }
         } else {
-          selectedSpecies.set(restored);
+          selectedSpecies.set(readyItems);
         }
 
         return null;
@@ -128,8 +140,8 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
     }
 
     const existing = get(selectedSpecies);
-    const existingIds = new Set(existing.map((d) => d.id));
-    const merged = [...existing, ...resolved.filter((d) => !existingIds.has(d.id))];
+    const existingIds = new Set(existing.map((d: any) => d.taxon_id));
+    const merged = [...existing, ...resolved.filter((d: any) => !existingIds.has(d.taxon_id))];
     selectedSpecies.set(merged);
 
     ambiguousStore.set(ambiguous);
@@ -145,4 +157,66 @@ export async function importYAMLText(yamlText: string): Promise<string | null> {
     console.error(e);
     return "❌ 匯入失敗：" + e.message;
   }
+}
+
+/**
+ * 舊版 YAML 遷移：用學名查 API，精確匹配自動更新，多筆交給使用者選
+ */
+async function migrateLegacyItems(items: any[]): Promise<{ resolved: any[]; }> {
+  const resolved: any[] = [];
+  const pending: Record<string, { original: any; candidates: any[] }> = {};
+
+  for (const item of items) {
+    const searchName = item.name || item.fullname || '';
+    if (!searchName) {
+      // 無學名可查，保留原資料
+      resolved.push(item);
+      continue;
+    }
+
+    try {
+      const res = await fetch(`/api/search?q=${encodeURIComponent(searchName)}`);
+      if (!res.ok) {
+        resolved.push(item);
+        continue;
+      }
+      const results: any[] = await res.json();
+
+      // 精確比對：學名完全一致且只有一筆
+      const exactMatches = results.filter(
+        (r: any) => r.name === searchName || r.fullname === item.fullname
+      );
+
+      if (exactMatches.length === 1) {
+        // 自動遷移：保留舊資料的 abundance 等使用者欄位，更新 API 資料
+        const migrated = { ...exactMatches[0], abundance: item.abundance || 0 };
+        delete migrated._legacy_id;
+        resolved.push(migrated);
+      } else if (exactMatches.length > 1) {
+        // 多筆精確匹配 → 使用者選擇
+        const label = item.cname ? `${item.cname} ${searchName}` : searchName;
+        pending[label] = { original: item, candidates: exactMatches };
+      } else if (results.length === 1) {
+        // 只有一筆結果
+        const migrated = { ...results[0], abundance: item.abundance || 0 };
+        delete migrated._legacy_id;
+        resolved.push(migrated);
+      } else if (results.length > 1) {
+        // 多筆模糊結果 → 使用者選擇
+        const label = item.cname ? `${item.cname} ${searchName}` : searchName;
+        pending[label] = { original: item, candidates: results };
+      } else {
+        // 無結果，保留原資料
+        resolved.push(item);
+      }
+    } catch {
+      resolved.push(item);
+    }
+  }
+
+  if (Object.keys(pending).length > 0) {
+    migrationStore.set(pending);
+  }
+
+  return { resolved };
 }

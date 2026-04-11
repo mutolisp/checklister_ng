@@ -11,6 +11,7 @@
   import  SpeciesList  from "$lib/SpeciesList.svelte";
   import  LoadYAMLButton  from "$lib/LoadYAMLButton.svelte";
   import AmbiguousSelector from "$lib/AmbiguousSelector.svelte";
+  import MigrationSelector from "$lib/MigrationSelector.svelte";
   import SpeciesDetailView from "$lib/SpeciesDetailView.svelte";
   import ExportSettings from "$lib/ExportSettings.svelte";
   import MapPreview from "$lib/MapPreview.svelte";
@@ -65,9 +66,9 @@
 	  return sorted;
 	});
 
-  function removeSpecies(id: number) {
+  function removeSpecies(id: string) {
     const current = get(selectedSpecies);
-    selectedSpecies.set(current.filter(item => item.id !== id));
+    selectedSpecies.set(current.filter(item => (item as any).taxon_id !== id));
   }
 
   function exportYAML() {
@@ -120,11 +121,15 @@
     // 匯出設定
     let showExportSettings = false;
     let exportLevels: string[] = [];
+    let exportConservationFields: string[] = ['redlist'];
 
 	async function exportData(format: string) {
 	  let exportUrl = `/api/export?format=${format}`;
 	  if (exportLevels.length > 0) {
 	    exportUrl += `&levels=${exportLevels.join(',')}`;
+	  }
+	  if (exportConservationFields.length > 0) {
+	    exportUrl += `&conservation_fields=${exportConservationFields.join(',')}`;
 	  }
 	  const meta = get(projectMetadata);
 	  const response = await fetch(exportUrl, {
@@ -167,10 +172,10 @@
 
     // 物種詳細頁狀態
     let viewMode: 'table' | 'detail' = 'table';
-    let activeSpeciesId: number | null = null;
+    let activeSpeciesId: string | null = null;
 
     function openDetail(item: any) {
-      activeSpeciesId = item.id;
+      activeSpeciesId = item.taxon_id;
       viewMode = 'detail';
     }
 
@@ -206,7 +211,7 @@
       </Dropdown>
       <Button color="alternative" size="sm" on:click={clearChecklist}>
         <TrashBinOutline class="w-4 h-4 me-1" />清除名錄</Button>
-      <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} />
+      <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} bind:conservationFields={exportConservationFields} />
       <MapPreview />
       <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
     </div>
@@ -218,6 +223,7 @@
     {/if}
 
     <AmbiguousSelector />
+    <MigrationSelector />
 </div>
 
 <!-- Main content area -->
@@ -244,7 +250,7 @@
         // 如果刪除的是當前顯示的，選下一個或回到名錄
         if (id === activeSpeciesId) {
           const remaining = get(selectedSpecies);
-          activeSpeciesId = remaining.length > 0 ? remaining[0].id : null;
+          activeSpeciesId = remaining.length > 0 ? (remaining[0] as any).taxon_id : null;
           if (!activeSpeciesId) backToTable();
         }
       }}

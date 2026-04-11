@@ -97,27 +97,40 @@
 
   const redlistOptions = [
     { value: '', name: '—' },
-    { value: 'NLC', name: 'NLC' },
-    { value: 'NDD', name: 'NDD' },
-    { value: 'NVU', name: 'NVU' },
-    { value: 'NNT', name: 'NNT' },
-    { value: 'NEN', name: 'NEN' },
-    { value: 'NCR', name: 'NCR' },
-    { value: 'EX', name: 'EX' },
-    { value: 'EW', name: 'EW' },
-    { value: 'NA', name: 'NA' },
+    { value: 'EX', name: 'EX (滅絕)' },
+    { value: 'EW', name: 'EW (野外滅絕)' },
+    { value: 'RE', name: 'RE (區域滅絕)' },
+    { value: 'NCR', name: 'NCR (國家極危)' },
+    { value: 'NEN', name: 'NEN (國家瀕危)' },
+    { value: 'NVU', name: 'NVU (國家易危)' },
+    { value: 'NNT', name: 'NNT (國家接近受脅)' },
+    { value: 'NLC', name: 'NLC (國家安全)' },
+    { value: 'DD', name: 'DD (資料不足)' },
+    { value: 'NA', name: 'NA (不適用)' },
+    { value: 'NE', name: 'NE (未評估)' },
   ];
 
   const iucnOptions = [
     { value: '', name: '—' },
-    { value: 'DD', name: 'DD (Data Deficient)' },
-    { value: 'LC', name: 'LC (Least Concern)' },
-    { value: 'NT', name: 'NT (Near Threatened)' },
-    { value: 'VU', name: 'VU (Vulnerable)' },
-    { value: 'EN', name: 'EN (Endangered)' },
-    { value: 'CR', name: 'CR (Critically Endangered)' },
     { value: 'EX', name: 'EX (Extinct)' },
     { value: 'EW', name: 'EW (Extinct in the Wild)' },
+    { value: 'RE', name: 'RE (Regionally Extinct)' },
+    { value: 'CR', name: 'CR (Critically Endangered)' },
+    { value: 'EN', name: 'EN (Endangered)' },
+    { value: 'VU', name: 'VU (Vulnerable)' },
+    { value: 'NT', name: 'NT (Near Threatened)' },
+    { value: 'LC', name: 'LC (Least Concern)' },
+    { value: 'DD', name: 'DD (Data Deficient)' },
+    { value: 'NA', name: 'NA (Not Applicable)' },
+    { value: 'NE', name: 'NE (Not Evaluated)' },
+  ];
+
+  const protectedOptions = [
+    { value: '', name: '—' },
+    { value: 'I', name: 'I (瀕臨絕種保育類)' },
+    { value: 'II', name: 'II (珍貴稀有保育類)' },
+    { value: 'III', name: 'III (其他應予保育類)' },
+    { value: '1', name: '文資法公告珍貴稀有植物' },
   ];
 
   // 別名管理
@@ -146,7 +159,7 @@
     const editableFields = [
       'simple_name', 'name_author', 'rank', 'usage_status',
       'common_name_c', 'alternative_name_c', 'family_c', 'genus_c',
-      'is_in_taiwan', 'is_endemic', 'alien_type', 'iucn', 'redlist',
+      'is_in_taiwan', 'is_endemic', 'is_hybrid', 'alien_type', 'iucn', 'redlist', 'protected',
     ];
     for (const field of editableFields) {
       const oldVal = String(original[field] || '');
@@ -399,13 +412,23 @@
       <hr class="border-gray-200 dark:border-gray-700" />
       <p class="text-xs text-gray-400">以下欄位僅 Species 及以下層級顯示</p>
 
-      <div class="flex items-center gap-3">
-        <input type="checkbox"
-        checked={form.is_endemic === 'true'}
-        on:change={(e) => { form.is_endemic = e.currentTarget.checked ? 'true' : ''; }}
-        class="w-4 h-4 text-blue-600 rounded"
-      />
-      <span class="text-sm text-gray-700 dark:text-gray-300">臺灣特有</span>
+      <div class="flex items-center gap-6">
+        <div class="flex items-center gap-2">
+          <input type="checkbox"
+          checked={form.is_endemic === 'true'}
+          on:change={(e) => { form.is_endemic = e.currentTarget.checked ? 'true' : ''; }}
+          class="w-4 h-4 text-blue-600 rounded"
+          />
+          <span class="text-sm text-gray-700 dark:text-gray-300">臺灣特有</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="checkbox"
+          checked={form.is_hybrid === 'true'}
+          on:change={(e) => { form.is_hybrid = e.currentTarget.checked ? 'true' : 'false'; }}
+          class="w-4 h-4 text-purple-600 rounded"
+          />
+          <span class="text-sm text-gray-700 dark:text-gray-300">雜交種</span>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -423,10 +446,14 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
           <Label for="cites" class="mb-1">CITES</Label>
           <Input id="cites" bind:value={form.cites} size="sm" placeholder="I / II / III" />
+        </div>
+        <div>
+          <Label for="protected" class="mb-1">保育類/珍稀植物</Label>
+          <Select id="protected" items={protectedOptions} bind:value={form.protected} size="sm" />
         </div>
         <div>
           <Label for="alien_status_note" class="mb-1">來源參考文獻</Label>

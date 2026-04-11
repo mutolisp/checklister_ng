@@ -1,5 +1,72 @@
 # Update Log
 
+## 2026-04-11c: Taxonomy Tree Enhancements
+
+### Taxonomy Tree — Species Popup + Add to Checklist
+- **TaxonSpeciesPopup.svelte** (new): Click any species in taxonomy tree → centered popup with full detail (fetched via `/api/search` + `/api/synonyms`): species status badges, conservation status (redlist/IUCN/CITES/protected with IUCN colors), taxonomy info, synonyms list. Bottom sticky button: "加入名錄" or "已在名錄中"
+- **Quick add**: Hover on species row → "＋加入" button appears (right-aligned, opacity transition). Directly searches API and adds to store without opening popup
+- **Checklist indicator**: Species already in checklist show green "✓ 已加入" (always visible, reactive to `$selectedSpecies` store)
+- **Protected badge**: Added `protected` badge display in species list rows
+
+### Taxonomy Tree — Search Scroll-to-Target
+- Search result selection now **scrolls to the target node** after expanding the path (`scrollIntoView({ behavior: 'smooth', block: 'center' })`)
+- New `scrollTarget` prop passed through tree hierarchy, triggers scroll when matching node renders
+
+### Taxonomy Tree — Persistent Expanded State
+- **taxonomyStore.ts** (new store): `expandedNodes: Set<string>` backed by localStorage (`taxonomy_expanded` key)
+- Each node checks `$expandedNodes` on mount → auto-expands if previously opened
+- `toggle()` calls `markExpanded()` / `markCollapsed()` to persist state
+- "全部收合" button clears localStorage via `clearAll()`
+- Children cache preserved on collapse (re-expand doesn't re-fetch)
+- Navigating away and back restores full tree state
+
+### Backend — Taxonomy API
+- `taxonomy_api.py`: Removed hardcoded dictionaries (KINGDOM_NAMES, PHYLUM_NAMES, PLANT_CLASS_NAMES), now reads `kingdom_c`, `phylum_c`, `class_c`, `order_c` directly from DB via `RANK_C_COL` mapping + `MAX()` aggregate
+- `_get_species_list()`: Added `protected` field to response
+- `taxonomy_search()`: SELECT now includes `kingdom_c`, `phylum_c`, `class_c`, `order_c`
+
+## 2026-04-11b: Species Table Overhaul, Conservation Status, TaiCOL Import Redesign
+
+### Species Table (SpeciesTable.svelte)
+- **ID → TaxonID**: All components now use `taxon_id` (TaiCOL taxon ID) instead of `id` (internal name_id)
+- **Column visibility**: User-configurable columns via dropdown (persisted to localStorage)
+- **Conservation columns**: 臺灣紅皮書 (redlist), IUCN, CITES, 保育類 (protected) — each with colored badges
+- **Compact layout**: Reduced padding (`px-2 py-1`), `text-xs`, `overflow-x-auto`
+
+### Conservation Status
+- **Admin editor**: Fixed redlist options (EX/EW/RE/NCR/NEN/NVU/NNT/NLC/DD/NA/NE), IUCN options (EX/EW/RE/CR/EN/VU/NT/LC/DD/NA/NE), new `protected` dropdown (I/II/III/文資法)
+- **New field: `protected`** (保育類等級 I/II/III + 文資法珍貴稀有植物 `1`). Full stack: schema → DB → import → search API → admin → table → detail panel → export
+- **New field: `is_hybrid`** (雜交種). Full stack same as above
+- **Export settings**: Conservation status checkboxes (redlist/IUCN/CITES/protected) control what appears in Markdown/DOCX export
+
+### TaiCOL Import Redesign (taicol_import.py)
+- **Two-file import**: Now accepts both name CSV (primary) and taxon CSV (supplementary). Taxon CSV auto-detected from same directory if not explicitly provided
+- **API change**: `POST /api/admin/import-taicol` now accepts `name_file` (required) + `taxon_file` (optional) as multipart form fields
+- **Admin UI**: Two file upload inputs (name CSV + taxon CSV) with separate descriptions
+- **Backfill**: `_backfill_from_taxon_csv()` uses `taxon_id` as foreign key to fill 21 fields (common names, taxonomy hierarchy common names, conservation status, etc.)
+- **New DB fields**: `kingdom_c`, `phylum_c`, `class_c`, `order_c`, `protected`, `is_hybrid`
+- **NAME_FIELD_MAP**: 36 fields mapped from name CSV columns to model fields
+
+### Taxonomy Common Names
+- **New fields**: `kingdom_c`, `phylum_c`, `class_c` (from name CSV + taxon CSV backfill)
+- **taxonomy_api.py**: Removed hardcoded dictionaries (KINGDOM_NAMES, PHYLUM_NAMES, PLANT_CLASS_NAMES), now reads `*_c` columns directly from DB via `MAX()` aggregate
+- **export.py**: `_get_field_display()` outputs "common name (Latin name)" format for all hierarchy levels (kingdom/phylum/class/order/family/genus)
+- **Coverage**: kingdom_c: 8, phylum_c: 71, class_c: 197, order_c: 786 distinct values
+
+### External Links
+- `isPlant` check simplified to `kingdom === 'Plantae'` only (was also checking phylum/pt_name)
+- Non-plant species no longer show IPNI, POWO, 台灣植物資訊整合查詢
+
+### Old YAML Compatibility
+- `dwcMapper.ts`: `taxon_id ↔ taxonID` mapping (was `id ↔ taxonID`). Auto-detects legacy numeric IDs
+- `importer.ts`: `migrateLegacyItems()` searches by scientific name, auto-migrates exact matches, shows `MigrationSelector` popup for ambiguous matches
+- `importState.ts`: New `migrationStore` for migration state
+
+### Naming Convention
+- `_backfill_common_names` → `_backfill_from_taxon_csv` (reflects actual scope)
+- `_get_chinese_name` removed (was hardcoded, now reads from DB)
+- Comments use "common name" instead of "中文名" in function-level documentation
+
 ## 2026-04-11: Admin DB Management, QA Checks, Species Fields, Identification Keys
 
 ### Admin Name Management (`/admin` → 名錄管理 Tab)

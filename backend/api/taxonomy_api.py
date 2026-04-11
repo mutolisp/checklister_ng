@@ -20,73 +20,15 @@ RANK_LABELS = {
     "species": "種",
 }
 
-# 維管束植物 class 中文名（從 export.py 同步）
-PLANT_CLASS_NAMES = {
-    "Lycopodiopsida": "石松綱",
-    "Polypodiopsida": "水龍骨綱",
-    "Cycadopsida": "蘇鐵綱",
-    "Ginkgoopsida": "銀杏綱",
-    "Pinopsida": "松綱",
-    "Magnoliopsida": "木蘭植物綱",
+# 各階層對應的 common name 欄位
+RANK_C_COL = {
+    "kingdom": "kingdom_c",
+    "phylum": "phylum_c",
+    "class": "class_c",
+    "order": "order_c",
+    "family": "family_c",
+    "genus": "genus_c",
 }
-
-# 常見 kingdom 中文名
-KINGDOM_NAMES = {
-    "Plantae": "植物界",
-    "Animalia": "動物界",
-    "Fungi": "真菌界",
-    "Chromista": "不等鞭毛總界",
-    "Protozoa": "原生生物界",
-    "Bacteria": "細菌界",
-    "Archaea": "古菌界",
-}
-
-# 常見 phylum 中文名
-PHYLUM_NAMES = {
-    "Tracheophyta": "維管束植物門",
-    "Bryophyta": "苔類植物門",
-    "Marchantiophyta": "地錢植物門",
-    "Anthocerotophyta": "角蘚植物門",
-    "Chlorophyta": "綠藻植物門",
-    "Rhodophyta": "紅藻植物門",
-    "Charophyta": "輪藻植物門",
-    "Arthropoda": "節肢動物門",
-    "Chordata": "脊索動物門",
-    "Mollusca": "軟體動物門",
-    "Annelida": "環節動物門",
-    "Cnidaria": "刺胞動物門",
-    "Echinodermata": "棘皮動物門",
-    "Nematoda": "線蟲動物門",
-    "Porifera": "海綿動物門",
-    "Platyhelminthes": "扁形動物門",
-    "Ascomycota": "子囊菌門",
-    "Basidiomycota": "擔子菌門",
-    "Ochrophyta": "不等鞭毛藻門",
-}
-
-
-def _get_chinese_name(rank: str, latin_name: str, row_data: dict = None) -> str:
-    """取得分類階層的中文名"""
-    if rank == "kingdom":
-        return KINGDOM_NAMES.get(latin_name, "")
-    elif rank == "phylum":
-        return PHYLUM_NAMES.get(latin_name, "")
-    elif rank == "class":
-        return PLANT_CLASS_NAMES.get(latin_name, "")
-    elif rank == "family" and row_data:
-        return row_data.get("family_c", "") or ""
-    elif rank == "genus" and row_data:
-        return row_data.get("genus_c", "") or ""
-    return ""
-
-
-def _build_stats_query(rank: str, parent_filters: dict) -> str:
-    """建構統計查詢"""
-    where = "WHERE usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank='Species'"
-    for col, val in parent_filters.items():
-        safe_col = f'"{col}"' if col == "order" else f'`{col}`' if col == "class" else col
-        where += f" AND {safe_col} = '{val}'"
-    return where
 
 
 @router.get("/api/taxonomy/children",
@@ -120,12 +62,9 @@ def get_children(
                 stats_cols.append(f'COUNT(DISTINCT {r_col}) as {r}_count')
             stats_cols.append("COUNT(*) as species_count")
 
-            # 中文名欄位
-            extra_cols = ""
-            if rank == "family":
-                extra_cols = ", MAX(family_c) as family_c"
-            elif rank == "genus":
-                extra_cols = ", MAX(genus_c) as genus_c"
+            # common name 欄位 — 直接從 DB 取
+            c_col = RANK_C_COL.get(rank, "")
+            extra_cols = f", MAX({c_col}) as name_c" if c_col else ""
 
             where = "WHERE usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank='Species'"
             for col, val in parent_filters.items():
@@ -160,8 +99,8 @@ def get_children(
                         stats[f"{RANK_LABELS.get(r, r)}"] = row_dict[count_key]
                 stats["種"] = row_dict.get("species_count", 0)
 
-                # 中文名
-                name_c = _get_chinese_name(rank, name, row_dict)
+                # common name 直接從查詢結果取
+                name_c = row_dict.get("name_c", "") or ""
 
                 results.append({
                     "name": name,
@@ -209,7 +148,10 @@ def taxonomy_search(q: str = Query(..., max_length=512)):
 
             sql = f"""
                 SELECT DISTINCT simple_name, common_name_c, rank,
-                       kingdom, phylum, class as class_name, "order", family, family_c, genus, genus_c,
+                       kingdom, kingdom_c, phylum, phylum_c,
+                       class as class_name, class_c,
+                       "order", order_c,
+                       family, family_c, genus, genus_c,
                        name_author
                 FROM taicol_names
                 WHERE ({' OR '.join(like_conditions)})
@@ -244,7 +186,6 @@ def taxonomy_search(q: str = Query(..., max_length=512)):
                     display = sname
 
                 # 分類路徑（用於前端逐層展開）
-                # rank 鍵必須與 get_children 回傳的 rank_key 一致
                 path = []
                 for level in ["kingdom", "phylum", "class", "order", "family", "genus"]:
                     db_key = "class_name" if level == "class" else level
@@ -278,7 +219,7 @@ def _get_species_list(session, parent_filters: dict) -> list:
 
     sql = f"""
         SELECT simple_name, name_author, common_name_c, iucn, redlist,
-               is_endemic, alien_type, taxon_id
+               is_endemic, alien_type, taxon_id, protected
         FROM taicol_names
         {where}
         ORDER BY simple_name
@@ -295,6 +236,7 @@ def _get_species_list(session, parent_filters: dict) -> list:
             "endemic": row.is_endemic == "true",
             "alien_type": row.alien_type or "",
             "taxon_id": row.taxon_id or "",
+            "protected": row.protected or "",
         }
         for row in rows
     ]

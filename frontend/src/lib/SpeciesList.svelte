@@ -46,7 +46,7 @@
                 </span>
                 <button
                   class="text-red-500 text-sm ml-2"
-                  on:click={() => onRemove(item.id)}
+                  on:click={() => onRemove(item.taxon_id)}
                 >
                   🗑️
                 </button>

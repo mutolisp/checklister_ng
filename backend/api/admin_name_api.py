@@ -15,7 +15,7 @@ EDITABLE_FIELDS = {
     "simple_name", "name_author", "formatted_name", "rank", "usage_status",
     "common_name_c", "alternative_name_c", "family_c", "genus_c",
     "is_in_taiwan", "is_endemic", "alien_type", "iucn", "redlist",
-    "nomenclature_name", "cites", "is_fossil",
+    "nomenclature_name", "cites", "protected", "is_hybrid", "is_fossil",
     "is_terrestrial", "is_freshwater", "is_brackish", "is_marine",
     "alien_status_note",
 }
@@ -26,9 +26,9 @@ ALL_COLUMNS = [
     "usage_status", "taxon_id", "taxon_id_all", "is_in_taiwan",
     "common_name_c", "alternative_name_c",
     "is_endemic", "alien_type", "iucn", "redlist",
-    "kingdom", "phylum", 'class', '"order"', "family", "family_c",
+    "kingdom", "kingdom_c", "phylum", "phylum_c", 'class', "class_c", '"order"', "order_c", "family", "family_c",
     "genus", "genus_c",
-    "nomenclature_name", "cites", "is_fossil",
+    "nomenclature_name", "cites", "protected", "is_hybrid", "is_fossil",
     "is_terrestrial", "is_freshwater", "is_brackish", "is_marine",
     "alien_status_note",
 ]

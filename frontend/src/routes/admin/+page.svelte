@@ -7,29 +7,38 @@
   import AdminQAPanel from '$lib/AdminQAPanel.svelte';
 
   // ─── CSV 匯入 ───
-  let file: File | null = null;
+  let nameFile: File | null = null;
+  let taxonFile: File | null = null;
   let uploading = false;
-  let importResult: { status: string; rows_imported: number; time_elapsed: number } | null = null;
+  let importResult: { status: string; rows_imported: number; backfilled_records: number; taxon_csv: string | null; time_elapsed: number } | null = null;
   let importError = "";
 
-  function handleFileChange(e: Event) {
+  function handleNameFileChange(e: Event) {
     const input = e.target as HTMLInputElement;
-    file = input.files?.[0] || null;
+    nameFile = input.files?.[0] || null;
     importResult = null;
     importError = "";
   }
 
+  function handleTaxonFileChange(e: Event) {
+    const input = e.target as HTMLInputElement;
+    taxonFile = input.files?.[0] || null;
+  }
+
   async function uploadFile() {
-    if (!file) return;
+    if (!nameFile) return;
     uploading = true;
     importError = "";
     importResult = null;
     try {
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("name_file", nameFile);
+      if (taxonFile) {
+        formData.append("taxon_file", taxonFile);
+      }
       const res = await fetch("/api/admin/import-taicol", { method: "POST", body: formData });
       const data = await res.json();
-      if (res.ok) { importResult = data; } else { importError = data.error || "匯入失敗"; }
+      if (res.ok) { importResult = data; } else { importError = data.detail || data.error || "匯入失敗"; }
     } catch (e) { importError = `上傳錯誤: ${e}`; }
     uploading = false;
   }
@@ -220,29 +229,52 @@
     <TabItem title="CSV 匯入">
       <div class="max-w-2xl mt-4 space-y-4">
         <p class="text-sm text-gray-500 dark:text-gray-400">
-          上傳最新的 TaiCOL 物種名錄 CSV 檔案（學名版本）。匯入前會自動備份資料庫。
+          上傳 TaiCOL 的 name CSV 與 taxon CSV。Name CSV 為主要資料來源，taxon CSV 用於補齊 common names、保育狀態等欄位。匯入前會自動備份資料庫。
         </p>
         <Card class="max-w-none" size="xl">
           <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">上傳 TaiCOL CSV</h2>
           <div class="space-y-4">
-            <input
-              type="file" accept=".csv" on:change={handleFileChange}
-              class="block w-full text-sm text-gray-500 dark:text-gray-400
-                file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
-                file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
-                dark:file:bg-blue-900 dark:file:text-blue-300 hover:file:bg-blue-100"
-            />
-            {#if file}
-              <p class="text-sm text-gray-600 dark:text-gray-300">
-                選取檔案：{file.name}（{(file.size / 1024 / 1024).toFixed(1)} MB）
-              </p>
-            {/if}
-            <Button color="blue" on:click={uploadFile} disabled={!file || uploading} class="w-full">
+            <div>
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Name CSV（必要）</p>
+              <input
+                type="file" accept=".csv" on:change={handleNameFileChange}
+                class="block w-full text-sm text-gray-500 dark:text-gray-400
+                  file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
+                  file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700
+                  dark:file:bg-blue-900 dark:file:text-blue-300 hover:file:bg-blue-100"
+              />
+              {#if nameFile}
+                <p class="text-xs text-gray-500 mt-1">{nameFile.name}（{(nameFile.size / 1024 / 1024).toFixed(1)} MB）</p>
+              {/if}
+            </div>
+            <div>
+              <p class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Taxon CSV（選填，補齊 common names）</p>
+              <input
+                type="file" accept=".csv" on:change={handleTaxonFileChange}
+                class="block w-full text-sm text-gray-500 dark:text-gray-400
+                  file:mr-4 file:py-2 file:px-4 file:rounded file:border-0
+                  file:text-sm file:font-semibold file:bg-gray-50 file:text-gray-700
+                  dark:file:bg-gray-800 dark:file:text-gray-300 hover:file:bg-gray-100"
+              />
+              {#if taxonFile}
+                <p class="text-xs text-gray-500 mt-1">{taxonFile.name}（{(taxonFile.size / 1024 / 1024).toFixed(1)} MB）</p>
+              {:else}
+                <p class="text-xs text-gray-400 mt-1">未上傳時，會自動從 name CSV 同目錄偵測</p>
+              {/if}
+            </div>
+            <Button color="blue" on:click={uploadFile} disabled={!nameFile || uploading} class="w-full">
               {#if uploading}<Spinner size="4" class="me-2" />匯入中...{:else}<UploadOutline class="w-4 h-4 me-2" />開始匯入{/if}
             </Button>
           </div>
           {#if importResult}
-            <Alert color="green" class="mt-4">匯入成功！共 {importResult.rows_imported.toLocaleString()} 筆，耗時 {importResult.time_elapsed} 秒。</Alert>
+            <Alert color="green" class="mt-4">
+              匯入成功！共 {importResult.rows_imported.toLocaleString()} 筆名稱，
+              從 taxon CSV 補齊 {importResult.backfilled_records.toLocaleString()} 筆，
+              耗時 {importResult.time_elapsed} 秒。
+              {#if importResult.taxon_csv}
+                <br/>Taxon CSV: {importResult.taxon_csv}
+              {/if}
+            </Alert>
           {/if}
           {#if importError}
             <Alert color="red" class="mt-4">{importError}</Alert>
