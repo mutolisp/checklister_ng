@@ -362,7 +362,7 @@ def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str
 
         # 決定階層
         if levels_override:
-            levels = levels_override
+            levels = list(levels_override)  # copy
         else:
             levels = DEFAULT_HIERARCHIES.get(group_key, DEFAULT_HIERARCHIES["_default"])
 
@@ -371,6 +371,13 @@ def _generate_markdown(checklist: list[dict], levels_override: Optional[list[str
             lines.append("")
             lines.append(f"## {group_name} {group_key}")
             lines.append("")
+
+            # 跳過 levels 中與 group 偵測層級重複的欄位
+            # group_key 可能是 class_name 值（如 Aves）或 phylum 值（如 Tracheophyta）
+            if levels and levels[0] == "class_name" and group_key in DEFAULT_HIERARCHIES and group_key not in ("Tracheophyta", "Bryophyta", "Ascomycota", "Basidiomycota", "Mollusca"):
+                levels = levels[1:]  # group 已用 class 分群，跳過 class_name
+            elif levels and levels[0] == "phylum" and group_key in ("Tracheophyta", "Bryophyta", "Ascomycota", "Basidiomycota"):
+                levels = levels[1:]  # group 已用 phylum 分群，跳過 phylum
 
         # 依階層遞迴分群
         counter, sp_counter = _render_group(

@@ -228,5 +228,6 @@ SQLite（`backend/twnamelist.db`）：
 - **MCP Server**: 抽出 core 層，FastAPI + MCP 共用邏輯
 - **檢索表 OCR**: PDF OCR 解析二分法檢索表，掛到分類樹節點（目前僅維管束植物簡誌純文字版）
 - **Superfamily/Subfamily**: TaiCOL 種下中間階層匯出支援
+- **設定持久化**: 匯出設定（階層 + 保育狀態勾選）、搜尋篩選設定（分類群/特有性/原生外來）在頁面切換或重新載入後維持上次的選擇（persist to localStorage）
 - **資料庫更新流程**: TaiCOL 定期更新機制（版本比對、差異匯入、changelog）
 - **程式更新機制**: 版本檢查、自動更新提示（GitHub Release 比對）
