@@ -3,14 +3,20 @@ import { browser } from '$app/environment';
 
 export interface ProjectMetadata {
   projectName: string;
+  projectAbstract: string;
+  locationDescription: string;
   siteName: string;
+  siteNotes: string;
   footprintWKT: string;
   geometries: any; // GeoJSON FeatureCollection
 }
 
 const defaultMetadata: ProjectMetadata = {
   projectName: '',
+  projectAbstract: '',
+  locationDescription: '',
   siteName: '',
+  siteNotes: '',
   footprintWKT: '',
   geometries: { type: 'FeatureCollection', features: [] },
 };

@@ -211,8 +211,7 @@
     {#if isSpeciesList}
       <div style="padding-left: {(depth + 1) * 24}px" class="pb-2">
         {#each children as sp}
-          <div class="py-1.5 px-4 text-sm flex items-center gap-1.5 flex-wrap group hover:bg-gray-50 dark:hover:bg-gray-800/50
-            {sp.is_autonym ? 'opacity-50' : ''}">
+          <div class="py-1.5 px-4 text-sm flex items-center gap-1.5 flex-wrap group hover:bg-gray-50 dark:hover:bg-gray-800/50">
             <button class="flex items-center gap-1.5 flex-wrap text-left" on:click={() => openPopup(sp)}>
               <span class="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer">{sp.cname || '—'}</span>
               <span class="text-gray-500">{@html formatScientificName(sp.name)}</span>
@@ -220,7 +219,13 @@
                 <span class="text-gray-400 text-xs">{sp.author}</span>
               {/if}
               {#if sp.rank && sp.rank !== 'Species'}
-                <span class="text-gray-400 text-xs">({sp.rank}{sp.is_autonym ? ', autonym' : ''})</span>
+                <span class="text-gray-400 text-xs">({sp.rank})</span>
+              {/if}
+              {#if sp.is_sensu_lato}
+                <span class="text-xs text-gray-400">s.l. (廣義)</span>
+              {/if}
+              {#if sp.is_autonym}
+                <span class="text-xs text-orange-500">s.str. (狹義)</span>
               {/if}
             </button>
             {#if sp.endemic}

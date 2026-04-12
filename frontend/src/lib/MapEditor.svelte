@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, createEventDispatcher } from 'svelte';
   import { Button, Input } from 'flowbite-svelte';
+  import { browser } from '$app/environment';
   import { updateGeometries, clearGeometries, projectMetadata } from '$stores/metadataStore';
 
   export let readonly = false;
@@ -12,15 +13,21 @@
   let map: any;
   let drawnItems: any;
   let L: any;
+  let currentBaseLayer: any;
+  let sinicaOverlay: any = null;
 
   let searchQuery = "";
+
+  import { SINICA_LAYERS } from '$lib/sinicaLayers';
+
+  // 中研院 WMTS 圖層清單（靜態 pre-built，不需 runtime fetch）
+  export let sinicaLayers: { id: string; title: string }[] = SINICA_LAYERS;
 
   onMount(async () => {
     const leaflet = await import('leaflet');
     L = leaflet.default || leaflet;
     await import('leaflet-draw');
 
-    // 修正 Leaflet marker icon 路徑問題
     delete (L.Icon.Default.prototype as any)._getIconUrl;
     L.Icon.Default.mergeOptions({
       iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
@@ -28,11 +35,28 @@
       shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
     });
 
-    map = L.map(mapContainer).setView([23.5, 121], 7);
+    // 從 localStorage 恢復 view state
+    const savedView = browser ? localStorage.getItem('map_view') : null;
+    const viewState = savedView ? JSON.parse(savedView) : null;
+    const initCenter = viewState?.center || [23.5, 121];
+    const initZoom = viewState?.zoom || 7;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors'
-    }).addTo(map);
+    map = L.map(mapContainer, { zoomControl: false }).setView(initCenter, initZoom);
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    // 底圖（從 cache 恢復或預設 OSM）
+    const savedBasemap = viewState?.basemap || 'osm';
+    switchBaseLayer(savedBasemap);
+
+    // 中研院疊圖恢復
+    if (viewState?.sinicaLayer) {
+      setSinicaOverlay(viewState.sinicaLayer);
+      if (viewState.sinicaOpacity != null) setSinicaOpacity(viewState.sinicaOpacity);
+    }
+
+    // 儲存 view state on move/zoom
+    map.on('moveend', saveViewState);
+    map.on('zoomend', saveViewState);
 
     drawnItems = new L.FeatureGroup();
     map.addLayer(drawnItems);
@@ -51,7 +75,6 @@
       });
       map.addControl(drawControl);
 
-      // leaflet-draw 事件名稱用字串（避免 ESM import 問題）
       map.on('draw:created', (event: any) => {
         drawnItems.addLayer(event.layer);
         syncToStore();
@@ -124,7 +147,6 @@
   export function loadWKT(wkt: string) {
     if (!wkt || !L) return;
     try {
-      // 簡易 WKT → GeoJSON 轉換（用 terraformer）
       import('terraformer-wkt-parser').then(({ parse }) => {
         const geom = parse(wkt);
         const geojson = {
@@ -186,6 +208,72 @@
     clearGeometries();
   }
 
+  // 當前底圖/疊圖 ID（用於 save/restore）
+  let _currentBasemapType = 'osm';
+  let _currentSinicaId = '';
+  let _currentSinicaOpacity = 0.7;
+
+  function saveViewState() {
+    if (!browser || !map) return;
+    const center = map.getCenter();
+    localStorage.setItem('map_view', JSON.stringify({
+      center: [center.lat, center.lng],
+      zoom: map.getZoom(),
+      basemap: _currentBasemapType,
+      sinicaLayer: _currentSinicaId,
+      sinicaOpacity: _currentSinicaOpacity,
+    }));
+  }
+
+  export function switchBaseLayer(type: string) {
+    if (!map || !L) return;
+    if (currentBaseLayer) map.removeLayer(currentBaseLayer);
+    _currentBasemapType = type;
+
+    if (type === 'osm') {
+      currentBaseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      });
+    } else if (type === 'satellite') {
+      currentBaseLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, Maxar, Earthstar'
+      });
+    } else if (type === 'hybrid') {
+      const imagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        attribution: '&copy; Esri, Maxar, Earthstar'
+      });
+      const labels = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}');
+      currentBaseLayer = L.layerGroup([imagery, labels]);
+    }
+    if (currentBaseLayer) currentBaseLayer.addTo(map);
+    saveViewState();
+  }
+
+  export function setSinicaOverlay(layerId: string) {
+    if (!map || !L) return;
+    if (sinicaOverlay) { map.removeLayer(sinicaOverlay); sinicaOverlay = null; }
+    if (!layerId) { _currentSinicaId = ''; saveViewState(); return; }
+    _currentSinicaId = layerId;
+    sinicaOverlay = L.tileLayer(
+      `https://gis.sinica.edu.tw/tileserver/file-exists.php?img=${layerId}-png-{z}-{x}-{y}`,
+      { attribution: '&copy; 中央研究院 GIS', opacity: _currentSinicaOpacity }
+    );
+    sinicaOverlay.addTo(map);
+    saveViewState();
+  }
+
+  export function setSinicaOpacity(opacity: number) {
+    _currentSinicaOpacity = opacity;
+    if (sinicaOverlay) sinicaOverlay.setOpacity(opacity);
+    saveViewState();
+  }
+
+  export function removeSinicaOverlay() {
+    if (sinicaOverlay && map) { map.removeLayer(sinicaOverlay); sinicaOverlay = null; }
+    _currentSinicaId = '';
+    saveViewState();
+  }
+
   async function searchLocation() {
     if (!searchQuery.trim() || !map) return;
     const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}`);
@@ -202,10 +290,10 @@
 </style>
 
 {#if !readonly}
-<div class="flex gap-2 mb-2">
-  <Input size="sm" bind:value={searchQuery} placeholder="搜尋地點..." class="flex-1" on:keydown={(e) => e.key === 'Enter' && searchLocation()} />
-  <Button size="sm" color="alternative" on:click={searchLocation}>搜尋</Button>
+<div class="absolute top-2 left-12 z-[1000] flex gap-2">
+  <Input size="sm" bind:value={searchQuery} placeholder="搜尋地點..." class="w-48 bg-white/90 shadow" on:keydown={(e) => e.key === 'Enter' && searchLocation()} />
+  <Button size="xs" color="alternative" on:click={searchLocation} class="shadow">搜尋</Button>
 </div>
 {/if}
 
-<div bind:this={mapContainer} style="height: {height}" class="w-full rounded shadow border"></div>
+<div bind:this={mapContainer} style="height: {height}" class="w-full"></div>

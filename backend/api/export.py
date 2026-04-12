@@ -404,12 +404,40 @@ def _render_group(
     if depth >= len(levels):
         # 已到最底層，輸出物種（不用 markdown list，用純文字編號避免 pandoc 解析問題）
         sorted_items = sorted(items, key=lambda x: x.get("fullname", ""))
+
+        # 偵測 s.l.：收集有 infraspecific 的 binomial prefix
+        def _is_infraspecific(item):
+            rank = item.get("rank", "") or ""
+            if rank in ("Subspecies", "Variety", "Form"):
+                return True
+            # fallback: 從學名判斷
+            name = item.get("name", "") or ""
+            return any(m in name for m in (" var. ", " subsp. ", " f. ", " fo. "))
+
+        infra_prefixes = set()
+        for it in sorted_items:
+            name = it.get("name", "") or ""
+            if _is_infraspecific(it):
+                parts = name.split()
+                if len(parts) >= 3:
+                    infra_prefixes.add(f"{parts[0]} {parts[1]}")
+
         for item in sorted_items:
             sci_name = format_scientific_name_markdown(
                 item.get("fullname", ""), item.get("kingdom", ""), item.get("nomenclature_name", ""))
             cname = item.get("cname", "")
+            name = item.get("name", "") or ""
+            rank = item.get("rank", "") or ""
 
-            parts = [f"{sp_counter}. {sci_name}"]
+            # s.l./s.str. 標記
+            is_infra = _is_infraspecific(item)
+            is_sl = not is_infra and name in infra_prefixes
+            name_parts = name.split()
+            is_ss = is_infra and len(name_parts) >= 3 and name_parts[1] == name_parts[-1]
+
+            # s.l./s.str. 接在學名後、俗名前，用斜體
+            sensu = " *s.l.*" if is_sl else " *s.str.*" if is_ss else ""
+            parts = [f"{sp_counter}. {sci_name}{sensu}"]
             if cname:
                 parts.append(cname)
 

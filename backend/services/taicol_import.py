@@ -135,6 +135,14 @@ def import_taicol_csv(
     if resolved_taxon_csv:
         backfilled = _backfill_from_taxon_csv(resolved_taxon_csv)
 
+    # ── Step 3: VACUUM 重整資料庫 ──
+    try:
+        conn = sqlite3.connect(sqlite_file_path)
+        conn.execute("VACUUM")
+        conn.close()
+    except Exception:
+        pass
+
     # 清空 fuzzy 快取
     try:
         from backend.api.search_api import invalidate_cname_cache

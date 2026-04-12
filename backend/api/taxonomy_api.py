@@ -440,6 +440,16 @@ def _get_species_list(session, parent_filters: dict) -> list:
     """
     rows = session.exec(text(sql).bindparams(**params)).all()
 
+    # 先收集所有 infraspecific 的 binomial prefix，用來判斷 s.l.
+    infra_prefixes = set()
+    for row in rows:
+        rank = row.rank or ""
+        name = row.simple_name or ""
+        if rank in ("Subspecies", "Variety", "Form"):
+            parts = name.split()
+            if len(parts) >= 3:
+                infra_prefixes.add(f"{parts[0]} {parts[1]}")
+
     results = []
     for row in rows:
         name = row.simple_name or ""
@@ -451,12 +461,15 @@ def _get_species_list(session, parent_filters: dict) -> list:
             if len(parts) >= 3:
                 is_autonym = (parts[1] == parts[-1])
 
+        is_sensu_lato = (rank == "Species" and name in infra_prefixes)
+
         results.append({
             "name": name,
             "author": row.name_author or "",
             "cname": row.common_name_c or "",
             "rank": rank,
             "is_autonym": is_autonym,
+            "is_sensu_lato": is_sensu_lato,
             "iucn": row.redlist or row.iucn or "",
             "endemic": row.is_endemic == "true",
             "alien_type": row.alien_type or "",
@@ -563,4 +576,6 @@ def species_under(
         ).order_by(TaicolName.simple_name).limit(limit)
         rows = session.exec(stmt).all()
 
-        return [_taicol_to_response(row) for row in rows]
+        from backend.api.search_api import _mark_sensu_lato
+        results = [_taicol_to_response(row) for row in rows]
+        return _mark_sensu_lato(results)

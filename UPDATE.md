@@ -1,5 +1,53 @@
 # Update Log
 
+## 2026-04-12: Map Overhaul, Batch Add, Autonym s.l./s.str., Type Cleanup
+
+### Map Editor Redesign
+- **Full-screen layout**: Map fills `calc(100vh - 64px)`, no page chrome
+- **Right-side panel**: Hamburger menu (☰) → tabbed panel (細節/底圖/匯入/匯出), replaces all Modals (z-index issues with Leaflet)
+- **Basemap selection**: OSM / 衛星影像 (Esri) / 衛星+地名標註 Hybrid (Esri)
+- **Academia Sinica WMTS overlay**: 85 historical maps as transparent overlay (not basemap replacement), with opacity slider (0-100%), searchable list. Uses RESTful tile URL (`file-exists.php?img={LAYER}-png-{z}-{x}-{y}`), not KVP WMTS (returns 500). Layer list pre-built as static `sinicaLayers.ts`
+- **View state persistence**: Map center/zoom/basemap/overlay/opacity saved to localStorage (`map_view`), restored on page revisit
+- **Metadata fields**: Added projectAbstract, locationDescription, siteNotes to metadataStore (persisted to localStorage)
+
+### Batch Add to Checklist
+- **`GET /api/taxonomy/species_count`**: Count species under a taxon group with filters
+- **`GET /api/taxonomy/species_under`**: Full species data (same format as search API) for batch add
+- **Filters**: endemic, alien_type, redlist, cites, protected
+- **BatchAddModal.svelte**: Confirmation flow — >500 warns, >5000 shows limit notice. Progress bar. Dedup via taxon_id Set
+- **Taxonomy tree**: "+批次加入" button on hover for all non-species nodes
+- **SearchBox**: "+批次加入" button when "限定特定分類群" is set
+
+### Autonym s.l./s.str. Labels
+- **Backend**: `_is_autonym()` detects infraspecific epithet == specific epithet; `_mark_sensu_lato()` batch-checks DB for species with infraspecific taxa
+- **Search API**: Returns `is_autonym`, `is_sensu_lato`, `rank` fields
+- **Taxonomy tree**: Species with infraspecific → "s.l. (廣義)"; autonym → "s.str. (狹義)". Removed opacity-50 autonym styling
+- **Export**: s.l./s.str. in italic after scientific name (`*s.l.*` / `*s.str.*`)
+- **SpeciesDetailPanel**: Labels shown after scientific name
+
+### Export Fixes
+- **Pandoc compatibility**: Species use flat ordered list (no nested markdown lists). Family uses bold paragraph `**1. 科名** (N)`
+- **Indent**: 4-space indent for species under family groups
+- **Levels auto-sort**: `LEVEL_ORDER` enforces correct hierarchy regardless of user selection order
+- **Multi-group dedup**: When levels include the same rank as group detection (e.g. class_name + Aves group), skip duplicate level
+
+### ChecklistItem Type Cleanup
+- Redefined `ChecklistItem` to snake_case matching search API response
+- Removed `addSpecies()` dead code
+- Removed 5 `as any` type workarounds
+- DwC camelCase only in dwcMapper for export
+
+### Regression Test Suite
+- `tests/regression_species.json`: 54 species (8 groups × 5 + 7 special attributes × 2)
+- `tests/test_regression.py`: 15 pytest tests (search/export/taxonomy/data integrity)
+- `make test` in Makefile
+- SQLite VACUUM added to taicol_import.py post-import
+
+### Development Rules
+- Added scope guidance rule to CLAUDE.md + memory
+- Added venv path rule to memory
+- Added export strictness rule to memory
+
 ## 2026-04-11e: Export Overhaul, Admin UX, cultured→圈養
 
 ### Export Format Changes

@@ -311,6 +311,8 @@
                 <span class="text-gray-400 text-xs"> {item.family_cname}({item.family})</span>
               {/if}
             {/if}
+            {#if item.is_sensu_lato}<span class="text-xs text-gray-400 ml-1">s.l. (廣義)</span>{/if}
+            {#if item.is_autonym}<span class="text-xs text-orange-500 ml-1">s.str. (狹義)</span>{/if}
             {#if item.source === '原生'}<Badge color="green" class="text-xs ml-1">原生</Badge>{/if}
             {#if item.source === '歸化'}<Badge color="yellow" class="text-xs ml-1">歸化</Badge>{/if}
             {#if item.source === '栽培' || item.source === '圈養'}<Badge color="blue" class="text-xs ml-1">{item.source}</Badge>{/if}

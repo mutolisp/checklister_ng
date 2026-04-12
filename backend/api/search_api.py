@@ -2,7 +2,7 @@ from fastapi import APIRouter, Query
 from typing import Optional
 import logging
 import threading
-from sqlmodel import Session, select, or_, col
+from sqlmodel import Session, select, or_, col, text
 from rapidfuzz import process, fuzz
 from backend.models.schema import PlantName, PlantType, TaicolName
 from backend.db import engine, get_session
@@ -97,6 +97,42 @@ def _normalize_tw(q: str) -> list[str]:
     return variants
 
 
+def _is_autonym(simple_name: str, rank: str) -> bool:
+    """判斷是否為 autonym（infraspecific epithet == specific epithet）"""
+    if rank not in ("Subspecies", "Variety", "Form"):
+        return False
+    parts = simple_name.split()
+    return len(parts) >= 3 and parts[1] == parts[-1]
+
+
+def _mark_sensu_lato(results: list[dict]) -> list[dict]:
+    """標記 sensu lato：Species rank 且 DB 中有 accepted infraspecific taxa"""
+    species_names = [r["name"] for r in results if r.get("usage_status") == "accepted"
+                     and not r.get("is_autonym") and r["name"] and " " in r["name"]
+                     and r["name"].count(" ") == 1]  # binomial only
+    if not species_names:
+        return results
+
+    # 批次查 DB：哪些 species 有 accepted infraspecific taxa
+    with Session(engine) as session:
+        sl_species = set()
+        for sp_name in species_names:
+            cnt = session.exec(text(
+                "SELECT COUNT(*) FROM taicol_names "
+                "WHERE simple_name LIKE :prefix AND usage_status='accepted' "
+                "AND is_in_taiwan LIKE '%true%' "
+                "AND rank IN ('Subspecies','Variety','Form')"
+            ).bindparams(prefix=f"{sp_name} %")).one()
+            if cnt[0] > 0:
+                sl_species.add(sp_name)
+
+    for r in results:
+        if r["name"] in sl_species:
+            r["is_sensu_lato"] = True
+
+    return results
+
+
 def _taicol_to_response(
     row: TaicolName,
     display_cname: str = "",
@@ -149,6 +185,9 @@ def _taicol_to_response(
         "alien_status_note": getattr(row, "alien_status_note", "") or "",
         "protected": getattr(row, "protected", "") or "",
         "is_hybrid": getattr(row, "is_hybrid", "") or "",
+        "rank": row.rank or "",
+        "is_autonym": _is_autonym(row.simple_name or "", row.rank or ""),
+        "is_sensu_lato": False,  # 由後處理填入
     }
 
     # 若原始匹配是 non-accepted，附上異名資訊供前端顯示
@@ -259,7 +298,7 @@ def search_species(
             results.extend(fuzzy_results)
 
         if results:
-            return results[:30]
+            return _mark_sensu_lato(results[:30])
 
     # Fallback: 搜尋舊的 dao_pnamelist_pg（向下相容）
     if not group:

@@ -133,6 +133,12 @@
     </h2>
     <p class="text-lg text-gray-600 dark:text-gray-300 mb-4">
       {@html formatScientificName(species.fullname)}
+      {#if species.is_sensu_lato}
+        <span class="text-sm text-gray-400 ml-1">s.l. (廣義)</span>
+      {/if}
+      {#if species.is_autonym}
+        <span class="text-sm text-orange-500 ml-1">s.str. (狹義)</span>
+      {/if}
     </p>
 
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">

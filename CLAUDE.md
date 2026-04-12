@@ -81,7 +81,7 @@ SvelteKit + adapter-static + Tailwind CSS + Flowbite：
 - `src/routes/+layout.svelte` — 共用 Navbar（Home, Taxonomy, Map, Compare, Docs, Admin），active 狀態標記
 - `src/routes/+page.svelte` — 主頁面，Zone A（sticky 搜尋/匯出工具列）+ 條件渲染 table/detail view
 - `src/routes/taxonomy/+page.svelte` — 分類樹瀏覽器（可開合階層 + 搜尋 + 快捷按鈕）
-- `src/routes/map/+page.svelte` — 樣區地圖編輯器（Leaflet + 繪製/匯入/匯出 GPX/KML/WKT/GeoJSON）
+- `src/routes/map/+page.svelte` — 樣區地圖編輯器（滿版 + 右側 tabbed panel：細節/底圖/匯入/匯出）
 - `src/routes/compare/+page.svelte` — 名錄比較（2-10 份名錄：共同種/獨有種/多樣性指數/相似度矩陣）
 - `src/routes/admin/+page.svelte` — TaiCOL 名錄 CSV 上傳管理（name + taxon 雙檔上傳）
 - `src/lib/AdminNameEditor.svelte` — 名錄編輯器：CITES 下拉選單（I/II/III/I\|II/NC）、alien_status_note 條列管理（type+citation 新增/刪除/type 驗證）、俗名/別名拖拉互換+排序、所有 Select 用 placeholder 取代空值選項
@@ -115,7 +115,9 @@ SvelteKit + adapter-static + Tailwind CSS + Flowbite：
 - `src/stores/keyStore.ts` — 檢索表可用屬名集合（`availableKeys: Set<string>`，每次進入 taxonomy 頁面重新 fetch，新增檔案即時偵測）
 
 **地圖：**
-- `src/lib/MapEditor.svelte` — Leaflet 編輯器（Marker/Polyline/Polygon + GPX/KML/WKT/GeoJSON 匯入匯出 + metadataStore 連動）
+- `src/lib/MapEditor.svelte` — Leaflet 編輯器（Marker/Polyline/Polygon + GPX/KML/WKT/GeoJSON 匯入匯出 + metadataStore 連動 + 多底圖切換 + 中研院 WMTS 疊圖 + view state localStorage 持久化）
+- `src/lib/sinicaLayers.ts` — 中研院 WMTS 85 圖層清單（pre-built 靜態資料）
+- `src/lib/BatchAddModal.svelte` — 批次加入名錄 modal（species_count 預覽 + 篩選 + 進度條 + 超量警告）
 
 **工具與資料：**
 - `src/lib/formatter.ts` — 前端學名格式化（HTML italic + XSS escape）
@@ -135,7 +137,7 @@ SvelteKit + adapter-static + Tailwind CSS + Flowbite：
 
 匯出：SpeciesTable → `/api/export`（含 metadata: project/site/footprintWKT + conservation_fields）→ ZIP/YAML/CSV
 
-地圖：MapEditor → metadataStore（geometries/footprintWKT）→ YAML 匯出自動帶入
+地圖：MapEditor → metadataStore（geometries/footprintWKT/projectAbstract/locationDescription/siteNotes）→ YAML 匯出自動帶入。View state（center/zoom/basemap/overlay）→ localStorage `map_view` 持久化
 
 比較：上傳 YAML / 當前名錄 → parseChecklistYAML（支援 checklister-ng 包裹層）→ compareUtils 計算指數/矩陣
 
@@ -229,5 +231,9 @@ SQLite（`backend/twnamelist.db`）：
 - **檢索表 OCR**: PDF OCR 解析二分法檢索表，掛到分類樹節點（目前僅維管束植物簡誌純文字版）
 - **Superfamily/Subfamily**: TaiCOL 種下中間階層匯出支援
 - **設定持久化**: 匯出設定（階層 + 保育狀態勾選）、搜尋篩選設定（分類群/特有性/原生外來）在頁面切換或重新載入後維持上次的選擇（persist to localStorage）
-- **資料庫更新流程**: TaiCOL 定期更新機制（版本比對、差異匯入、changelog）
-- **程式更新機制**: 版本檢查、自動更新提示（GitHub Release 比對）
+- ~~**SQLite VACUUM**~~: 匯入後自動 VACUUM（已加入 taicol_import.py）
+- ~~**地圖改版**~~: 滿版佈局 + 底圖切換(OSM/Esri衛星/Hybrid) + 中研院歷史地圖疊圖(85圖層+透明度) + view state 持久化 + metadata popup(摘要/位置說明/備註)
+- ~~**批次加入名錄**~~: `species_under` + `species_count` API + BatchAddModal + 分類樹/搜尋篩選觸發
+- ~~**Autonym s.l./s.str.**~~: 搜尋/分類樹/匯出標記廣義/狹義
+- **TaiCOL 資料更新**: app 內下載最新 TaiCOL CSV（from TaiCOL 官方下載頁或自建 mirror）→ 觸發匯入，不需更新程式
+- **程式更新提示**: 啟動時 fetch GitHub Release API，比對本地版本 → 有新版顯示通知 + 下載連結（手動下載安裝）
