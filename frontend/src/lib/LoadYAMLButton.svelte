@@ -12,6 +12,8 @@
   let processing = false;
   let statusMessage = "";
   let fileInput: HTMLInputElement;
+  let progressCurrent = 0;
+  let progressTotal = 0;
 
   // 需確認的物種（在 modal 內顯示）
   let pendingAmbiguous: Record<string, any[]> = {};
@@ -41,6 +43,7 @@
     processing = true;
     statusMessage = "";
     pendingAmbiguous = {};
+    progressCurrent = 0;
 
     const names = textInput
       .split(/[\n,]/)
@@ -53,12 +56,16 @@
       return;
     }
 
+    progressTotal = names.length;
     let added = 0;
     let ambiguous = 0;
     let unresolved: string[] = [];
     const newAmbiguous: Record<string, any[]> = {};
 
     for (const name of names) {
+      progressCurrent++;
+      // 讓 UI 有機會重繪進度條
+      await new Promise(r => setTimeout(r, 0));
       const variants = [name];
       if (name.includes("台")) variants.push(name.replace(/台/g, "臺"));
       else if (name.includes("臺")) variants.push(name.replace(/臺/g, "台"));
@@ -79,7 +86,7 @@
 
           if (exact.length === 1) {
             selectedSpecies.update(current => {
-              if (!current.find(entry => entry.id === exact[0].id)) {
+              if (!current.find(entry => entry.taxon_id === exact[0].taxon_id)) {
                 return [...current, exact[0]];
               }
               return current;
@@ -212,6 +219,18 @@
           {/if}
         </Button>
       </div>
+
+      {#if processing && progressTotal > 0}
+        <div>
+          <div class="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+            <div class="bg-blue-600 h-2 rounded-full transition-all duration-150"
+              style="width: {Math.round(progressCurrent / progressTotal * 100)}%"></div>
+          </div>
+          <p class="text-xs text-gray-500 mt-1 text-center">
+            {progressCurrent} / {progressTotal} ({Math.round(progressCurrent / progressTotal * 100)}%)
+          </p>
+        </div>
+      {/if}
 
     {:else}
       <!-- 需確認的物種列表 -->

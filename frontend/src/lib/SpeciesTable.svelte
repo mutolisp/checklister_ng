@@ -18,7 +18,9 @@
   let perPage = 10;
   let selectedIds = new Set<string>();
   let search = "";
+  let filterGroup = "";
   let filterFamily = "";
+  let filterRank = "";
 
   // 欄位定義
   type ColumnDef = {
@@ -29,6 +31,7 @@
 
   const allColumns: ColumnDef[] = [
     { key: 'taxon_id', label: 'TaxonID', defaultVisible: true },
+    { key: 'rank', label: '階層', defaultVisible: false },
     { key: 'family', label: '科名', defaultVisible: true },
     { key: 'cname', label: '俗名', defaultVisible: true },
     { key: 'fullname', label: '學名', defaultVisible: true },
@@ -62,7 +65,7 @@
   $: isColumnVisible = (key: string) => visibleColumns.has(key);
 
   // 排序狀態
-  type SortKey = 'taxon_id' | 'family' | 'cname' | 'fullname' | 'source' | 'endemic' | 'redlist' | 'iucn_category' | 'cites' | 'protected' | 'abundance';
+  type SortKey = 'taxon_id' | 'rank' | 'family' | 'cname' | 'fullname' | 'source' | 'endemic' | 'redlist' | 'iucn_category' | 'cites' | 'protected' | 'abundance';
   let sortKey: SortKey | null = null;
   let sortAsc = true;
 
@@ -100,11 +103,81 @@
     return sortAsc ? ' ▲' : ' ▼';
   }
 
-  $: families = Array.from(new Set(data.map(d => d.family))).sort();
+  // 高階分類群選項（kingdom + class + order，去重排序）
+  $: groups = (() => {
+    const items: { value: string; label: string; rank: string }[] = [];
+    const seen = new Set<string>();
+    for (const d of data) {
+      // Kingdom
+      const k = d.kingdom || '';
+      const kc = d.kingdom_c || '';
+      if (k && !seen.has(`k:${k}`)) {
+        seen.add(`k:${k}`);
+        items.push({ value: `kingdom:${k}`, label: kc ? `${kc} (${k})` : k, rank: 'kingdom' });
+      }
+      // Class
+      const cl = d.class_name || '';
+      const clc = d.class_c || '';
+      if (cl && !seen.has(`c:${cl}`)) {
+        seen.add(`c:${cl}`);
+        items.push({ value: `class:${cl}`, label: clc ? `${clc} (${cl})` : cl, rank: 'class' });
+      }
+      // Order
+      const o = d.order || '';
+      const oc = d.order_c || '';
+      if (o && !seen.has(`o:${o}`)) {
+        seen.add(`o:${o}`);
+        items.push({ value: `order:${o}`, label: oc ? `${oc} (${o})` : o, rank: 'order' });
+      }
+    }
+    return items.sort((a, b) => a.label.localeCompare(b.label));
+  })();
+
+  // 科別（學名 + 俗名）
+  $: familyOptions = (() => {
+    const map = new Map<string, string>();
+    for (const d of data) {
+      if (d.family && !map.has(d.family)) {
+        map.set(d.family, d.family_cname || d.family_c || '');
+      }
+    }
+    return Array.from(map.entries())
+      .map(([latin, cname]) => ({ value: latin, label: cname ? `${latin} (${cname})` : latin }))
+      .sort((a, b) => a.value.localeCompare(b.value));
+  })();
+  $: families = familyOptions.map(f => f.value);
+
+  $: filteredFamilyOptions = (() => {
+    const opts = filterGroup
+      ? familyOptions.filter(f => {
+          const [rank, val] = filterGroup.split(':');
+          return data.some(d => {
+            if (d.family !== f.value) return false;
+            if (rank === 'kingdom') return d.kingdom === val;
+            if (rank === 'class') return d.class_name === val;
+            if (rank === 'order') return d.order === val;
+            return true;
+          });
+        })
+      : familyOptions;
+    return opts;
+  })();
+
+  // 名錄中的 rank 種類
+  $: rankOptions = Array.from(new Set(data.map(d => d.rank || 'Species').filter(Boolean))).sort();
+
   $: filtered = data.filter(d => {
     const match = d.fullname.includes(search) || d.cname?.includes?.(search);
     const familyMatch = filterFamily ? d.family === filterFamily : true;
-    return match && familyMatch;
+    const rankMatch = filterRank ? (d.rank || 'Species') === filterRank : true;
+    let groupMatch = true;
+    if (filterGroup) {
+      const [rank, val] = filterGroup.split(':');
+      if (rank === 'kingdom') groupMatch = d.kingdom === val;
+      else if (rank === 'class') groupMatch = d.class_name === val;
+      else if (rank === 'order') groupMatch = d.order === val;
+    }
+    return match && familyMatch && groupMatch && rankMatch;
   });
 
   $: sorted = (() => {
@@ -115,6 +188,9 @@
       switch (sortKey) {
         case 'taxon_id':
           cmp = (a.taxon_id || '').localeCompare(b.taxon_id || '');
+          break;
+        case 'rank':
+          cmp = (a.rank || '').localeCompare(b.rank || '');
           break;
         case 'family':
           cmp = (a.family || '').localeCompare(b.family || '');
@@ -225,11 +301,23 @@
 <Section class="p-4 rounded bg-white dark:bg-gray-800">
   <!-- 搜尋 + 科別篩選 + 欄位設定 + 刪除按鈕 -->
   <div class="flex flex-wrap gap-2 mb-3 items-center">
-    <Input bind:value={search} placeholder="搜尋學名或中文名..." class="w-48 lg:w-64" size="sm" />
-    <Select bind:value={filterFamily} class="w-40" size="sm">
-      <option value="">全部科別</option>
-      {#each families as fam}
-        <option value={fam}>{fam}</option>
+    <Input bind:value={search} placeholder="搜尋學名或中文名..." class="w-44 lg:w-56" size="sm" />
+    <Select bind:value={filterGroup} class="w-44" size="sm" on:change={() => { filterFamily = ''; }}>
+      <option value="">選擇高階分類群</option>
+      {#each groups as g}
+        <option value={g.value}>{g.label}</option>
+      {/each}
+    </Select>
+    <Select bind:value={filterFamily} class="w-48" size="sm">
+      <option value="">選擇科別</option>
+      {#each filteredFamilyOptions as fam}
+        <option value={fam.value}>{fam.label}</option>
+      {/each}
+    </Select>
+    <Select bind:value={filterRank} class="w-32" size="sm">
+      <option value="">全部階層</option>
+      {#each rankOptions as r}
+        <option value={r}>{r}</option>
       {/each}
     </Select>
 
@@ -260,6 +348,9 @@
       <TableHeadCell class="px-2 py-1.5"><input type="checkbox" on:change={toggleAllChecked} /></TableHeadCell>
       {#if isColumnVisible('taxon_id')}
         <TableHeadCell class="px-2 py-1.5 cursor-pointer select-none" on:click={() => toggleSort('taxon_id')}>TaxonID{sortIndicator('taxon_id')}</TableHeadCell>
+      {/if}
+      {#if isColumnVisible('rank')}
+        <TableHeadCell class="px-2 py-1.5 cursor-pointer select-none" on:click={() => toggleSort('rank')}>階層{sortIndicator('rank')}</TableHeadCell>
       {/if}
       {#if isColumnVisible('family')}
         <TableHeadCell class="px-2 py-1.5 cursor-pointer select-none" on:click={() => toggleSort('family')}>科名{sortIndicator('family')}</TableHeadCell>
@@ -307,6 +398,9 @@
           </TableBodyCell>
           {#if isColumnVisible('taxon_id')}
             <TableBodyCell class="px-2 py-1 font-mono">{item.taxon_id}</TableBodyCell>
+          {/if}
+          {#if isColumnVisible('rank')}
+            <TableBodyCell class="px-2 py-1">{item.rank || 'Species'}</TableBodyCell>
           {/if}
           {#if isColumnVisible('family')}
             <TableBodyCell class="px-2 py-1">{item.family_cname} {item.family}</TableBodyCell>

@@ -47,6 +47,9 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.on_event("startup")
 def on_startup():
     SQLModel.metadata.create_all(engine)
+    # 初始化使用者 DB（profile + checklists）
+    from backend.db import init_user_dbs
+    init_user_dbs()
 
 app.include_router(search_api.router)
 app.include_router(resolve_name.router)
@@ -57,6 +60,9 @@ app.include_router(taxonomy_api.router)
 app.include_router(key_api.router)
 app.include_router(admin_name_api.router)
 app.include_router(qa_api.router)
+
+from backend.api import profile_api
+app.include_router(profile_api.router)
 
 # Serve frontend static files
 _frontend_dir = os.environ.get(

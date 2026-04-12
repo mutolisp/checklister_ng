@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Input, Label, Textarea, Badge } from 'flowbite-svelte';
+  import { Button, Input, Badge } from 'flowbite-svelte';
   import { DownloadOutline, UploadOutline, TrashBinOutline, BarsOutline, CloseOutline } from 'flowbite-svelte-icons';
   import MapEditor from '$lib/MapEditor.svelte';
   import { projectMetadata } from '$stores/metadataStore';
@@ -151,30 +151,41 @@
       <div class="flex-1 overflow-y-auto p-3">
 
         {#if activeTab === 'metadata'}
-          <div class="space-y-3">
-            <div>
-              <Label class="mb-1 text-xs">計畫名稱</Label>
-              <Input size="sm" bind:value={$projectMetadata.projectName} placeholder="輸入計畫名稱..." />
-            </div>
-            <div>
-              <Label class="mb-1 text-xs">摘要</Label>
-              <Textarea bind:value={$projectMetadata.projectAbstract} placeholder="計畫摘要說明..." rows={3} class="text-sm" />
-            </div>
-            <div>
-              <Label class="mb-1 text-xs">位置說明</Label>
-              <Input size="sm" bind:value={$projectMetadata.locationDescription} placeholder="例如：臺灣南部恆春半島..." />
-            </div>
-            <div>
-              <Label class="mb-1 text-xs">樣區名稱</Label>
-              <Input size="sm" bind:value={$projectMetadata.siteName} placeholder="輸入樣區名稱..." />
-            </div>
-            <div>
-              <Label class="mb-1 text-xs">備註</Label>
-              <Textarea bind:value={$projectMetadata.siteNotes} placeholder="其他備註..." rows={2} class="text-sm" />
-            </div>
+          <div class="space-y-2">
+            <p class="text-xs text-gray-400">專案資訊（從 navbar 專案選單編輯）</p>
+            <table class="text-xs w-full">
+              <tbody>
+                <tr class="border-b border-gray-100 dark:border-gray-700">
+                  <td class="py-1.5 text-gray-500 w-20">計畫名稱</td>
+                  <td class="py-1.5 text-gray-800 dark:text-gray-200">{$projectMetadata.projectName || '—'}</td>
+                </tr>
+                {#if $projectMetadata.projectAbstract}
+                <tr class="border-b border-gray-100 dark:border-gray-700">
+                  <td class="py-1.5 text-gray-500">摘要</td>
+                  <td class="py-1.5 text-gray-800 dark:text-gray-200">{$projectMetadata.projectAbstract}</td>
+                </tr>
+                {/if}
+                {#if $projectMetadata.locationDescription}
+                <tr class="border-b border-gray-100 dark:border-gray-700">
+                  <td class="py-1.5 text-gray-500">位置</td>
+                  <td class="py-1.5 text-gray-800 dark:text-gray-200">{$projectMetadata.locationDescription}</td>
+                </tr>
+                {/if}
+                <tr class="border-b border-gray-100 dark:border-gray-700">
+                  <td class="py-1.5 text-gray-500">樣區</td>
+                  <td class="py-1.5 text-gray-800 dark:text-gray-200">{$projectMetadata.siteName || '—'}</td>
+                </tr>
+                {#if $projectMetadata.siteNotes}
+                <tr class="border-b border-gray-100 dark:border-gray-700">
+                  <td class="py-1.5 text-gray-500">備註</td>
+                  <td class="py-1.5 text-gray-800 dark:text-gray-200">{$projectMetadata.siteNotes}</td>
+                </tr>
+                {/if}
+              </tbody>
+            </table>
             {#if hasGeometry}
               <div>
-                <Label class="mb-1 text-xs">WKT</Label>
+                <p class="text-xs text-gray-500 mb-1">WKT</p>
                 <pre class="text-xs text-gray-500 bg-gray-50 dark:bg-gray-900 p-2 rounded max-h-24 overflow-y-auto break-all whitespace-pre-wrap">{$projectMetadata.footprintWKT}</pre>
               </div>
             {/if}

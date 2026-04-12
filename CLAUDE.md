@@ -90,7 +90,10 @@ SvelteKit + adapter-static + Tailwind CSS + Flowbite：
 
 **名錄表格（table view）：**
 - `src/lib/SearchBox.svelte` — 搜尋 + 統一篩選面板（高階分類群 icon + 限定特定分類群 + 特有性/原生外來）
-- `src/lib/SpeciesTable.svelte` — 可排序表格（TaxonID/科名/俗名/學名/來源/特有/臺灣紅皮書/IUCN/CITES/保育類/數量）+ 使用者可自訂顯示欄位（localStorage 持久化）+ abundance inline 編輯 + 鍵盤快捷鍵（Delete 刪除已勾選）+ 使用 `taxon_id` 做為唯一識別
+- `src/lib/SpeciesTable.svelte` — 可排序表格（TaxonID/階層/科名/俗名/學名/來源/特有/臺灣紅皮書/IUCN/CITES/保育類/數量）+ 使用者可自訂顯示欄位（localStorage 持久化）+ 三層篩選（高階分類群→科別→階層 rank）+ abundance inline 編輯 + 鍵盤快捷鍵（Delete 刪除已勾選）+ 使用 `taxon_id` 做為唯一識別
+- `src/lib/ProjectEditModal.svelte` — 新建/編輯專案 metadata popup（計畫名稱/摘要/位置說明/樣區名稱/備註）
+- `src/stores/projectStore.ts` — 多專案管理（createProject/saveProject/loadProject/newProject/deleteProject，DB ↔ localStorage sync）
+- `src/stores/profileStore.ts` — 偏好設定（setPreference/getPreference，localStorage + DB 雙寫）
 - `src/lib/ExportSettings.svelte` — 匯出設定 modal（分類階層 + 保育狀態勾選：臺灣紅皮書/IUCN/CITES/保育類）
 - `src/lib/MapPreview.svelte` — 地圖 pop-up 預覽（lazy load）
 - `src/lib/LoadYAMLButton.svelte` — 批次匯入 modal（貼上名稱/上傳檔案 → 三階段處理：精確匹配/多筆確認/未收錄）
@@ -224,16 +227,23 @@ SQLite（`backend/twnamelist.db`）：
 - ~~**分類樹批次加入名錄**~~: `BatchAddModal` + `GET /api/taxonomy/species_under` + `species_count`，含篩選（來源/特有/紅皮書/CITES/保育類）、500 筆警告、5000 筆上限、loading 進度
 - ~~**進階篩選批次加入**~~: SearchBox 「限定特定分類群」設定後顯示「+批次加入」按鈕，復用 BatchAddModal
 
+## Done (from Planned)
+
+- ~~**SQLite VACUUM**~~: 匯入後自動 VACUUM
+- ~~**地圖改版**~~: 滿版 + 多底圖 + 中研院 WMTS 疊圖 + view state 持久化
+- ~~**批次加入名錄**~~: species_under/species_count API + BatchAddModal
+- ~~**Autonym s.l./s.str.**~~: 搜尋/分類樹/匯出標記廣義/狹義
+- ~~**User Profile + Checklist DB (Phase 1)**~~: 三 DB 架構（user_profile.db + checklists.db）+ profile_api CRUD + projectStore/profileStore + navbar 專案選單 + ProjectEditModal
+
 ## Planned
 
-- **i18n**: 正體中文 / English / Japanese 語言切換
+### Phase 2: 待實作
+
+- **搜尋/瀏覽歷史記錄**：search_history + recent_species 表（研究中）
+- **設定持久化**：匯出設定/搜尋篩選 persist（Phase 1 user_preferences 涵蓋）
+- **i18n**: 正體中文 / English / Japanese
 - **MCP Server**: 抽出 core 層，FastAPI + MCP 共用邏輯
-- **檢索表 OCR**: PDF OCR 解析二分法檢索表，掛到分類樹節點（目前僅維管束植物簡誌純文字版）
-- **Superfamily/Subfamily**: TaiCOL 種下中間階層匯出支援
-- **設定持久化**: 匯出設定（階層 + 保育狀態勾選）、搜尋篩選設定（分類群/特有性/原生外來）在頁面切換或重新載入後維持上次的選擇（persist to localStorage）
-- ~~**SQLite VACUUM**~~: 匯入後自動 VACUUM（已加入 taicol_import.py）
-- ~~**地圖改版**~~: 滿版佈局 + 底圖切換(OSM/Esri衛星/Hybrid) + 中研院歷史地圖疊圖(85圖層+透明度) + view state 持久化 + metadata popup(摘要/位置說明/備註)
-- ~~**批次加入名錄**~~: `species_under` + `species_count` API + BatchAddModal + 分類樹/搜尋篩選觸發
-- ~~**Autonym s.l./s.str.**~~: 搜尋/分類樹/匯出標記廣義/狹義
-- **TaiCOL 資料更新**: app 內下載最新 TaiCOL CSV（from TaiCOL 官方下載頁或自建 mirror）→ 觸發匯入，不需更新程式
-- **程式更新提示**: 啟動時 fetch GitHub Release API，比對本地版本 → 有新版顯示通知 + 下載連結（手動下載安裝）
+- **檢索表 OCR**: PDF OCR 解析二分法檢索表
+- **Superfamily/Subfamily**: TaiCOL 種下中間階層匯出
+- **TaiCOL 資料更新**: app 內下載最新 TaiCOL CSV → 觸發匯入
+- **程式更新提示**: GitHub Release API 版本比對 → 通知

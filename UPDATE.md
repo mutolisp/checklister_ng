@@ -1,5 +1,33 @@
 # Update Log
 
+## 2026-04-12b: User Profile DB, Project Management, Table Filters
+
+### User Profile + Checklist DB
+- **Triple DB architecture**: `twnamelist.db` (TaiCOL, read-only) + `user_profile.db` (preferences) + `checklists.db` (multi-project checklists)
+- **Storage**: dev mode → `backend/`, packaged → user app data dir (macOS `~/Library/Application Support/`, Windows `%LOCALAPPDATA%/`)
+- **`db.py`**: `_get_data_dir()` auto-detects, `init_user_dbs()` creates schema on startup
+- **`user_schema.py`**: `UserPreference` (key/value), `Project` (name/abstract/location/site/notes/WKT/GeoJSON), `ChecklistItem` (project_id FK + taxon_id + species_data_json + abundance)
+- **`profile_api.py`**: Full CRUD — preferences get/set/bulk, projects CRUD, species add/bulk/delete, profile export/import (JSON), project geometries for map
+
+### Project Management UI
+- **Navbar project menu**: Dropdown with current project name, new/edit/save/load/delete
+- **ProjectEditModal.svelte**: Popup for new/edit project metadata (name/abstract/location/site/notes), z-index fix for map page
+- **`projectStore.ts`**: createProject, saveProject (diff sync), loadProject, newProject, deleteProject
+- **`profileStore.ts`**: setPreference (localStorage + DB), getPreference, syncPreferencesFromDB, exportProfile/importProfile
+- Map page "細節" tab changed to read-only display (edit from navbar)
+
+### SpeciesTable Enhancements
+- **Rank column**: New toggleable column showing Species/Subspecies/Variety/Form
+- **Rank filter**: Dropdown to filter by taxonomic rank
+- **Group filter**: Filter by kingdom/class/order (with common names), cascading to family filter
+- **Family filter**: Shows `Lauraceae (樟科)` format (Latin + common name)
+- **Placeholders**: "選擇高階分類群" / "選擇科別" / "全部階層"
+
+### Batch Import Progress
+- LoadYAMLButton: Progress bar during batch text import (N/M with %)
+- `await setTimeout(0)` yield for UI re-render between items
+- Fixed `entry.id` → `entry.taxon_id`
+
 ## 2026-04-12: Map Overhaul, Batch Add, Autonym s.l./s.str., Type Cleanup
 
 ### Map Editor Redesign
