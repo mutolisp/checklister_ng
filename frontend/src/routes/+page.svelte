@@ -1,10 +1,8 @@
 <script lang="ts">
   import { Badge, Button } from 'flowbite-svelte';
   import { Alert, Label, Input } from 'flowbite-svelte';
-  import { Dropdown, DropdownItem, DropdownDivider, DropdownHeader } from 'flowbite-svelte';
   // Navbar moved to +layout.svelte
-  import { DownloadSolid, ChevronDownOutline, TrashBinOutline } from 'flowbite-svelte-icons';
-  import { FileOutline, FileCodeOutline, FileWordOutline } from 'flowbite-svelte-icons';
+  import { DownloadSolid, TrashBinOutline } from 'flowbite-svelte-icons';
   import { Card } from 'flowbite-svelte';
   import  SearchBox  from "$lib/SearchBox.svelte";
   import  SpeciesTable from "$lib/SpeciesTable.svelte";
@@ -122,9 +120,15 @@
     let showExportSettings = false;
     let exportLevels: string[] = [];
     let exportConservationFields: string[] = ['redlist'];
+    let exportFormat: string = 'bundle';
 
-	async function exportData(format: string) {
-	  let exportUrl = `/api/export?format=${format}`;
+	async function handleExport() {
+	  if (exportFormat === 'yaml') {
+	    exportYAML();
+	    return;
+	  }
+
+	  let exportUrl = `/api/export?format=${exportFormat}`;
 	  if (exportLevels.length > 0) {
 	    exportUrl += `&levels=${exportLevels.join(',')}`;
 	  }
@@ -152,7 +156,11 @@
 	  const url = URL.createObjectURL(blob);
 	  const a = document.createElement("a");
 	  a.href = url;
-      a.download = `checklist-${format}.zip`
+	  if (exportFormat === 'csv') {
+	    a.download = 'checklist.csv';
+	  } else {
+	    a.download = `checklist-${exportFormat}.zip`;
+	  }
 	  a.click();
 	  URL.revokeObjectURL(url);
 	}
@@ -195,25 +203,12 @@
     </div>
 
     <div class="flex flex-wrap gap-2 items-center">
-      <Button color="alternative" size="sm">
-        <DownloadSolid class="w-4 h-4 me-1" />Export
-        <ChevronDownOutline class="w-4 h-4 ms-1" />
+      <Button color="blue" size="sm" on:click={handleExport}>
+        <DownloadSolid class="w-4 h-4 me-1" />匯出名錄
       </Button>
-      <Dropdown>
-        <DropdownItem on:click={() => exportData('docx')}>
-          <FileWordOutline class="w-4 h-4 me-2" />匯出 Word (.docx)</DropdownItem>
-        <DropdownItem on:click={() => exportData('markdown')}>
-          <FileOutline class="w-4 h-4 me-2" />匯出 Markdown (.md)</DropdownItem>
-        <DropdownItem on:click={() => exportData('csv')}>
-          <FileOutline class="w-4 h-4 me-2" />匯出 CSV (DwC)</DropdownItem>
-        <DropdownItem on:click={exportYAML}>
-          <FileCodeOutline class="w-4 h-4 me-2" />匯出 DwC YAML</DropdownItem>
-        <DropdownDivider />
-        <DropdownItem color="red" on:click={exportUnresolved}>匯出未解析俗名</DropdownItem>
-      </Dropdown>
       <Button color="alternative" size="sm" on:click={clearChecklist}>
         <TrashBinOutline class="w-4 h-4 me-1" />清除名錄</Button>
-      <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} bind:conservationFields={exportConservationFields} />
+      <ExportSettings bind:show={showExportSettings} bind:levels={exportLevels} bind:conservationFields={exportConservationFields} bind:exportFormat={exportFormat} />
       <MapPreview />
       <Badge large color="green">已選擇/匯入物種數：{$selectedSpecies.length}</Badge>
     </div>
@@ -221,6 +216,7 @@
     {#if Array.isArray($unresolvedStore) && $unresolvedStore.length > 0}
       <Alert color="failure">
         ⚠️ 無法解析的名稱：{$unresolvedStore.join("、")}
+        <button class="ml-2 underline text-red-700 dark:text-red-400 text-sm" on:click={exportUnresolved}>匯出未解析俗名</button>
       </Alert>
     {/if}
 

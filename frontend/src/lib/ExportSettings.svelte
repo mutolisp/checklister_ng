@@ -1,10 +1,19 @@
 <script lang="ts">
-  import { Button, Checkbox, Label, Modal } from 'flowbite-svelte';
+  import { Button, Checkbox, Label, Modal, Select } from 'flowbite-svelte';
   import { AdjustmentsHorizontalOutline } from 'flowbite-svelte-icons';
 
   export let show = false;
   export let levels: string[] = [];
   export let conservationFields: string[] = ['redlist'];
+  export let exportFormat: string = 'bundle';
+
+  const formatOptions = [
+    { value: 'bundle', name: '名錄（Word + CSV）' },
+    { value: 'docx', name: 'Word (.docx)' },
+    { value: 'markdown', name: 'Markdown (.md)' },
+    { value: 'csv', name: 'CSV (DwC)' },
+    { value: 'yaml', name: 'DwC YAML' },
+  ];
 
   const allLevels = [
     { value: 'kingdom', label: '界 Kingdom' },
@@ -41,6 +50,7 @@
   function resetToDefault() {
     levels = [];
     conservationFields = ['redlist'];
+    exportFormat = 'bundle';
   }
 </script>
 
@@ -85,6 +95,12 @@
         </div>
       {/each}
     </div>
+  </div>
+
+  <!-- 匯出格式 -->
+  <div class="mt-6 pt-4 border-t border-gray-200 dark:border-gray-600">
+    <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">匯出格式</h3>
+    <Select size="sm" bind:value={exportFormat} items={formatOptions} />
   </div>
 
   <svelte:fragment slot="footer">

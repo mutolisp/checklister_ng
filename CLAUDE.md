@@ -111,7 +111,7 @@ SvelteKit + adapter-static + Tailwind CSS + Flowbite：
   - `isPlant` 判斷僅用 `kingdom === 'Plantae'`
 
 **分類樹：**
-- `src/lib/TaxonTreeNode.svelte` — 遞迴樹節點（lazy load + expandPath 自動展開 + scrollTarget 自動捲動 + collapseAll + 展開狀態持久化）。物種列表支援：click 開 popup、hover 快速加入名錄、已加入標記。Autonym 半透明顯示。病毒 realm 階層特殊處理
+- `src/lib/TaxonTreeNode.svelte` — 遞迴樹節點（lazy load + expandPath 自動展開 + scrollTarget 自動捲動 + collapseAll + 展開狀態持久化）。物種列表支援：click 開 popup、hover 快速加入名錄、已加入標記。Autonym 標示 s.str.（狹義）標籤。病毒 realm 階層特殊處理
 - `src/lib/TaxonSpeciesPopup.svelte` — 物種詳細 popup（fetch search API + synonyms API，含保育狀態/物種狀態/同物異名/加入名錄按鈕）
 - `src/lib/KeyPopup.svelte` — 檢索表 popup（fetch `/api/key/{genus}`，623 屬可用，資料來源：臺灣維管束植物簡誌）
 - `src/stores/taxonomyStore.ts` — 分類樹展開狀態（`expandedNodes: Set<string>`，persisted to localStorage `taxonomy_expanded`）

@@ -251,6 +251,8 @@
       'simple_name', 'name_author', 'rank', 'usage_status',
       'common_name_c', 'alternative_name_c', 'family_c', 'genus_c',
       'is_in_taiwan', 'is_endemic', 'is_hybrid', 'alien_type', 'iucn', 'redlist', 'protected',
+      'cites', 'alien_status_note',
+      'is_fossil', 'is_terrestrial', 'is_freshwater', 'is_brackish', 'is_marine',
     ];
     for (const field of editableFields) {
       const oldVal = String(original[field] || '');

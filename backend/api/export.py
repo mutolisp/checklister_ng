@@ -568,14 +568,18 @@ async def export(request: Request, background_tasks: BackgroundTasks):
         dwc_checklist = [convert_to_dwc(item) for item in checklist]
         with tempfile.NamedTemporaryFile(mode="w+", delete=False, newline='', suffix=".csv", encoding="utf-8-sig") as f:
             if dwc_checklist:
-                writer = csv.DictWriter(f, fieldnames=dwc_checklist[0].keys())
+                # 收集所有 row 的 key 聯集，確保欄位一致
+                all_keys: list[str] = list(dict.fromkeys(
+                    k for row in dwc_checklist for k in row.keys()
+                ))
+                writer = csv.DictWriter(f, fieldnames=all_keys, extrasaction="ignore")
                 writer.writeheader()
                 writer.writerows(dwc_checklist)
             f.flush()
             background_tasks.add_task(os.unlink, f.name)
             return FileResponse(f.name, media_type="text/csv", filename="checklist.csv")
 
-    elif fmt in ["markdown", "docx"]:
+    elif fmt in ["markdown", "docx", "bundle"]:
         export_metadata = {
             "project": body.get("project", ""),
             "site": body.get("site", ""),
@@ -606,11 +610,22 @@ async def export(request: Request, background_tasks: BackgroundTasks):
             zip_filename = f"checklist{timestamp}.zip"
             zip_path = os.path.join(tmpdir, zip_filename)
 
+            # 產生 CSV 檔（bundle 格式需要）
+            csv_path = base_path + ".csv"
+            if dwc_checklist:
+                all_keys: list[str] = list(dict.fromkeys(
+                    k for row in dwc_checklist for k in row.keys()
+                ))
+                with open(csv_path, "w", newline="", encoding="utf-8-sig") as cf:
+                    writer = csv.DictWriter(cf, fieldnames=all_keys, extrasaction="ignore")
+                    writer.writeheader()
+                    writer.writerows(dwc_checklist)
+
             if fmt == "markdown":
                 with zipfile.ZipFile(zip_path, "w") as zipf:
                     zipf.write(md_path, "checklist.md")
                     zipf.write(yaml_path, "checklist.yml")
-            elif fmt == "docx":
+            elif fmt in ["docx", "bundle"]:
                 docx_path = base_path + ".docx"
                 reference_path = os.path.join(_get_base_path(), "backend", "api", "reference.docx")
                 # 檢查 pandoc 和 reference.docx 是否存在
@@ -674,6 +689,8 @@ async def export(request: Request, background_tasks: BackgroundTasks):
                 with zipfile.ZipFile(zip_path, "w") as zipf:
                     zipf.write(docx_path, "checklist.docx")
                     zipf.write(yaml_path, "checklist.yml")
+                    if fmt == "bundle" and os.path.isfile(csv_path):
+                        zipf.write(csv_path, "checklist.csv")
 
             final_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
             shutil.copy(zip_path, final_zip.name)

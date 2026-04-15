@@ -83,6 +83,29 @@ def list_projects():
         return result
 
 
+@router.get("/api/projects/geometries")
+def get_all_project_geometries():
+    """取得所有有幾何資料的專案（供地圖疊加顯示）"""
+    with Session(checklists_engine) as s:
+        projects = s.exec(
+            select(Project).where(Project.footprint_wkt != "")
+        ).all()
+        return [
+            {
+                "id": p.id,
+                "name": p.name,
+                "site_name": p.site_name,
+                "footprint_wkt": p.footprint_wkt,
+                "geometries_json": p.geometries_json,
+                "species_count": s.exec(
+                    text("SELECT COUNT(*) FROM checklist_items WHERE project_id = :pid").bindparams(pid=p.id)
+                ).one()[0],
+                "modified_at": p.modified_at,
+            }
+            for p in projects
+        ]
+
+
 @router.get("/api/projects/{project_id}")
 def get_project(project_id: int):
     with Session(checklists_engine) as s:
@@ -325,28 +348,3 @@ async def import_profile(body: dict):
             imported_projects += 1
 
     return {"status": "ok", "preferences": len(prefs), "projects": imported_projects}
-
-
-# ── Map: 所有專案的幾何資料 ──────────────────────────────
-
-@router.get("/api/projects/geometries")
-def get_all_project_geometries():
-    """取得所有有幾何資料的專案（供地圖疊加顯示）"""
-    with Session(checklists_engine) as s:
-        projects = s.exec(
-            select(Project).where(Project.footprint_wkt != "")
-        ).all()
-        return [
-            {
-                "id": p.id,
-                "name": p.name,
-                "site_name": p.site_name,
-                "footprint_wkt": p.footprint_wkt,
-                "geometries_json": p.geometries_json,
-                "species_count": s.exec(
-                    text("SELECT COUNT(*) FROM checklist_items WHERE project_id = :pid").bindparams(pid=p.id)
-                ).one()[0],
-                "modified_at": p.modified_at,
-            }
-            for p in projects
-        ]
