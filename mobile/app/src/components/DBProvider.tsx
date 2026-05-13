@@ -18,17 +18,35 @@ export function DBProvider({ children }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    const t0 = Date.now();
     (async () => {
       try {
+        const tInit = Date.now();
         await initDb((step) => {
-          if (!cancelled) setProgress(step);
+          if (cancelled) return;
+          setProgress(step);
+          // eslint-disable-next-line no-console
+          console.log(`[startup] ${step}  +${Date.now() - t0}ms`);
         });
         if (cancelled) return;
+        // eslint-disable-next-line no-console
+        console.log(`[startup] initDb done  +${Date.now() - tInit}ms`);
+
         setProgress('載入偏好設定...');
+        const tSettings = Date.now();
         loadSettings();
+        // eslint-disable-next-line no-console
+        console.log(`[startup] loadSettings  +${Date.now() - tSettings}ms`);
+
         setProgress('載入當前記錄...');
+        const tActive = Date.now();
         refreshActiveSession();
         refreshActivePlot();
+        // eslint-disable-next-line no-console
+        console.log(`[startup] refreshActive  +${Date.now() - tActive}ms`);
+
+        // eslint-disable-next-line no-console
+        console.log(`[startup] TOTAL JS init  +${Date.now() - t0}ms`);
         setReady(true);
       } catch (e) {
         if (cancelled) return;
