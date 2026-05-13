@@ -215,6 +215,95 @@ SQLite（`backend/twnamelist.db`）：
 - 改完才發現壞了等於沒改。Measure twice, cut once。
 - 使用者提出需求時，若 scope 不清楚（影響範圍、邊界條件、實作方式、向下相容），**先引導釐清再動手**。
 - 前端資料欄位一律用 **snake_case**（匹配 API 回傳），DwC camelCase 只在匯出時透過 `dwcMapper` 轉換。
+- 用詞：UI 涉及「navigation bar / tab bar / drawer」等概念時，中文一律寫「**導覽列**」（非「導航」）。Code 識別符仍用英文 `navigation` / `tabs`。
+
+## Mobile App（`mobile/app/`）
+
+Mobile 與 desktop 是兩套獨立 codebase；架構、UI 慣例、build pipeline 都不同。動 mobile 時請**獨立評估**，不要套用 desktop 慣例。
+
+### Stack
+
+- **Expo SDK 54 + React Native 0.81 + TypeScript strict**
+- Navigation: **Expo Router 6**（檔案路徑 routing，typed routes 開啟）
+- 樣式: **NativeWind 4 + Tailwind 3.4**（class-based）
+- State: **Zustand 5**（極簡 store，避免 Redux boilerplate）
+- SQLite: **`@op-engineering/op-sqlite`**（JSI、`executeSync` 同步 API）
+- Gesture: `react-native-gesture-handler` + `react-native-reanimated`
+- Maps: `react-native-maps`（iOS Apple Maps / Android Google Maps）
+
+### 跨平台規則（重要）
+
+iOS 與 Android 都要支援。以下 API 是 **iOS-only**，禁止直接呼叫；統一走兩個跨平台共用元件：
+
+| iOS-only API | 統一替代 |
+|--------------|---------|
+| `Alert.prompt` | `promptText(opts): Promise<string \| null>` from `src/components/TextPromptModal.tsx` |
+| `ActionSheetIOS.showActionSheetWithOptions` | `showActionSheet(opts): Promise<number>` from `src/components/ActionSheet.tsx`（iOS 內部仍走 native ActionSheetIOS 保 HIG，Android 走 Modal bottom sheet）|
+
+兩個元件都是 **imperative API + module-level zustand store + host component**（`<TextPromptHost />` / `<ActionSheetHost />`）掛在 `app/_layout.tsx`，整 app 共用。**禁止用 `Platform.OS === 'ios'` if/else 模式**寫多平台分支（除非是 KeyboardAvoidingView behavior 等天然差異）— 之前的 Alert.alert fallback 多次被發現選項數或可用功能在 Android 上退化。
+
+Audit 流程（任何新增彈出/選擇 UI 後跑）：
+
+```bash
+cd mobile/app
+grep -rn "Alert.prompt\|ActionSheetIOS" src/ app/   # 只應該出現在 ActionSheet.tsx / TextPromptModal.tsx 內部
+grep -rn "Platform.OS === 'ios'" src/ app/          # 只應出現在 KeyboardAvoidingView behavior + tabBar 高度
+```
+
+其他天然跨平台 pattern（這些 OK）：
+- `KeyboardAvoidingView`：iOS `'padding'`、Android `'height'` 或 `undefined`
+- `Linking.openURL` / `expo-file-system` / `expo-router` / `expo-location` / `expo-image-picker` / `expo-media-library` / `react-native-maps`：跨平台
+
+### Schema 與 DB
+
+- User DB schema 寫在 `src/db/migrations.ts`，**每次改 schema 加新 migration 版本**（不在現有版本內 patch）。
+- TaiCOL bundle DB 體積 ~118MB，首次啟動會從 asset copy 到 `documentDirectory`。**copy 條件僅檢查檔案存在**，不要在每次 init 都 re-copy。
+- DB 層 helpers 要 enforce business invariant：例如 single-active 限制要在 `createSession` / `reopenSession` / `createPlotSurvey` / `reopenPlotSurvey` 內也寫 safety net，不只靠 UI guard。
+- Startup-once cleanup 寫在 `src/db/cleanup.ts`，掛在 `initDb()` migrations 後執行。
+
+### DwC 命名 / 屬性 enum
+
+- 內部 enum 值用**英文小寫**（如 `'female' / 'male' / 'unknown'`、`'egg' / 'larva' / 'adult'`），DB 也存英文；UI 顯示中文 label。匯出時直接寫英文值對應 DwC vocabulary。
+- 多值欄位（`reproductive_condition`、`leaf_phenology`）存 JSON array 字串；`src/lib/dwcAttributes.ts` 提供 `parseMultiAttribute` / `serializeMultiAttribute` helpers。
+- 豐度通用化：`organism_quantity` + `organism_quantity_type`（DwC organismQuantity / organismQuantityType），不再用 per-method 欄位。`src/lib/dwcAbundance.ts` 提供 `kindForType` / `parseDbhArray` / `formatQuantityBadge`。
+
+### Record 結構
+
+- **Session（名錄）**：輕量物種記錄，table `sessions` + `checklist_records`
+- **Plot survey（樣區）**：結構化調查，分 `plot_type: 'fixed' | 'transect'`
+  - fixed：4 層植群（E0–E3）+ per-layer cover/height/method
+  - transect：穿越線 + MultiLineString 軌跡（GeoJSON 存 `track_geojson`）
+- **Site（地理樣區）**：純地理形狀（point/line/polygon），可被 session 綁定。**不要與 plot 混淆**。選單入口寫「**地理樣區**」明確區分。
+- **Single-active invariant**：任何時刻全 app 最多一筆 active record（跨 session / plot）。動到「建立 / reopen」流程時必須 enforce。
+
+### Stores
+
+- `useActiveSession` / `useActivePlot` 各自追蹤 active 記錄，但 ActiveSessionBar component 同時讀兩個，取 startedAt 較新者顯示。
+- Track recording 的 GPS watch 必須放 **module-level** (`src/lib/trackRecorder.ts`)，不能放 component state — 切 tab unmount component 不該中斷 GPS。
+
+### 共用 UI 元件
+
+- `TextPromptModal` (`promptText()`)：跨平台文字輸入提示，取代 `Alert.prompt`
+- `ActionSheet` (`showActionSheet()`)：跨平台底部選單，取代 `ActionSheetIOS`；iOS 走 native ActionSheetIOS、Android 走 Modal bottom sheet
+- `ProjectAssignSheet`：sheet 同時給 session / plot 用，文案泛化為「本次記錄」
+- `SpeciesAttributesBlock`：DwC 屬性摺疊區，依 kingdom / class 動態顯示欄位
+- `PlotSpeciesValueModal`：通用豐度輸入（BB / % cover / individuals / DBH / 自定義）
+
+### Android 上架前置（尚未完成，僅紀錄）
+
+- **Google Maps API key**：`react-native-maps` 在 Android 用 Google Maps SDK，目前 `app.json` 沒設 → Android 地圖 tab 會空白。要 GCP 啟用 Maps SDK for Android、建 key、限制 package `tw.checklister.mobile` + SHA-1、寫入 `app.json` 的 `android.config.googleMaps.apiKey`。iOS 用 Apple Maps 不影響。
+- 詳細步驟見 `mobile/Plan.md` 的「Android 上架前置」section。
+
+### Build & Test
+
+- 開發：`cd mobile/app && npx expo start --dev-client --clear`
+- 加 native module 後：`npx expo install <pkg> && cd ios && pod install && cd .. && npx expo run:ios`
+- Type check：`cd mobile/app && npx tsc --noEmit`（**改完一定要跑**）
+- 實機測試需 EAS Build dev client（`eas build --profile development --platform ios`）+ Apple Developer Program $99/yr
+
+### Mobile 主要設計文件
+
+詳細的 sprint 紀錄、架構決策、待辦清單請看 `mobile/Plan.md`（每完成一個段落就更新）。
 
 ## Key Dependencies
 

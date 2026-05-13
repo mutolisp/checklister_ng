@@ -28,6 +28,76 @@ class PlantName(SQLModel, table=True):
     plant_type_obj: Optional[PlantType] = Relationship(back_populates="plants")
 
 
+class IdentificationKey(SQLModel, table=True):
+    """檢索表（科 / 屬 / 任意 scope），可巢狀（parent_key_id 指 subkey 的 root）。
+
+    mode:
+      - 'dichotomous'：對偶式
+      - 'multi_access'：多進入式（feature matrix）
+      - 'both'：兩種資料都有
+    """
+    __tablename__ = "identification_keys"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    scope_taxon_id: Optional[str] = Field(default=None, index=True)
+    scope_rank: str = Field(index=True)  # 'family' | 'genus' | 'subfamily' | ...
+    scope_name: str = Field(index=True)  # latin, e.g. "Selaginellaceae"
+    scope_cname: Optional[str] = None    # 卷柏科
+    title: str
+    source: Optional[str] = None         # 'PDF:filename' | 'Sheets:url' | 'manual'
+    mode: str = Field(default="dichotomous")
+    parent_key_id: Optional[int] = Field(
+        default=None, index=True, foreign_key="identification_keys.id"
+    )
+    notes: Optional[str] = None
+    updated_at: Optional[int] = None     # epoch ms
+
+
+class KeyCouplet(SQLModel, table=True):
+    """Dichotomous key 的單一 couplet（兩個 lead）。"""
+    __tablename__ = "key_couplets"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key_id: int = Field(foreign_key="identification_keys.id", index=True)
+    number: int  # couplet 編號（key 內唯一）
+
+    lead_a_text: str
+    lead_a_target_type: str  # 'couplet' | 'taxon' | 'subkey' | 'unresolved'
+    lead_a_target_id: Optional[str] = None  # couplet number / taxon_id / subkey id
+    lead_a_taxon_marker: Optional[str] = None  # '*', '#' 等
+    lead_a_taxon_status: Optional[str] = None  # IUCN code 快照
+
+    lead_b_text: str
+    lead_b_target_type: str
+    lead_b_target_id: Optional[str] = None
+    lead_b_taxon_marker: Optional[str] = None
+    lead_b_taxon_status: Optional[str] = None
+
+
+class KeyFeature(SQLModel, table=True):
+    """Multi-access key 的特徵定義。"""
+    __tablename__ = "key_features"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key_id: int = Field(foreign_key="identification_keys.id", index=True)
+    name: str
+    type: str  # 'categorical' | 'numeric' | 'boolean'
+    values_json: Optional[str] = None  # JSON array of allowed categorical values
+    category: Optional[str] = None     # 分組 e.g. "營養器官"
+    sort_order: Optional[int] = None
+
+
+class KeyTaxonFeature(SQLModel, table=True):
+    """Multi-access key 的 taxon × feature 矩陣（同一格可多 row 表多值）。"""
+    __tablename__ = "key_taxon_features"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key_id: int = Field(foreign_key="identification_keys.id", index=True)
+    taxon_id: str = Field(index=True)
+    feature_id: int = Field(foreign_key="key_features.id", index=True)
+    value: str
+
+
 class TaicolName(SQLModel, table=True):
     __tablename__ = "taicol_names"
 
