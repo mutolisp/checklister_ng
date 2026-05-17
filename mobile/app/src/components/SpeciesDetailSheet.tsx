@@ -16,6 +16,9 @@ import {
 import { showActionSheet } from './ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getSynonyms, type RecordWithTaxon, type Synonym } from '~/db';
+import { buildSpeciesCopyText, copyToClipboard, speciesCopyActions } from '~/lib/clipboard';
+import { alienBadge } from '~/lib/conservationColors';
+import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 import { NotesEditModal } from './NotesEditModal';
 import {
@@ -23,13 +26,6 @@ import {
   type SpeciesAttributesDraft,
 } from './SpeciesAttributesBlock';
 import { parseMultiAttribute } from '~/lib/dwcAttributes';
-
-const ALIEN_LABEL: Record<string, string> = {
-  native: '原生',
-  naturalized: '歸化',
-  invasive: '歸化',
-  cultured: '栽培/圈養',
-};
 
 type Props = {
   record: RecordWithTaxon | null;
@@ -105,7 +101,7 @@ export function SpeciesDetailSheet({
   if (!record) return null;
 
   const isEndemic = record.is_endemic === 'true';
-  const sourceLabel = ALIEN_LABEL[record.alien_type] ?? '';
+  const ab = alienBadge(record.alien_type, record.kingdom);
   const links = externalLinks(record);
   const observed = new Date(record.observed_at);
   const observedStr = `${observed.getFullYear()}-${String(observed.getMonth() + 1).padStart(2, '0')}-${String(observed.getDate()).padStart(2, '0')} ${String(observed.getHours()).padStart(2, '0')}:${String(observed.getMinutes()).padStart(2, '0')}`;
@@ -119,28 +115,45 @@ export function SpeciesDetailSheet({
         />
         <View
           style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '85%' }}
-          className="rounded-t-2xl bg-white"
+          className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
           <SafeAreaView edges={['bottom']} className="flex-1">
             <View className="items-center pt-2">
-              <View className="h-1 w-12 rounded-full bg-gray-300" />
+              <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
-            <View className="flex-row items-start border-b border-gray-100 px-4 py-3">
+            <View className="flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3">
               <View className="flex-1">
-                <Text selectable className="text-lg font-semibold text-gray-900">
+                <Text selectable className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                   {record.common_name_c || '(無中文名)'}
                 </Text>
                 <ScientificName
                   name={record.simple_name}
                   author={record.name_author}
                   kingdom={record.kingdom}
-                  className="text-sm text-gray-700"
+                  className="text-sm text-gray-700 dark:text-gray-300"
                   selectable
                 />
-                <Text selectable className="text-xs text-gray-500">
+                <Text selectable className="text-xs text-gray-500 dark:text-gray-400">
                   {record.family_c} {record.family}
                 </Text>
               </View>
+              <Pressable
+                onPress={async () => {
+                  const actions = speciesCopyActions(record);
+                  const idx = await showActionSheet({
+                    title: record.common_name_c || record.simple_name,
+                    options: actions.map((a) => ({ label: a.label })),
+                  });
+                  if (idx >= 0 && idx < actions.length) {
+                    const a = actions[idx];
+                    await copyToClipboard(buildSpeciesCopyText(record, a.mode), a.label.replace(/^複製/, ''));
+                  }
+                }}
+                hitSlop={8}
+                className="ml-2"
+              >
+                <Ionicons name="copy-outline" size={20} color="#6b7280" />
+              </Pressable>
               <Pressable onPress={onClose} hitSlop={8} className="ml-2">
                 <Ionicons name="close" size={22} color="#6b7280" />
               </Pressable>
@@ -149,7 +162,7 @@ export function SpeciesDetailSheet({
             <ScrollView className="flex-1">
               {record.alternative_name_c ? (
                 <Section title="其他俗名">
-                  <Text selectable className="text-sm text-gray-700">
+                  <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
                     {splitAltNames(record.alternative_name_c).join('、')}
                   </Text>
                 </Section>
@@ -157,16 +170,21 @@ export function SpeciesDetailSheet({
 
               <Section title="物種狀態">
                 <View className="flex-row flex-wrap gap-2">
-                  {isEndemic ? <Tag color="emerald" label="特有" /> : null}
-                  {sourceLabel ? <Tag color="blue" label={sourceLabel} /> : null}
+                  {isEndemic ? <Tag color="emerald" label="特有種" /> : null}
+                  {ab ? (
+                    <Tag
+                      color={ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple'}
+                      label={ab.longLabel}
+                    />
+                  ) : null}
                   {record.is_hybrid === 'true' ? <Tag color="purple" label="雜交" /> : null}
                 </View>
               </Section>
 
               <Section title="保育狀態">
                 <View className="space-y-1">
-                  <ConservationRow label="紅皮書" value={record.redlist} />
-                  <ConservationRow label="IUCN" value={record.iucn} />
+                  <ConservationBadgeRow label="紅皮書" value={record.redlist} />
+                  <ConservationBadgeRow label="IUCN" value={record.iucn} />
                   <ConservationRow label="CITES" value={record.cites} />
                   <ConservationRow label="保育類" value={record.protected} />
                 </View>
@@ -177,7 +195,7 @@ export function SpeciesDetailSheet({
                   {synonyms
                     .filter((s) => s.status !== 'accepted')
                     .map((s, idx) => (
-                      <Text key={idx} selectable className="text-sm text-gray-700">
+                      <Text key={idx} selectable className="text-sm text-gray-700 dark:text-gray-300">
                         {'• '}
                         <ScientificName
                           name={s.scientificName}
@@ -191,7 +209,7 @@ export function SpeciesDetailSheet({
               ) : null}
 
               <Section title="此次紀錄">
-                <Text selectable className="text-sm text-gray-700">時間：{observedStr}</Text>
+                <Text selectable className="text-sm text-gray-700 dark:text-gray-300">時間：{observedStr}</Text>
                 {onAddPhoto ? (
                   <PhotoGrid
                     photos={parsePhotoPaths(record.photo_paths)}
@@ -209,10 +227,10 @@ export function SpeciesDetailSheet({
                 ) : null}
                 <Pressable
                   onPress={() => setNotesModalOpen(true)}
-                  className="mt-2 flex-row items-center rounded-lg border border-gray-200 px-3 py-2 active:bg-gray-50"
+                  className="mt-2 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
                 >
                   <Ionicons name="create-outline" size={18} color="#4b5563" />
-                  <Text className="ml-2 flex-1 text-sm text-gray-700">
+                  <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
                     {record.notes ? record.notes : '加入備註'}
                   </Text>
                   <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
@@ -249,19 +267,19 @@ export function SpeciesDetailSheet({
                           }
                         : undefined
                     }
-                    className="mt-2 flex-row items-center rounded-lg border border-gray-200 px-3 py-2 active:bg-gray-50"
+                    className="mt-2 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
                   >
                     <Ionicons
                       name={record.lat !== null ? 'location' : 'location-outline'}
                       size={18}
                       color={record.lat !== null ? '#2563eb' : '#4b5563'}
                     />
-                    <Text className="ml-2 flex-1 text-sm text-gray-700" selectable>
+                    <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300" selectable>
                       {record.lat !== null && record.lng !== null
                         ? `${record.lat.toFixed(5)}, ${record.lng.toFixed(5)}`
                         : '定位此物種'}
                     </Text>
-                    <Text className="text-xs text-gray-400">
+                    <Text className="text-xs text-gray-400 dark:text-gray-500">
                       {record.lat !== null ? '長按清除' : '點選 GPS'}
                     </Text>
                   </Pressable>
@@ -289,9 +307,9 @@ export function SpeciesDetailSheet({
                     <Pressable
                       key={link.label}
                       onPress={() => Linking.openURL(link.url)}
-                      className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:bg-blue-100"
+                      className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
                     >
-                      <Text className="text-xs font-medium text-blue-700">{link.label}</Text>
+                      <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">{link.label}</Text>
                       <Ionicons name="open-outline" size={12} color="#2563eb" />
                     </Pressable>
                   ))}
@@ -304,10 +322,10 @@ export function SpeciesDetailSheet({
                     onRemove();
                     onClose();
                   }}
-                  className="flex-row items-center justify-center rounded-lg border border-red-200 bg-red-50 px-4 py-3 active:bg-red-100"
+                  className="flex-row items-center justify-center rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/40 px-4 py-3 active:bg-red-100 dark:active:bg-red-900/60"
                 >
                   <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                  <Text className="ml-2 text-sm font-medium text-red-700">從名錄移除</Text>
+                  <Text className="ml-2 text-sm font-medium text-red-700 dark:text-red-400">從名錄移除</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -337,8 +355,8 @@ export function SpeciesDetailSheet({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View className="border-b border-gray-100 px-4 py-3">
-      <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</Text>
+    <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+      <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</Text>
       {children}
     </View>
   );
@@ -351,25 +369,52 @@ function splitAltNames(s: string): string[] {
     .filter(Boolean);
 }
 
-function Tag({ color, label }: { color: 'emerald' | 'blue' | 'purple'; label: string }) {
-  const cls =
-    color === 'emerald'
-      ? 'bg-emerald-100 text-emerald-700'
-      : color === 'blue'
-        ? 'bg-blue-100 text-blue-700'
-        : 'bg-purple-100 text-purple-700';
+const TAG_STYLES: Record<'emerald' | 'blue' | 'purple' | 'rose', { bg: string; text: string }> = {
+  emerald: {
+    bg: 'bg-emerald-100 dark:bg-emerald-900/60',
+    text: 'text-emerald-700 dark:text-emerald-300',
+  },
+  blue: {
+    bg: 'bg-blue-100 dark:bg-blue-900/60',
+    text: 'text-blue-700 dark:text-blue-300',
+  },
+  purple: {
+    bg: 'bg-purple-100 dark:bg-purple-900/60',
+    text: 'text-purple-700 dark:text-purple-300',
+  },
+  rose: {
+    bg: 'bg-rose-100 dark:bg-rose-900/60',
+    text: 'text-rose-700 dark:text-rose-300',
+  },
+};
+
+function Tag({ color, label }: { color: 'emerald' | 'blue' | 'purple' | 'rose'; label: string }) {
+  const s = TAG_STYLES[color];
   return (
-    <View className={`rounded-full px-2.5 py-1 ${cls.split(' ')[0]}`}>
-      <Text className={`text-xs font-medium ${cls.split(' ')[1]}`}>{label}</Text>
+    <View className={`rounded-full px-2.5 py-1 ${s.bg}`}>
+      <Text className={`text-xs font-medium ${s.text}`}>{label}</Text>
     </View>
   );
 }
 
 function ConservationRow({ label, value }: { label: string; value: string }) {
   return (
-    <Text selectable className="text-sm text-gray-700">
+    <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
       {label}：<Text className="font-medium">{value || '–'}</Text>
     </Text>
+  );
+}
+
+function ConservationBadgeRow({ label, value }: { label: string; value: string }) {
+  return (
+    <View className="flex-row items-center">
+      <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{label}：</Text>
+      {value ? (
+        <ConservationBadge code={value} />
+      ) : (
+        <Text className="text-sm text-gray-700 dark:text-gray-300">–</Text>
+      )}
+    </View>
   );
 }
 
@@ -400,7 +445,7 @@ function PhotoGrid({
                 }
               : undefined
           }
-          className="overflow-hidden rounded-lg border border-gray-200"
+          className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
           style={{ width: 88, height: 88 }}
         >
           <Image
@@ -412,11 +457,11 @@ function PhotoGrid({
       ))}
       <Pressable
         onPress={onAdd}
-        className="items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 active:bg-gray-100"
+        className="items-center justify-center rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-950 active:bg-gray-100 dark:active:bg-gray-700"
         style={{ width: 88, height: 88 }}
       >
         <Ionicons name="camera-outline" size={24} color="#6b7280" />
-        <Text className="mt-1 text-xs text-gray-600">加照片</Text>
+        <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400">加照片</Text>
       </Pressable>
     </View>
   );

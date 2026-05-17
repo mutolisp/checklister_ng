@@ -5,17 +5,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   FlatList,
-  KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
   Text,
   View,
 } from 'react-native';
+import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import { showActionSheet } from '~/components/ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
 import {
   addRecord,
   deleteRecord,
@@ -98,7 +98,6 @@ export default function SessionDetailScreen() {
   const router = useRouter();
   const toast = useToast((s) => s.show);
   const refreshActive = useActiveSession((s) => s.refresh);
-  const headerHeight = useHeaderHeight();
 
   const [session, setSession] = useState<Session | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -387,7 +386,7 @@ export default function SessionDetailScreen() {
 
   const handleClearGps = () => {
     if (!session) return;
-    Alert.alert('清除此 session 的空間資料？', '樣區指派、起點與軌跡都會被移除（樣區本身不會刪除）', [
+    Alert.alert('清除此記錄的空間資料？', '樣區指派、起點與軌跡都會被移除（樣區本身不會刪除）', [
       { text: '取消', style: 'cancel' },
       {
         text: '清除',
@@ -496,8 +495,8 @@ export default function SessionDetailScreen() {
     };
     if (otherActive && otherActive.id !== session.id) {
       Alert.alert(
-        '已有另一個記錄中的 session',
-        `「${otherActive.name}」目前進行中。要先結束它再啟用此 session 嗎？`,
+        '已有另一筆記錄正在進行',
+        `「${otherActive.name}」目前進行中。要先結束它再啟用此記錄嗎？`,
         [
           { text: '取消', style: 'cancel' },
           {
@@ -540,8 +539,8 @@ export default function SessionDetailScreen() {
 
   if (!session) {
     return (
-      <View className="flex-1 items-center justify-center bg-white">
-        <Text className="text-gray-500">載入中...</Text>
+      <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
+        <Text className="text-gray-500 dark:text-gray-400">載入中...</Text>
       </View>
     );
   }
@@ -550,30 +549,26 @@ export default function SessionDetailScreen() {
   const headerTitle = project && project.id !== 0 ? project.name : session.name;
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50">
+    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
           title: headerTitle,
           headerRight: isActive
             ? () => (
                 <Pressable onPress={handleEnd} hitSlop={8}>
-                  <Text className="text-base font-medium text-red-600">結束</Text>
+                  <Text className="text-base font-medium text-red-600 dark:text-red-400">結束</Text>
                 </Pressable>
               )
             : () => (
                 <Pressable onPress={handleReopen} hitSlop={8} className="flex-row items-center">
                   <Ionicons name="refresh" size={16} color="#2563eb" />
-                  <Text className="ml-1 text-base font-medium text-blue-600">繼續編輯</Text>
+                  <Text className="ml-1 text-base font-medium text-blue-600 dark:text-blue-400">繼續編輯</Text>
                 </Pressable>
               ),
         }}
       />
-      <KeyboardAvoidingView
-        className="flex-1"
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
-      >
-        <View className="flex-row items-center justify-between gap-2 border-b border-gray-200 bg-white px-4 py-2">
+      <View className="flex-1">
+        <View className="flex-row items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
           {/* Left: project (icon) + spatial chip (text + state color) */}
           <View className="flex-1 flex-row items-center gap-3">
             <Pressable
@@ -598,7 +593,7 @@ export default function SessionDetailScreen() {
                   return (
                     <>
                       <Ionicons name="radio" size={14} color="#dc2626" />
-                      <Text className="ml-1 text-xs font-medium text-red-600" numberOfLines={1}>
+                      <Text className="ml-1 text-xs font-medium text-red-600 dark:text-red-400" numberOfLines={1}>
                         軌跡 {trackCount}
                       </Text>
                     </>
@@ -608,7 +603,7 @@ export default function SessionDetailScreen() {
                   return (
                     <>
                       <Ionicons name="pin" size={14} color="#2563eb" />
-                      <Text className="ml-1 text-xs font-medium text-blue-700" numberOfLines={1}>
+                      <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
                         {site.name}
                       </Text>
                     </>
@@ -618,7 +613,7 @@ export default function SessionDetailScreen() {
                   return (
                     <>
                       <Ionicons name="location" size={14} color="#2563eb" />
-                      <Text className="ml-1 text-xs font-medium text-blue-700" numberOfLines={1}>
+                      <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
                         已定位
                       </Text>
                     </>
@@ -627,7 +622,7 @@ export default function SessionDetailScreen() {
                 return (
                   <>
                     <Ionicons name="pin-outline" size={14} color="#9ca3af" />
-                    <Text className="ml-1 text-xs italic text-gray-500">空間</Text>
+                    <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">空間</Text>
                   </>
                 );
               })()}
@@ -635,7 +630,7 @@ export default function SessionDetailScreen() {
           </View>
           {/* Right: count + sort icon + batch icon */}
           <View className="flex-row items-center gap-3">
-            <Text className="text-xs text-gray-500">
+            <Text className="text-xs text-gray-500 dark:text-gray-400">
               {records.length}
               {filtered.length !== records.length ? `/${filtered.length}` : ''}
             </Text>
@@ -653,7 +648,7 @@ export default function SessionDetailScreen() {
             ) : null}
           </View>
         </View>
-        <View className="border-b border-gray-200 bg-white">
+        <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -681,7 +676,7 @@ export default function SessionDetailScreen() {
         {filtered.length === 0 ? (
           <View className="flex-1 items-center justify-center px-6">
             <Ionicons name="search-outline" size={56} color="#9ca3af" />
-            <Text className="mt-3 text-base text-gray-700">
+            <Text className="mt-3 text-base text-gray-700 dark:text-gray-300">
               {records.length === 0 ? '按下方搜尋框找物種加入名錄' : '此分類群無記錄'}
             </Text>
           </View>
@@ -700,10 +695,26 @@ export default function SessionDetailScreen() {
             )}
           />
         )}
-        {isActive ? (
-          <SearchBox onSelect={handleAdd} onLongPressResult={setSearchPreview} />
-        ) : null}
-      </KeyboardAvoidingView>
+      </View>
+      {isActive ? (
+        // Sticks above the keyboard regardless of accessory-bar height
+        // changes (e.g. iOS predictive suggestions). Sibling to the content
+        // View, not a child, so kbd-driven translation doesn't push the
+        // records list around.
+        <KeyboardStickyView>
+          <SearchBox
+            onSelect={handleAdd}
+            onLongPressResult={async (r) => {
+              // iOS UIKit won't present a Modal while keyboard / Chinese IME
+              // composition is still active. Dismiss first, wait one frame,
+              // then mount LookupResultSheet.
+              Keyboard.dismiss();
+              if (Platform.OS === 'ios') await new Promise((res) => setTimeout(res, 150));
+              setSearchPreview(r);
+            }}
+          />
+        </KeyboardStickyView>
+      ) : null}
 
       <SpeciesDetailSheet
         record={activeRecord}
@@ -812,9 +823,9 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   return (
     <Pressable
       onPress={onPress}
-      className={`mr-2 rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}
+      className={`mr-2 rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
     >
-      <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700'}`}>{label}</Text>
+      <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>{label}</Text>
     </Pressable>
   );
 }

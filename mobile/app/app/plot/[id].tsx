@@ -1,11 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from '@react-navigation/elements';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
@@ -42,7 +40,6 @@ export default function PlotDetailScreen() {
   const [plot, setPlot] = useState<PlotSurvey | null>(null);
   const [tab, setTab] = useState<Tab>('env');
   const [speciesCount, setSpeciesCount] = useState(0);
-  const headerHeight = useHeaderHeight();
   const refreshActivePlot = useActivePlot((s) => s.refresh);
 
   const reload = useCallback(() => {
@@ -58,9 +55,9 @@ export default function PlotDetailScreen() {
 
   if (!plot) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50">
+      <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
         <Stack.Screen options={{ title: '樣區' }} />
-        <Text className="text-gray-500">找不到此樣區</Text>
+        <Text className="text-gray-500 dark:text-gray-400">找不到此樣區</Text>
       </SafeAreaView>
     );
   }
@@ -68,7 +65,7 @@ export default function PlotDetailScreen() {
   const ready = plotCanAcceptSpecies(plot);
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50">
+    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
           title: plot.plotid,
@@ -93,14 +90,14 @@ export default function PlotDetailScreen() {
               }}
               hitSlop={8}
             >
-              <Text className="text-base font-medium text-blue-600">
+              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">
                 {plot.status === 'done' ? '重開' : '結束'}
               </Text>
             </Pressable>
           ),
         }}
       />
-      <View className="flex-row border-b border-gray-200 bg-white">
+      <View className="flex-row border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <TabBtn label="環境" active={tab === 'env'} onPress={() => setTab('env')} />
         <TabBtn
           label={`物種 ${speciesCount > 0 ? speciesCount : ''}`}
@@ -113,11 +110,12 @@ export default function PlotDetailScreen() {
         )}
       </View>
 
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight : 0}
-        className="flex-1"
-      >
+      <View className="flex-1">
+        {/* EnvTab / LayersTab each wrap their content in a ScrollView with
+            `keyboardShouldPersistTaps="handled"`, which natively scrolls the
+            focused TextInput above the keyboard — no outer KAV needed.
+            PlotSpeciesTab wraps its SearchBox in KeyboardStickyView so the
+            search row follows the kbd top across accessory-bar changes. */}
         {tab === 'env' ? <EnvTab plot={plot} onUpdated={reload} /> : null}
         {tab === 'species' ? (
           ready ? (
@@ -127,7 +125,7 @@ export default function PlotDetailScreen() {
           )
         ) : null}
         {tab === 'layers' ? <LayersTab plot={plot} onUpdated={reload} /> : null}
-      </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -150,7 +148,7 @@ function TabBtn({
     >
       <Text
         className={`text-sm font-medium ${
-          disabled ? 'text-gray-300' : active ? 'text-emerald-700' : 'text-gray-600'
+          disabled ? 'text-gray-300' : active ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-600 dark:text-gray-400'
         }`}
       >
         {label}
@@ -215,13 +213,13 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
 
         <Pressable
           onPress={() => setProjectSheetOpen(true)}
-          className="mt-3 flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-3 active:bg-gray-50"
+          className="mt-3 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 active:bg-gray-50 dark:active:bg-gray-800"
         >
           <Ionicons name="folder-outline" size={18} color="#4b5563" />
           <View className="ml-2 flex-1">
-            <Text className="text-xs text-gray-500">專案</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400">專案</Text>
             <Text
-              className={`text-sm ${project?.id === 0 ? 'italic text-gray-500' : 'text-gray-900'}`}
+              className={`text-sm ${project?.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}
               numberOfLines={1}
             >
               {project?.name ?? '未分類'}
@@ -233,9 +231,9 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         {plot.plot_type === 'transect' ? (
           <TransectTrackControl plot={plot} onUpdated={onUpdated} />
         ) : (
-          <View className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+          <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
             <View className="flex-row items-center">
-              <Text className="flex-1 text-xs font-medium text-gray-600">
+              <Text className="flex-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                 GPS 座標 + 精度 <Text className="text-red-500">*</Text>
               </Text>
               <Pressable
@@ -249,15 +247,15 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
               </Pressable>
             </View>
             {hasGps ? (
-              <Text selectable className="mt-2 text-sm text-gray-900">
+              <Text selectable className="mt-2 text-sm text-gray-900 dark:text-gray-100">
                 {plot.decimal_latitude?.toFixed(6)}, {plot.decimal_longitude?.toFixed(6)}
                 {'  '}
-                <Text className="text-xs text-gray-500">
+                <Text className="text-xs text-gray-500 dark:text-gray-400">
                   ±{plot.coord_uncertainty_m?.toFixed(1)} m
                 </Text>
               </Text>
             ) : (
-              <Text className="mt-2 text-xs text-gray-400">尚未抓取（物種輸入需此資料）</Text>
+              <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">尚未抓取（物種輸入需此資料）</Text>
             )}
           </View>
         )}
@@ -321,9 +319,9 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
 
       <Pressable
         onPress={() => setShowAdvanced((v) => !v)}
-        className="mt-2 flex-row items-center justify-between bg-gray-100 px-4 py-3"
+        className="mt-2 flex-row items-center justify-between bg-gray-100 dark:bg-gray-800 px-4 py-3"
       >
-        <Text className="text-sm font-medium text-gray-700">
+        <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
           進階（地形、地表覆蓋）
         </Text>
         <Ionicons
@@ -407,7 +405,7 @@ function Section({
     <View className="px-4 py-3">
       {title ? (
         <View className="mb-2 flex-row items-center">
-          <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+          <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
             {title}
           </Text>
           {required ? <Text className="ml-1 text-xs text-red-500">*</Text> : null}
@@ -445,11 +443,11 @@ function Field({
 
   return (
     <View className="mb-3">
-      <Text className="mb-1 text-xs font-medium text-gray-600">
+      <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
         {label}
         {required ? <Text className="text-red-500"> *</Text> : null}
       </Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3">
+      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -460,9 +458,9 @@ function Field({
           placeholderTextColor="#9ca3af"
           multiline={multiline}
           keyboardType={keyboardType}
-          className="flex-1 py-2 text-sm text-gray-900"
+          className="flex-1 py-2 text-sm text-gray-900 dark:text-gray-100"
         />
-        {suffix ? <Text className="ml-1 text-xs text-gray-500">{suffix}</Text> : null}
+        {suffix ? <Text className="ml-1 text-xs text-gray-500 dark:text-gray-400">{suffix}</Text> : null}
       </View>
     </View>
   );
@@ -497,7 +495,7 @@ function SpeciesGateScreen() {
   return (
     <View className="flex-1 items-center justify-center px-8">
       <Ionicons name="lock-closed-outline" size={48} color="#fbbf24" />
-      <Text className="mt-3 text-center text-gray-500">
+      <Text className="mt-3 text-center text-gray-500 dark:text-gray-400">
         請先在「環境」頁填妥 plotid、GPS 座標與精度
       </Text>
     </View>
@@ -562,7 +560,7 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
   return (
     <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
       <View className="px-4 py-3">
-        <Text className="text-xs text-gray-500">
+        <Text className="text-xs text-gray-500 dark:text-gray-400">
           各分層獨立設定 cover% / height(cm) / 預設豐度單位。物種輸入時開啟 modal
           會預選此處的單位，但仍可即時切換。
         </Text>
@@ -570,8 +568,8 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
       {LAYERS.map((layer) => {
         const d = layerData[layer];
         return (
-          <View key={layer} className="border-b border-gray-100 bg-white px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900">{LAYER_LABEL[layer]}</Text>
+          <View key={layer} className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{LAYER_LABEL[layer]}</Text>
             <View className="mt-2 flex-row gap-3">
               <View className="flex-1">
                 <NumField
@@ -585,7 +583,7 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
                 <NumField label="Height" suffix="cm" value={d.height} onSave={d.setHeight} />
               </View>
             </View>
-            <Text className="mt-1 text-xs font-medium text-gray-600">預設豐度單位</Text>
+            <Text className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-400">預設豐度單位</Text>
             <View className="mt-1 flex-row gap-2">
               {(['BB', 'percent', 'DBH'] as AbundanceMethod[]).map((m) => {
                 const on = d.method === m;
@@ -593,9 +591,9 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
                   <Pressable
                     key={m}
                     onPress={() => d.setMethod(m)}
-                    className={`rounded-full px-3 py-1.5 ${on ? 'bg-emerald-500' : 'bg-gray-100'}`}
+                    className={`rounded-full px-3 py-1.5 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
                   >
-                    <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700'}`}>
+                    <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                       {m === 'BB' ? 'Braun-Blanquet' : m === 'percent' ? '百分比 %' : 'DBH'}
                     </Text>
                   </Pressable>

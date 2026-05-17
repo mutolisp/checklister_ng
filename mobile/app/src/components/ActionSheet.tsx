@@ -103,16 +103,16 @@ export function ActionSheetHost() {
           }}
         />
         <SafeAreaView edges={['bottom']} className="mt-auto">
-          <View className="mx-3 mb-2 rounded-2xl bg-white">
+          <View className="mx-3 mb-2 rounded-2xl bg-white dark:bg-gray-900">
             {pending.title || pending.message ? (
-              <View className="border-b border-gray-100 px-4 py-3">
+              <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
                 {pending.title ? (
-                  <Text className="text-center text-sm font-semibold text-gray-900">
+                  <Text className="text-center text-sm font-semibold text-gray-900 dark:text-gray-100">
                     {pending.title}
                   </Text>
                 ) : null}
                 {pending.message ? (
-                  <Text className="mt-0.5 text-center text-xs text-gray-500">
+                  <Text className="mt-0.5 text-center text-xs text-gray-500 dark:text-gray-400">
                     {pending.message}
                   </Text>
                 ) : null}
@@ -122,22 +122,22 @@ export function ActionSheetHost() {
               <Pressable
                 key={i}
                 onPress={() => resolve(i)}
-                className={`items-center justify-center border-b border-gray-100 py-3.5 active:bg-gray-50 ${i === pending.options.length - 1 ? 'border-b-0' : ''}`}
+                className={`items-center justify-center border-b border-gray-100 dark:border-gray-800 py-3.5 active:bg-gray-50 dark:active:bg-gray-800 ${i === pending.options.length - 1 ? 'border-b-0' : ''}`}
               >
                 <Text
-                  className={`text-base ${opt.destructive ? 'font-semibold text-red-600' : 'text-blue-600'}`}
+                  className={`text-base ${opt.destructive ? 'font-semibold text-red-600 dark:text-red-400' : 'text-blue-600 dark:text-blue-400'}`}
                 >
                   {opt.label}
                 </Text>
               </Pressable>
             ))}
           </View>
-          <View className="mx-3 mb-2 rounded-2xl bg-white">
+          <View className="mx-3 mb-2 rounded-2xl bg-white dark:bg-gray-900">
             <Pressable
               onPress={() => resolve(-1)}
-              className="items-center justify-center py-3.5 active:bg-gray-50"
+              className="items-center justify-center py-3.5 active:bg-gray-50 dark:active:bg-gray-800"
             >
-              <Text className="text-base font-semibold text-gray-900">
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 {pending.cancelLabel ?? '取消'}
               </Text>
             </Pressable>

@@ -38,6 +38,16 @@ const VIRUS_KINGDOMS = new Set([
   'Viruses kingdom incertae sedis',
 ]);
 
+/**
+ * Ancestor chain leading to a node (NOT including the node itself).
+ * Empty for kingdom-level nodes. Required at every drill-down because
+ * scientific names (especially genera like Taiwania, Pieris, Aotus) are
+ * homonyms across kingdoms — ICN (plants) and ICZN (animals) don't enforce
+ * uniqueness across each other. Filtering by immediate parent only would
+ * mix species from the homonym in the other kingdom.
+ */
+export type Ancestors = Partial<Record<Rank, string>>;
+
 export type TaxonNode = {
   name: string;
   name_c: string;
@@ -45,12 +55,45 @@ export type TaxonNode = {
   rank_key: string;
   child_rank: ChildRank;
   stats: Record<string, number>;
-  parent_rank?: Rank;
-  parent_value?: string;
+  ancestors: Ancestors;
 };
 
 function quoteCol(col: string): string {
   return col === 'order' || col === 'class' ? `"${col}"` : col;
+}
+
+/** Stable, lineage-unique key for a tree node. The same scientific name in
+ *  two kingdoms (e.g. genus Taiwania in Plantae vs Animalia) collides under
+ *  the naïve `${rank}:${name}` scheme — full-path keys keep both branches
+ *  independent in expanded set / childrenMap / speciesMap. */
+export function nodeKeyFor(node: {
+  rank_key: string;
+  name: string;
+  ancestors: Ancestors;
+}): string {
+  const parts: string[] = [];
+  for (const r of RANK_ORDER) {
+    const v = node.ancestors[r];
+    if (v) parts.push(`${r}:${v}`);
+  }
+  parts.push(`${node.rank_key}:${node.name}`);
+  return parts.join('|');
+}
+
+/** Build `AND col = ?` fragments for every populated ancestor rank.
+ *  Mutates `params` in place. Returns the SQL fragment (with leading space)
+ *  or empty string if no ancestors. */
+function buildAncestorWhere(ancestors: Ancestors | undefined, params: string[]): string {
+  if (!ancestors) return '';
+  let where = '';
+  for (const r of RANK_ORDER) {
+    const v = ancestors[r];
+    if (v) {
+      where += ` AND ${quoteCol(r)} = ?`;
+      params.push(v);
+    }
+  }
+  return where;
 }
 
 function buildStatsCols(rankIdx: number): string {
@@ -108,20 +151,25 @@ function getTopLevel(): TaxonNode[] {
     rank_key: 'kingdom',
     child_rank: 'phylum',
     stats: buildStatsDict(row, 0),
+    ancestors: {},
   }));
 }
 
 export type ChildrenOptions = {
   rank: ChildRank;
-  parentRank?: Rank;
-  parentValue?: string;
+  /**
+   * Ancestors of the children we want. e.g. when loading genera under
+   * Cupressaceae, pass `{kingdom:'Plantae', phylum:'Tracheophyta',
+   * class:'Pinopsida', order:'Pinales', family:'Cupressaceae'}`. Pass
+   * `undefined` / `{}` only for the top-level kingdom listing.
+   */
+  ancestors?: Ancestors;
 };
 
 export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
-  if (opts.rank === 'kingdom' && !opts.parentRank) return getTopLevel();
-  if (opts.rank === 'species') {
-    return getSpeciesAsNodes(opts.parentRank, opts.parentValue);
-  }
+  const hasAncestors = opts.ancestors && Object.keys(opts.ancestors).length > 0;
+  if (opts.rank === 'kingdom' && !hasAncestors) return getTopLevel();
+  if (opts.rank === 'species') return getSpeciesAsNodes();
   if (opts.rank === 'kingdom') return [];
 
   const rankIdx = RANK_ORDER.indexOf(opts.rank);
@@ -135,10 +183,7 @@ export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
 
   let where = `usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank IN ('Species','Subspecies','Variety','Form')`;
   const params: string[] = [];
-  if (opts.parentRank && opts.parentValue) {
-    where += ` AND ${quoteCol(opts.parentRank)} = ?`;
-    params.push(opts.parentValue);
-  }
+  where += buildAncestorWhere(opts.ancestors, params);
 
   const sql = `
     SELECT ${dbCol} AS name, ${statsCols} ${extraCols}
@@ -151,6 +196,7 @@ export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
   const res = db.executeSync(sql, params);
   const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
   const childRank: ChildRank = rankIdx + 1 < RANK_ORDER.length ? RANK_ORDER[rankIdx + 1] : 'species';
+  const ancestors: Ancestors = opts.ancestors ?? {};
 
   return rows.map((row) => ({
     name: row.name as string,
@@ -159,8 +205,7 @@ export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
     rank_key: opts.rank,
     child_rank: childRank,
     stats: buildStatsDict(row, rankIdx),
-    parent_rank: opts.parentRank,
-    parent_value: opts.parentValue,
+    ancestors,
   }));
 }
 
@@ -195,14 +240,11 @@ function isAutonym(simpleName: string, rank: string): boolean {
   return parts.length >= 3 && parts[1] === parts[parts.length - 1];
 }
 
-export function getSpeciesUnder(parentRank?: Rank, parentValue?: string): TaxonSpecies[] {
+export function getSpeciesUnder(ancestors?: Ancestors): TaxonSpecies[] {
   const db = getTaicolDb();
   let where = `usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank IN ('Species','Subspecies','Variety','Form')`;
   const params: string[] = [];
-  if (parentRank && parentValue) {
-    where += ` AND ${quoteCol(parentRank)} = ?`;
-    params.push(parentValue);
-  }
+  where += buildAncestorWhere(ancestors, params);
   const sql = `
     SELECT taxon_id, simple_name, name_author, common_name_c, family, family_c, rank,
            is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
@@ -239,10 +281,8 @@ export function getSpeciesUnder(parentRank?: Rank, parentValue?: string): TaxonS
   }));
 }
 
-function getSpeciesAsNodes(parentRank?: Rank, parentValue?: string): TaxonNode[] {
+function getSpeciesAsNodes(): TaxonNode[] {
   // The actual species rendering uses getSpeciesUnder + a different list UI.
-  void parentRank;
-  void parentValue;
   return [];
 }
 

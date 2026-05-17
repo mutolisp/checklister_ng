@@ -40,6 +40,19 @@ export const FONT_SCALE_VALUE: Record<FontScale, number> = {
   xlarge: 1.3,
 };
 
+/** Per-key runner progress, persisted so re-entering a key resumes where
+ *  the user left off (path of visited couplets + current terminal). Shape
+ *  intentionally mirrors `RunnerState` in `app/key/[id].tsx`; runner casts
+ *  back to its local type after JSON-roundtrip. Capped to the keys still
+ *  in `key_recent_ids` (eviction in `pushRecentKey`). */
+export type KeyRunnerStateLite = {
+  path: number[];
+  terminal:
+    | null
+    | { kind: 'taxon'; taxonId: string; marker: string | null; status: string | null }
+    | { kind: 'unresolved'; rawId: string | null };
+};
+
 type SettingsValues = {
   theme: Theme;
   undo_duration: number;
@@ -50,6 +63,15 @@ type SettingsValues = {
   font_scale: FontScale;
   map_view: MapViewState;
   record_type_default: RecordTypeDefault;
+  /** Recently opened identification key ids (most-recent first, capped 10). */
+  key_recent_ids: number[];
+  /** Per-key runner state, keyed by `String(keyId)`. Only kept for keys in
+   *  `key_recent_ids` — older entries are evicted by `pushRecentKey`. */
+  key_runner_states: Record<string, KeyRunnerStateLite>;
+  /** Whether to bias AI species identification with current GPS (geomodel
+   *  filter). On = predictions skewed to species likely at this location;
+   *  off = vision-only. Default on, per user request. */
+  ai_geomodel_filter: boolean;
 };
 
 const DEFAULTS: SettingsValues = {
@@ -62,6 +84,9 @@ const DEFAULTS: SettingsValues = {
   font_scale: 'normal',
   map_view: DEFAULT_MAP_VIEW,
   record_type_default: 'ask',
+  key_recent_ids: [],
+  key_runner_states: {},
+  ai_geomodel_filter: true,
 };
 
 type SettingsState = SettingsValues & {
@@ -95,6 +120,28 @@ function readAll(): SettingsValues {
       // ignore corrupt setting
     }
   }
+  let keyRecentIds: number[] = DEFAULTS.key_recent_ids;
+  const krRaw = map.get('key_recent_ids');
+  if (krRaw) {
+    try {
+      const parsed = JSON.parse(krRaw);
+      if (Array.isArray(parsed)) keyRecentIds = parsed.filter((v) => typeof v === 'number');
+    } catch {
+      // ignore corrupt setting
+    }
+  }
+  let keyRunnerStates: Record<string, KeyRunnerStateLite> = DEFAULTS.key_runner_states;
+  const krsRaw = map.get('key_runner_states');
+  if (krsRaw) {
+    try {
+      const parsed = JSON.parse(krsRaw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        keyRunnerStates = parsed as Record<string, KeyRunnerStateLite>;
+      }
+    } catch {
+      // ignore corrupt setting
+    }
+  }
   return {
     theme: (map.get('theme') as Theme) ?? DEFAULTS.theme,
     undo_duration: parseInt(map.get('undo_duration') ?? String(DEFAULTS.undo_duration), 10),
@@ -106,7 +153,56 @@ function readAll(): SettingsValues {
     map_view: mapView,
     record_type_default:
       (map.get('record_type_default') as RecordTypeDefault) ?? DEFAULTS.record_type_default,
+    key_recent_ids: keyRecentIds,
+    key_runner_states: keyRunnerStates,
+    ai_geomodel_filter:
+      map.get('ai_geomodel_filter') == null
+        ? DEFAULTS.ai_geomodel_filter
+        : map.get('ai_geomodel_filter') === 'true',
   };
+}
+
+/** Push a key id to the most-recent slot. Dedupes + caps at 10. Module-level
+ *  helper so non-React entry points (e.g. key/[id].tsx mount effect) can call
+ *  it without subscribing to the store. Side effect: drops `key_runner_states`
+ *  entries for ids evicted from the recent list, so persistence stays bounded. */
+export function pushRecentKey(id: number): void {
+  if (!Number.isFinite(id)) return;
+  const state = useSettings.getState();
+  if (!state.loaded) return; // settings not ready yet; skip rather than overwrite
+  const prev = state.key_recent_ids;
+  const next = [id, ...prev.filter((x) => x !== id)].slice(0, 10);
+  state.set('key_recent_ids', next);
+  const evicted = prev.filter((x) => !next.includes(x));
+  if (evicted.length === 0) return;
+  const states = { ...state.key_runner_states };
+  let changed = false;
+  for (const evictedId of evicted) {
+    const k = String(evictedId);
+    if (k in states) {
+      delete states[k];
+      changed = true;
+    }
+  }
+  if (changed) state.set('key_runner_states', states);
+}
+
+/** Read the persisted runner state for a key. Returns null if none or settings
+ *  aren't loaded yet. Caller should validate that referenced couplet numbers
+ *  still exist before applying (re-imports can renumber couplets). */
+export function getKeyRunnerState(keyId: number): KeyRunnerStateLite | null {
+  const state = useSettings.getState();
+  if (!state.loaded) return null;
+  return state.key_runner_states[String(keyId)] ?? null;
+}
+
+/** Persist runner state for a key. Idempotent — safe to call on every state
+ *  change (sync SQLite write, no debounce needed at this volume). */
+export function setKeyRunnerState(keyId: number, runner: KeyRunnerStateLite): void {
+  const state = useSettings.getState();
+  if (!state.loaded) return;
+  const next = { ...state.key_runner_states, [String(keyId)]: runner };
+  state.set('key_runner_states', next);
 }
 
 function writeOne<K extends keyof SettingsValues>(key: K, value: SettingsValues[K]): void {

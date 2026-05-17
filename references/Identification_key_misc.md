@@ -56,6 +56,43 @@ Mobile UI 顯示 lead 文字但無 taxon 連結。
 
 不影響功能，UI 兩條路徑會跳到同種。
 
+## Myrtales 桃金孃目
+
+### Trapa 菱屬 degenerate（PDF 5 sp 但 TaiCOL 合併 3 → 1）
+PDF 區分 5 sp 用果型/角度特徵，TaiCOL 把以下 3 個 PDF 名稱全部 lump 到同一 accepted taxon：
+| PDF 名稱 | TaiCOL accepted | tid |
+|---------|----------------|-----|
+| Trapa bicornis var. taiwanensis 臺灣菱 | Trapa natans var. bispinosa 菱 | t0055638 |
+| Trapa bispinosa 二角菱 | Trapa natans var. bispinosa 菱 | t0055638 |
+| Trapa japonica 日本菱 | Trapa natans var. bispinosa 菱 | t0055638 |
+| Trapa pseudoincisa 格菱 | Trapa natans var. complana 格菱 | t0069662 |
+| Trapa maximowiczii 鬼菱 | Trapa natans var. japonica 鬼菱 | t0055639 |
+| Trapa incisa 小果菱 | Trapa incisa 小果菱 (本來就 accepted) | t0055637 |
+
+Trapa worksheet couplet 2A、4A、4B 在 mobile UI 都會顯示 `Trapa natans var. bispinosa 菱`（同一 taxon）。保留 PDF synonym Latin 讓 lead 描述可區分，但實際 drilldown 終點相同。
+
+### Onagraceae Oenothera dead-end
+PDF Onagraceae family key 列 Oenothera 待肯草屬為 genus terminal 但無 subkey。TaiCOL 8 sp accepted (biennis 月見草、drummondii 海濱月見草、glazioviana 黃花月見草、laciniata 裂葉月見草、rosea 粉花月見草、stricta 待宵草、tetraptera 四翅月見草、speciosa 美麗月見草)。未來如有外部資料可建 subkey。
+
+## Malpighiales 黃褥花目
+
+### Glochidion lanyuense 蘭嶼饅頭果 UNRESOLVED
+PDF Phyllanthaceae Glochidion subkey couplet 5A 為 Glochidion lanyuense 蘭嶼饅頭果，但 TaiCOL 完全沒有此 taxon (lanyuense / lanyuensis 都查無)。保留 PDF 字串作為 lead 文字，target_id 存原始 sciname。
+
+### 跳過家族（0sp 或 1sp inline）
+- Achariaceae 鐘花科 (1 gen, 0 sp accepted)
+- Chrysobalanaceae 可可李科 (1 gen, 0 sp accepted)
+- Ochnaceae 金蓮木科 (1 gen, 0 sp accepted)
+- Linaceae 亞麻科 (1 sp inline，PDF 無 key)
+
+## Fabales 豆目
+
+### Desmanthus pernambucanus 合歡草 UNRESOLVED
+PDF Fabaceae Desmanthus subkey couplet 2B 為 Desmanthus pernambucanus 合歡草，但 TaiCOL 完全沒有此 taxon。保留 PDF 字串。
+
+### Desmodium 屬大規模 TaiCOL 重新分類 (Grona/Sohmaea/Polhillides 等 9 個新屬)
+TaiCOL 把 Desmodium 屬大幅拆分。worksheet 名仍用 Desmodium、bare epithet 仍走 synonym fallback：mobile UI 會顯示新屬名 (Grona heterocarpa 假地豆、Pleurolobus gangeticus 大葉山螞蝗 等)。功能 OK，視覺差異而已。
+
 ## 後續維護建議
 
 1. 若 PDF 修訂版 (2025+) 出現，可重新 parse 補完 master key。

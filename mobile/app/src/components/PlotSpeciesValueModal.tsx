@@ -8,7 +8,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -17,7 +16,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useColorScheme as useNwColorScheme } from 'nativewind';
 import type { Layer } from '~/db';
 import {
   SpeciesAttributesBlock,
@@ -170,10 +171,7 @@ export function PlotSpeciesValueModal({
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1 justify-end"
-      >
+      <KeyboardAvoidingView behavior="padding" className="flex-1 justify-end">
         <Pressable
           onPress={onCancel}
           style={{
@@ -185,21 +183,21 @@ export function PlotSpeciesValueModal({
             backgroundColor: 'rgba(0,0,0,0.4)',
           }}
         />
-        <View style={{ maxHeight: '90%' }} className="rounded-t-2xl bg-white">
+        <View style={{ maxHeight: '90%' }} className="rounded-t-2xl bg-white dark:bg-gray-900">
           <SafeAreaView edges={['bottom']}>
             <View className="items-center pt-2">
-              <View className="h-1 w-12 rounded-full bg-gray-300" />
+              <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
-            <View className="border-b border-gray-100 px-4 py-3">
-              <Text className="text-base font-semibold text-gray-900" numberOfLines={1}>
+            <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={1}>
                 {title}
               </Text>
-              <Text className="mt-0.5 text-xs text-gray-500">分層 {layer}</Text>
+              <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
             </View>
 
             <ScrollView className="max-h-[520px] px-4 py-3" keyboardShouldPersistTaps="handled">
               {/* Quantity type picker */}
-              <Text className="mb-2 text-xs font-medium text-gray-600">豐度單位</Text>
+              <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">豐度單位</Text>
               <View className="flex-row flex-wrap gap-1.5">
                 {QUANTITY_TYPES.map((opt) => {
                   const active = qtyType === opt.value;
@@ -207,10 +205,10 @@ export function PlotSpeciesValueModal({
                     <Pressable
                       key={opt.value}
                       onPress={() => handleSwitchType(opt.value)}
-                      className={`rounded-full border px-3 py-1.5 ${active ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white'}`}
+                      className={`rounded-full border px-3 py-1.5 ${active ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
                     >
                       <Text
-                        className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700'}`}
+                        className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
                       >
                         {opt.label}
                       </Text>
@@ -219,10 +217,10 @@ export function PlotSpeciesValueModal({
                 })}
                 <Pressable
                   onPress={() => handleSwitchType('__custom__')}
-                  className={`rounded-full border px-3 py-1.5 ${currentKind === 'custom' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white'}`}
+                  className={`rounded-full border px-3 py-1.5 ${currentKind === 'custom' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
                 >
                   <Text
-                    className={`text-xs font-medium ${currentKind === 'custom' ? 'text-white' : 'text-gray-700'}`}
+                    className={`text-xs font-medium ${currentKind === 'custom' ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
                   >
                     自定義
                   </Text>
@@ -262,14 +260,14 @@ export function PlotSpeciesValueModal({
               </View>
 
               <View className="mt-4">
-                <Text className="mb-1 text-xs font-medium text-gray-600">備註（選填）</Text>
+                <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">備註（選填）</Text>
                 <TextInput
                   value={notes}
                   onChangeText={setNotes}
                   placeholder="觀察補述..."
                   placeholderTextColor="#9ca3af"
                   multiline
-                  className="min-h-[60px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900"
+                  className="min-h-[60px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
                 />
               </View>
 
@@ -284,16 +282,16 @@ export function PlotSpeciesValueModal({
               <View className="h-4" />
             </ScrollView>
 
-            <View className="flex-row gap-3 border-t border-gray-100 px-4 py-3">
+            <View className="flex-row gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
               <Pressable
                 onPress={onCancel}
-                className="flex-1 items-center justify-center rounded-lg bg-gray-100 py-3 active:bg-gray-200"
+                className="flex-1 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 py-3 active:bg-gray-200 dark:active:bg-gray-700"
               >
-                <Text className="text-sm font-medium text-gray-700">取消</Text>
+                <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">取消</Text>
               </Pressable>
               <Pressable
                 onPress={canSave ? handleSave : undefined}
-                className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? 'bg-emerald-500 active:bg-emerald-600' : 'bg-gray-200'}`}
+                className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? 'bg-emerald-500 active:bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
               >
                 <Text className="text-sm font-medium text-white">儲存</Text>
               </Pressable>
@@ -308,7 +306,7 @@ export function PlotSpeciesValueModal({
 function BBInput({ value, onChange }: { value: string | null; onChange: (v: string) => void }) {
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600">Braun-Blanquet 等級</Text>
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">Braun-Blanquet 等級</Text>
       <View className="flex-row flex-wrap gap-2">
         {BB_OPTIONS.map((v) => {
           const on = value === v;
@@ -316,9 +314,9 @@ function BBInput({ value, onChange }: { value: string | null; onChange: (v: stri
             <Pressable
               key={v}
               onPress={() => onChange(v)}
-              className={`h-12 w-12 items-center justify-center rounded-lg ${on ? 'bg-emerald-500' : 'bg-gray-100'}`}
+              className={`h-12 w-12 items-center justify-center rounded-lg ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
             >
-              <Text className={`text-lg font-semibold ${on ? 'text-white' : 'text-gray-700'}`}>
+              <Text className={`text-lg font-semibold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                 {v}
               </Text>
             </Pressable>
@@ -332,8 +330,8 @@ function BBInput({ value, onChange }: { value: string | null; onChange: (v: stri
 function PercentInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600">覆蓋度 (%)</Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3">
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">覆蓋度 (%)</Text>
+      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={value}
           onChangeText={onChange}
@@ -341,18 +339,18 @@ function PercentInput({ value, onChange }: { value: string; onChange: (v: string
           placeholderTextColor="#9ca3af"
           keyboardType="decimal-pad"
           autoFocus
-          className="flex-1 py-3 text-base text-gray-900"
+          className="flex-1 py-3 text-base text-gray-900 dark:text-gray-100"
         />
-        <Text className="ml-1 text-sm text-gray-500">%</Text>
+        <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">%</Text>
       </View>
       <View className="mt-2 flex-row flex-wrap gap-2">
         {[1, 5, 10, 25, 50, 75].map((v) => (
           <Pressable
             key={v}
             onPress={() => onChange(String(v))}
-            className="rounded-full bg-gray-100 px-3 py-1 active:bg-gray-200"
+            className="rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 active:bg-gray-200 dark:active:bg-gray-700"
           >
-            <Text className="text-xs text-gray-700">{v}%</Text>
+            <Text className="text-xs text-gray-700 dark:text-gray-300">{v}%</Text>
           </Pressable>
         ))}
       </View>
@@ -371,8 +369,8 @@ function CountInput({
 }) {
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600">數量 (organismQuantity)</Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3">
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">數量 (organismQuantity)</Text>
+      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={value}
           onChangeText={onChange}
@@ -380,9 +378,9 @@ function CountInput({
           placeholderTextColor="#9ca3af"
           keyboardType="numeric"
           autoFocus
-          className="flex-1 py-3 text-base text-gray-900"
+          className="flex-1 py-3 text-base text-gray-900 dark:text-gray-100"
         />
-        {suffix ? <Text className="ml-1 text-sm text-gray-500">{suffix}</Text> : null}
+        {suffix ? <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">{suffix}</Text> : null}
       </View>
     </View>
   );
@@ -404,8 +402,8 @@ function DBHInput({
   const totalBA = basalArea(stems);
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600">胸高直徑 (DBH, cm)</Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3">
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">胸高直徑 (DBH, cm)</Text>
+      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={stemDraft}
           onChangeText={setStemDraft}
@@ -415,7 +413,7 @@ function DBHInput({
           keyboardType="decimal-pad"
           returnKeyType="done"
           autoFocus
-          className="flex-1 py-3 text-base text-gray-900"
+          className="flex-1 py-3 text-base text-gray-900 dark:text-gray-100"
         />
         <Pressable
           onPress={onAdd}
@@ -428,27 +426,34 @@ function DBHInput({
         <>
           <View className="mt-3 flex-row flex-wrap gap-2">
             {stems.map((d, idx) => (
-              <Pressable
-                key={`${idx}-${d}`}
-                onLongPress={() => onRemove(idx)}
-                delayLongPress={300}
-                className="flex-row items-center rounded-full bg-blue-100 px-3 py-1.5"
-              >
-                <Text className="text-sm font-medium text-blue-800">{d} cm</Text>
-                <Pressable onPress={() => onRemove(idx)} hitSlop={8} className="ml-1.5">
-                  <Ionicons name="close-circle" size={16} color="#1e40af" />
-                </Pressable>
-              </Pressable>
+              <DbhStemChip key={`${idx}-${d}`} value={d} onRemove={() => onRemove(idx)} />
             ))}
           </View>
-          <Text className="mt-2 text-xs text-gray-500">
+          <Text className="mt-2 text-xs text-gray-500 dark:text-gray-400">
             共 {stems.length} 分枝 · BA ≈ {totalBA.toFixed(1)} cm²
           </Text>
         </>
       ) : (
-        <Text className="mt-2 text-xs text-gray-400">尚未輸入分枝</Text>
+        <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">尚未輸入分枝</Text>
       )}
     </View>
+  );
+}
+
+function DbhStemChip({ value, onRemove }: { value: number; onRemove: () => void }) {
+  const { colorScheme } = useNwColorScheme();
+  const closeColor = colorScheme === 'dark' ? '#ffffff' : '#1e40af';
+  return (
+    <Pressable
+      onLongPress={onRemove}
+      delayLongPress={300}
+      className="flex-row items-center rounded-full bg-blue-100 dark:bg-blue-900/60 px-3 py-1.5"
+    >
+      <Text className="text-sm font-medium text-blue-800 dark:text-white">{value} cm</Text>
+      <Pressable onPress={onRemove} hitSlop={8} className="ml-1.5">
+        <Ionicons name="close-circle" size={16} color={closeColor} />
+      </Pressable>
+    </Pressable>
   );
 }
 
@@ -466,7 +471,7 @@ function CustomInput({
   return (
     <View className="gap-3">
       <View>
-        <Text className="mb-1 text-xs font-medium text-gray-600">
+        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
           自訂單位 (organismQuantityType)
         </Text>
         <TextInput
@@ -475,17 +480,17 @@ function CustomInput({
           placeholder="例: 莖節數 / 鳴叫次數 / biomass(g)"
           placeholderTextColor="#9ca3af"
           autoCapitalize="none"
-          className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-base text-gray-900"
+          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
         />
       </View>
       <View>
-        <Text className="mb-1 text-xs font-medium text-gray-600">數量 (organismQuantity)</Text>
+        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">數量 (organismQuantity)</Text>
         <TextInput
           value={quantityValue}
           onChangeText={setQuantityValue}
           placeholder="例: 3 或 1.2 或 abundant"
           placeholderTextColor="#9ca3af"
-          className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-base text-gray-900"
+          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
         />
       </View>
     </View>

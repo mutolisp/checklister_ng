@@ -37,19 +37,19 @@ export function TaxonGroupPicker({ value, onChange }: Props) {
     <>
       <Pressable
         onPress={() => setOpen(true)}
-        className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:bg-blue-100"
+        className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
       >
         <Ionicons name="filter" size={14} color="#2563eb" />
-        <Text className="ml-1 text-xs font-medium text-blue-700">{getGroupLabel(value)}</Text>
+        <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">{getGroupLabel(value)}</Text>
         <Ionicons name="chevron-down" size={12} color="#2563eb" />
       </Pressable>
       <Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}>
         <Pressable onPress={() => setOpen(false)} className="flex-1 bg-black/40">
-          <Pressable className="mt-auto rounded-t-2xl bg-white pb-6">
+          <Pressable className="mt-auto rounded-t-2xl bg-white dark:bg-gray-900 pb-6">
             <SafeAreaView edges={['bottom']}>
-              <View className="border-b border-gray-200 px-4 py-3">
-                <Text className="text-base font-semibold text-gray-900">搜尋限定類群</Text>
-                <Text className="mt-0.5 text-xs text-gray-500">選定後，搜尋只會在該類群內查詢</Text>
+              <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+                <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">搜尋限定類群</Text>
+                <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">選定後，搜尋只會在該類群內查詢</Text>
               </View>
               <ScrollView className="max-h-96">
                 {TAXON_GROUP_OPTIONS.map((opt) => {
@@ -61,9 +61,9 @@ export function TaxonGroupPicker({ value, onChange }: Props) {
                         onChange(opt.value);
                         setOpen(false);
                       }}
-                      className={`flex-row items-center border-b border-gray-100 px-4 py-3 ${active ? 'bg-blue-50' : 'active:bg-gray-50'}`}
+                      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
                     >
-                      <Text className={`flex-1 text-base ${active ? 'font-semibold text-blue-700' : 'text-gray-900'}`}>
+                      <Text className={`flex-1 text-base ${active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}>
                         {opt.label}
                       </Text>
                       {active ? <Ionicons name="checkmark" size={20} color="#2563eb" /> : null}

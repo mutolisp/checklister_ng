@@ -9,8 +9,8 @@ export function ToastHost() {
   if (!current) return null;
 
   return (
-    <SafeAreaView pointerEvents="box-none" className="absolute inset-x-0 bottom-24 items-center">
-      <View className="mx-4 flex-row items-center rounded-lg bg-gray-900 px-4 py-3 shadow-lg">
+    <SafeAreaView edges={['top']} pointerEvents="box-none" className="absolute inset-x-0 top-0 items-center">
+      <View className="mx-4 mt-2 flex-row items-center rounded-lg bg-gray-900 px-4 py-3 shadow-lg">
         <Text className="flex-1 text-sm text-white">{current.message}</Text>
         {current.action ? (
           <Pressable

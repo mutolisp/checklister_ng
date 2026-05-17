@@ -58,9 +58,9 @@ function buildPayload(sessionId: number): {
   filenameBase: string;
 } {
   const session = getSession(sessionId);
-  if (!session) throw new Error(`Session ${sessionId} 不存在`);
+  if (!session) throw new Error(`記錄 ${sessionId} 不存在`);
   const records = listSessionRecords(sessionId);
-  if (records.length === 0) throw new Error('Session 內無物種，無法匯出');
+  if (records.length === 0) throw new Error('記錄內無物種，無法匯出');
 
   const project = getProject(session.project_id);
   const items = records.map((r) => recordToExportItem(r));
@@ -126,9 +126,9 @@ function mapAlienToSource(alienType: string, kingdom: string): string {
 
 export async function exportMarkdown(sessionId: number): Promise<ExportFile> {
   const session = getSession(sessionId);
-  if (!session) throw new Error(`Session ${sessionId} 不存在`);
+  if (!session) throw new Error(`記錄 ${sessionId} 不存在`);
   const records = listSessionRecords(sessionId);
-  if (records.length === 0) throw new Error('Session 內無物種，無法匯出');
+  if (records.length === 0) throw new Error('記錄內無物種，無法匯出');
 
   const project = getProject(session.project_id);
   const items = records.map(recordToMarkdownItem);

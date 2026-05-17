@@ -36,7 +36,7 @@ export function ActiveSessionBar() {
       style={{ paddingTop: insets.top }}
     >
       <View className="flex-row items-center px-4 py-2">
-        <View className="mr-2 h-2 w-2 rounded-full bg-white" />
+        <View className="mr-2 h-2 w-2 rounded-full bg-white dark:bg-gray-900" />
         <Ionicons
           name={showPlot ? 'grid' : 'list'}
           size={14}

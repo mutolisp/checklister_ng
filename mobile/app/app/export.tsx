@@ -48,11 +48,11 @@ export default function ExportScreen() {
   };
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50">
+    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen options={{ title: '匯出名錄' }} />
-      <View className="border-b border-gray-200 bg-white px-4 py-3">
-        <Text className="text-sm text-gray-700">
-          選擇要匯出的 session：YAML 與桌面版相容、CSV 為 Darwin Core 標準、Markdown 含分類階層 + 統計
+      <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
+        <Text className="text-sm text-gray-700 dark:text-gray-300">
+          選擇要匯出的記錄：YAML 與桌面版相容、CSV 為 Darwin Core 標準、Markdown 含分類階層 + 統計
         </Text>
       </View>
       <FlatList
@@ -60,13 +60,13 @@ export default function ExportScreen() {
         keyExtractor={(s) => String(s.id)}
         ListEmptyComponent={
           <View className="px-4 py-12">
-            <Text className="text-center text-sm text-gray-500">尚無記錄</Text>
+            <Text className="text-center text-sm text-gray-500 dark:text-gray-400">尚無記錄</Text>
           </View>
         }
         renderItem={({ item }) => (
-          <View className="border-b border-gray-100 bg-white px-4 py-3">
-            <Text className="font-medium text-gray-900">{item.name}</Text>
-            <Text className="text-xs text-gray-500">
+          <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+            <Text className="font-medium text-gray-900 dark:text-gray-100">{item.name}</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400">
               {item.record_count} 筆 · {item.project_name} · {item.ended_at === null ? '記錄中' : '已結束'}
             </Text>
             <View className="mt-2 flex-row gap-2">
@@ -98,7 +98,7 @@ function ExportBtn({
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      className={`flex-1 flex-row items-center justify-center rounded-lg px-3 py-2 ${disabled ? 'bg-gray-200' : `${color} active:opacity-80`}`}
+      className={`flex-1 flex-row items-center justify-center rounded-lg px-3 py-2 ${disabled ? 'bg-gray-200 dark:bg-gray-700' : `${color} active:opacity-80`}`}
     >
       <Ionicons name={icon} size={16} color="white" />
       <Text className="ml-1 text-xs font-medium text-white">{label}</Text>

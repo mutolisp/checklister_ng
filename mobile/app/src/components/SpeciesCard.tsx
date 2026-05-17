@@ -1,6 +1,8 @@
 import { Image } from 'expo-image';
 import { Pressable, Text, View } from 'react-native';
 import { parsePhotoPaths, type RecordWithTaxon } from '~/db';
+import { alienBadge } from '~/lib/conservationColors';
+import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 
 type Props = {
@@ -9,17 +11,9 @@ type Props = {
   onLongPress?: () => void;
 };
 
-function statusColor(redlist: string): string {
-  if (!redlist) return 'bg-gray-200 text-gray-600';
-  if (['CR', 'EN', 'VU'].includes(redlist)) return 'bg-red-100 text-red-700';
-  if (['NT', 'NEN'].includes(redlist)) return 'bg-orange-100 text-orange-700';
-  if (['LC', 'NLC'].includes(redlist)) return 'bg-emerald-100 text-emerald-700';
-  return 'bg-gray-100 text-gray-700';
-}
-
 export function SpeciesCard({ record, onPress, onLongPress }: Props) {
   const isEndemic = record.is_endemic === 'true';
-  const statusCls = statusColor(record.redlist);
+  const ab = alienBadge(record.alien_type, record.kingdom);
   const photos = parsePhotoPaths(record.photo_paths);
 
   return (
@@ -27,10 +21,10 @@ export function SpeciesCard({ record, onPress, onLongPress }: Props) {
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50"
+      className="flex-row border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
     >
       {photos.length > 0 ? (
-        <View className="mr-3 h-14 w-14 overflow-hidden rounded-md bg-gray-100">
+        <View className="mr-3 h-14 w-14 overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800">
           <Image
             source={{ uri: photos[0] }}
             style={{ width: '100%', height: '100%' }}
@@ -45,32 +39,41 @@ export function SpeciesCard({ record, onPress, onLongPress }: Props) {
           ) : null}
         </View>
       ) : (
-        <View className="mr-3 h-14 w-14 items-center justify-center rounded-md bg-gray-100" />
+        <View className="mr-3 h-14 w-14 items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800" />
       )}
       <View className="flex-1">
-        <Text className="font-medium text-gray-900" numberOfLines={1}>
+        <Text className="font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
           {record.common_name_c || '(無中文名)'}
         </Text>
         <ScientificName
           name={record.simple_name}
           author={record.name_author}
           kingdom={record.kingdom}
-          className="mt-0.5 text-sm text-gray-700"
+          className="mt-0.5 text-sm text-gray-700 dark:text-gray-300"
           numberOfLines={1}
         />
-        <Text className="mt-0.5 text-xs text-gray-500" numberOfLines={1}>
+        <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
           {record.family_c} {record.family}
         </Text>
       </View>
       <View className="ml-2 items-end justify-start">
-        {isEndemic ? <Text className="text-xs text-emerald-700">特有</Text> : null}
+        <View className="flex-row items-center">
+          {isEndemic ? (
+            <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+          ) : null}
+          {ab ? (
+            <Text className={`${isEndemic ? 'ml-1.5' : ''} text-xs font-medium ${ab.textClass}`}>
+              {ab.shortLabel}
+            </Text>
+          ) : null}
+        </View>
         {record.redlist ? (
-          <View className={`mt-1 rounded-full px-2 py-0.5 ${statusCls.split(' ')[0]}`}>
-            <Text className={`text-xs font-medium ${statusCls.split(' ')[1]}`}>{record.redlist}</Text>
+          <View className="mt-1">
+            <ConservationBadge code={record.redlist} />
           </View>
         ) : null}
         {record.protected ? (
-          <Text className="mt-1 text-xs italic text-gray-600">{record.protected}</Text>
+          <Text className="mt-1 text-xs italic text-gray-600 dark:text-gray-400">{record.protected}</Text>
         ) : null}
       </View>
     </Pressable>

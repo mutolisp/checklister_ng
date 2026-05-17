@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Keyboard, Platform, Pressable, Text, View } from 'react-native';
 import {
   addPlotSpecies,
   deletePlotSpecies,
@@ -13,6 +13,7 @@ import {
   LAYER_LABEL,
   updatePlotSpeciesValue,
 } from '~/db';
+import { KeyboardStickyView } from './KeyboardAvoidingView';
 import { ScientificName } from './ScientificName';
 import { SearchBox } from './SearchBox';
 import { SwipeRow } from './SwipeRow';
@@ -67,7 +68,12 @@ export function PlotSpeciesTab({
     return out;
   }, [records]);
 
-  const handleSelect = (taxon: SearchResult) => {
+  const handleSelect = async (taxon: SearchResult) => {
+    // iOS UIKit refuses to present a Modal while the keyboard / Chinese IME
+    // composition session is still active. Dismiss first, wait one frame,
+    // then mount PlotSpeciesValueModal.
+    Keyboard.dismiss();
+    if (Platform.OS === 'ios') await new Promise((r) => setTimeout(r, 150));
     setModal({ mode: 'create', taxon, layer });
   };
 
@@ -177,17 +183,17 @@ export function PlotSpeciesTab({
   })();
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1 bg-gray-50 dark:bg-gray-950">
       {/* Layer focus chips (fixed plots only) */}
-      <View className="border-b border-gray-100 bg-white px-4 py-3">
+      <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
         {isTransect ? (
-          <Text className="text-[11px] text-gray-500">
+          <Text className="text-[11px] text-gray-500 dark:text-gray-400">
             穿越線記錄
             {grouped['T'].length > 0 ? ` · 已記 ${grouped['T'].length} 筆` : ''}
           </Text>
         ) : (
           <>
-            <Text className="mb-1.5 text-xs font-medium text-gray-600">輸入分層</Text>
+            <Text className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">輸入分層</Text>
             <View className="flex-row gap-2">
               {LAYERS.map((l) => {
                 const on = layer === l;
@@ -195,16 +201,16 @@ export function PlotSpeciesTab({
                   <Pressable
                     key={l}
                     onPress={() => setLayer(l)}
-                    className={`flex-1 items-center rounded-lg py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100'}`}
+                    className={`flex-1 items-center rounded-lg py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
                   >
-                    <Text className={`text-sm font-bold ${on ? 'text-white' : 'text-gray-700'}`}>
+                    <Text className={`text-sm font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                       {l}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
-            <Text className="mt-1.5 text-[11px] text-gray-500">
+            <Text className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
               {LAYER_LABEL[layer]}
               {grouped[layer].length > 0 ? ` · 已記 ${grouped[layer].length} 筆` : ''}
             </Text>
@@ -234,8 +240,8 @@ export function PlotSpeciesTab({
         renderItem={({ item }) => {
           if (item.kind === 'header') {
             return (
-              <View className="bg-gray-100 px-4 py-1.5">
-                <Text className="text-xs font-semibold text-gray-600">
+              <View className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5">
+                <Text className="text-xs font-semibold text-gray-600 dark:text-gray-400">
                   {LAYER_LABEL[item.layer]} ({grouped[item.layer].length})
                 </Text>
               </View>
@@ -260,15 +266,17 @@ export function PlotSpeciesTab({
         ListEmptyComponent={
           <View className="items-center px-8 py-12">
             <Ionicons name="leaf-outline" size={40} color="#cbd5e1" />
-            <Text className="mt-2 text-center text-sm text-gray-500">
+            <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
               {isTransect ? '從下方搜尋加入物種' : '選擇分層後從下方搜尋加入物種'}
             </Text>
           </View>
         }
       />
 
-      {/* SearchBox pinned at bottom */}
-      <SearchBox onSelect={handleSelect} />
+      {/* SearchBox sticks above the keyboard, follows accessory-bar changes */}
+      <KeyboardStickyView>
+        <SearchBox onSelect={handleSelect} />
+      </KeyboardStickyView>
 
       {modal && modalProps ? (
         <PlotSpeciesValueModal
@@ -301,24 +309,24 @@ function SpeciesRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50"
+      className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
     >
       <View className="flex-1">
-        <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>
+        <Text className="text-sm font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
           {record.common_name_c || '(無中文名)'}
         </Text>
         <ScientificName
           name={record.simple_name}
           author={record.name_author}
           kingdom={record.kingdom}
-          className="mt-0.5 text-xs text-gray-700"
+          className="mt-0.5 text-xs text-gray-700 dark:text-gray-300"
           numberOfLines={1}
         />
-        <Text className="mt-0.5 text-[11px] text-gray-500" numberOfLines={1}>
+        <Text className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400" numberOfLines={1}>
           {record.family_c} {record.family}
         </Text>
         {record.notes ? (
-          <Text className="mt-0.5 text-[11px] italic text-gray-500" numberOfLines={1}>
+          <Text className="mt-0.5 text-[11px] italic text-gray-500 dark:text-gray-400" numberOfLines={1}>
             {record.notes}
           </Text>
         ) : null}
@@ -337,11 +345,11 @@ function ValueBadge({ record }: { record: PlotSpeciesRecordWithTaxon }) {
   // Tone by kind
   const tone =
     kind === 'BB'
-      ? { bg: 'bg-emerald-100', text: 'text-emerald-700' }
+      ? { bg: 'bg-emerald-100 dark:bg-emerald-900/60', text: 'text-emerald-700 dark:text-emerald-300' }
       : kind === 'percent'
-        ? { bg: 'bg-blue-100', text: 'text-blue-700' }
+        ? { bg: 'bg-blue-100 dark:bg-blue-900/60', text: 'text-blue-700 dark:text-blue-300' }
         : kind === 'DBH'
-          ? { bg: 'bg-amber-100', text: 'text-amber-800' }
+          ? { bg: 'bg-amber-100 dark:bg-amber-900/60', text: 'text-amber-800 dark:text-amber-300' }
           : { bg: 'bg-slate-100', text: 'text-slate-700' };
 
   if (kind === 'DBH') {

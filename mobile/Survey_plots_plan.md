@@ -1,5 +1,12 @@
 # Vegetation survey plan
 
+
+## Survey methods
+
+1. boundary-based plot survey
+2. bounaryless point count
+3. line transect
+
 ## data models
 
 1. Environmental data

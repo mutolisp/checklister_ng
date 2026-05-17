@@ -55,6 +55,11 @@ def build(db_path: Path) -> None:
     rows = [(cname, ",".join(str(nid) for nid in nids)) for cname, nids in bucket.items()]
     cur.executemany("INSERT INTO cname_fuzzy_index (cname, name_ids) VALUES (?, ?);", rows)
 
+    # Index used by KeyListView's child_count subquery (genus-scope keys).
+    # Without it, each of ~80 genus keys full-scans taicol_names (~242k rows),
+    # blowing up keys-tab cold start to multi-second territory on mobile.
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_taicol_genus ON taicol_names(genus);")
+
     conn.commit()
     cur.execute("VACUUM;")
     conn.close()

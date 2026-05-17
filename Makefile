@@ -13,6 +13,8 @@ UNAME_S := $(shell uname -s)
 
 all: backend frontend
 
+.PHONY: all backend frontend run dev pkg pkg-dmg pkg-win test taicol icon clean mobile-db help
+
 help:
 	@echo "Usage:"
 	@echo "  make              Build backend venv + frontend"
@@ -25,6 +27,7 @@ help:
 	@echo "  make pkg-win      Build Windows .exe (run on Windows)"
 	@echo "  make test          Run regression tests (pytest)"
 	@echo "  make taicol        Import TaiCOL CSV (auto-find latest or CSV=path)"
+	@echo "  make mobile-db     Refresh mobile bundle DB + rebuild fuzzy index"
 	@echo "  make icon         Generate .ico/.icns from icons/checklister-ng_icons.png"
 	@echo "  make clean        Remove build artifacts"
 
@@ -96,6 +99,19 @@ taicol: backend
 	@if [ -z "$(CSV)" ]; then echo "Error: No TaiCOL CSV found in references/"; exit 1; fi
 	@echo "==> Importing TaiCOL from: $(CSV)"
 	$(BACKEND_VENV)/bin/python -m backend.services.taicol_import "$(CSV)"
+
+# ─── Mobile bundle DB ─────────────────────────────────────
+# Copies backend DB into the mobile asset path and rebuilds the fuzzy index
+# the mobile app relies on. Run this after taicol re-import or after any
+# change that touches taicol_names / identification_keys schema, otherwise
+# the bundle ships without `cname_fuzzy_index` and Chinese search crashes
+# Hermes at runtime (see Plan.md row 9.15).
+MOBILE_DB := mobile/app/assets/db/twnamelist.db
+mobile-db: backend
+	@echo "==> Copying backend DB → $(MOBILE_DB)"
+	cp backend/twnamelist.db $(MOBILE_DB)
+	@echo "==> Building mobile fuzzy index"
+	$(BACKEND_VENV)/bin/python -m backend.scripts.build_mobile_fuzzy_index $(MOBILE_DB)
 
 # ─── Icon ─────────────────────────────────────────────────
 icon:

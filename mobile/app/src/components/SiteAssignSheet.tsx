@@ -76,18 +76,18 @@ export function SiteAssignSheet({
         />
         <View
           style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: insets.bottom + 8 }}
-          className="rounded-t-2xl bg-white"
+          className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
-          <View className="border-b border-gray-200 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900">指定樣區</Text>
-            <Text className="mt-0.5 text-xs text-gray-500">
+          <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指定樣區</Text>
+            <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               點 / 線 / 範圍均可。為當次調查所在地，選填
             </Text>
           </View>
 
-          <View className="border-b border-gray-100 bg-blue-50">
+          <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40">
             <View className="px-4 pb-2 pt-3">
-              <Text className="text-xs font-medium uppercase tracking-wide text-blue-700">
+              <Text className="text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
                 新建樣區（繪製完自動指派）
               </Text>
             </View>
@@ -101,17 +101,17 @@ export function SiteAssignSheet({
           {currentSiteId !== null ? (
             <Pressable
               onPress={() => onAssign(null)}
-              className="flex-row items-center border-b border-gray-100 bg-gray-50 px-4 py-3 active:bg-gray-100"
+              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-3 active:bg-gray-100 dark:active:bg-gray-700"
             >
               <Ionicons name="close-circle-outline" size={20} color="#6b7280" style={{ marginRight: 12 }} />
-              <Text className="flex-1 text-base text-gray-700">移除指派</Text>
+              <Text className="flex-1 text-base text-gray-700 dark:text-gray-300">移除指派</Text>
             </Pressable>
           ) : null}
 
           <ScrollView className="max-h-96">
             {sortedSites.length === 0 ? (
               <View className="px-4 py-6">
-                <Text className="text-center text-sm text-gray-500">
+                <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
                   尚無樣區。點上方「新建樣區」開始繪製。
                 </Text>
               </View>
@@ -122,7 +122,7 @@ export function SiteAssignSheet({
                   <Pressable
                     key={s.id}
                     onPress={() => onAssign(s.id)}
-                    className={`flex-row items-center border-b border-gray-100 px-4 py-3 ${active ? 'bg-blue-50' : 'active:bg-gray-50'}`}
+                    className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
                   >
                     <Ionicons
                       name={TYPE_ICON[s.geometry_type] ?? 'pin-outline'}
@@ -132,12 +132,12 @@ export function SiteAssignSheet({
                     />
                     <View className="flex-1">
                       <Text
-                        className={`text-base ${active ? 'font-semibold text-blue-700' : 'text-gray-900'}`}
+                        className={`text-base ${active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}
                         numberOfLines={1}
                       >
                         {s.name}
                       </Text>
-                      <Text className="text-xs text-gray-500" numberOfLines={1}>
+                      <Text className="text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
                         {TYPE_LABEL[s.geometry_type] ?? s.geometry_type} · {s.project_name}
                       </Text>
                     </View>

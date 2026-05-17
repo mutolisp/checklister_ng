@@ -77,11 +77,19 @@ async def upload_taicol(
             taxon_csv_path=taxon_tmp_path or None,
             do_backup=True,
         )
+        stale = result.get("stale_key_taxon_refs") or {}
+        stale_couplets = stale.get("total_stale_couplets", 0)
+        stale_scope = stale.get("total_stale_scope", 0)
         logger.info(
             f"TaiCOL import: {result['rows_imported']} rows, "
             f"backfilled {result['backfilled_records']} from taxon CSV "
             f"({result.get('taxon_csv', 'none')}) in {result['time_elapsed']}s"
         )
+        if stale_couplets or stale_scope:
+            logger.warning(
+                f"TaiCOL import: {stale_couplets} stale key-couplet refs + "
+                f"{stale_scope} stale key-scope refs detected after import"
+            )
         return {
             "status": "success",
             "rows_imported": result["rows_imported"],
@@ -89,6 +97,7 @@ async def upload_taicol(
             "taxon_csv": result.get("taxon_csv"),
             "time_elapsed": result["time_elapsed"],
             "backup_path": result["backup_path"],
+            "stale_key_taxon_refs": stale,
         }
     except HTTPException:
         raise

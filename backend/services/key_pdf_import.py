@@ -30,7 +30,7 @@ from backend.db import engine
 from backend.models.schema import IdentificationKey, KeyCouplet, TaicolName
 
 
-# Column boundaries (px) for NTU 維管束植物野外鑑定指南 排版。
+# Column boundaries (px) for 維管束植物野外鑑定指南 排版。
 COL1_MAX_X = 82
 COL2_X = (82, 255)
 COL3_X = (255, 280)
@@ -39,7 +39,7 @@ COL5_X = (358, 408)
 COL6_MARK_X = (385, 410)
 COL6_STATUS_X = (410, 460)
 
-# Best-fit y-clustering tolerance。實測 7 px 對 NTU 排版剛好涵蓋同視覺行的
+# Best-fit y-clustering tolerance。實測 7 px 對維管束植物野外鑑定指南排版剛好涵蓋同視覺行的
 # baseline jitter（italic vs upright），又不會把鄰近 lead 的 italic 接續行誤併。
 ROW_Y_TOL = 7
 

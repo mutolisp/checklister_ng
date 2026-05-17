@@ -61,17 +61,17 @@ export default function PlotsListScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} className="flex-1 bg-gray-50">
-      <View className="border-b border-gray-100 bg-white px-4 py-3">
-        <Text className="text-lg font-semibold text-gray-900">樣區調查</Text>
-        <Text className="mt-0.5 text-xs text-gray-500">
+    <SafeAreaView edges={['top']} className="flex-1 bg-gray-50 dark:bg-gray-950">
+      <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+        <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">樣區調查</Text>
+        <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
           植群調查：環境資料 + 物種垂直分層豐度
         </Text>
       </View>
       {plots.length === 0 ? (
         <View className="flex-1 items-center justify-center px-8">
           <Ionicons name="grid-outline" size={56} color="#cbd5e1" />
-          <Text className="mt-3 text-center text-gray-500">
+          <Text className="mt-3 text-center text-gray-500 dark:text-gray-400">
             尚無樣區資料{'\n'}點右下角 + 開始新樣區
           </Text>
         </View>
@@ -114,33 +114,33 @@ function PlotRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50"
+      className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
     >
       <View className="flex-1">
         <View className="flex-row items-center">
           <View
-            className={`mr-2 h-2 w-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-gray-300'}`}
+            className={`mr-2 h-2 w-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
           />
-          <Text className="font-medium text-gray-900">{plot.plotid}</Text>
+          <Text className="font-medium text-gray-900 dark:text-gray-100">{plot.plotid}</Text>
           {isActive ? (
-            <View className="ml-2 rounded bg-emerald-100 px-2 py-0.5">
-              <Text className="text-xs font-medium text-emerald-700">記錄中</Text>
+            <View className="ml-2 rounded bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5">
+              <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">記錄中</Text>
             </View>
           ) : null}
           {!ready ? (
-            <View className="ml-2 rounded bg-amber-100 px-2 py-0.5">
-              <Text className="text-xs font-medium text-amber-700">資訊未補齊</Text>
+            <View className="ml-2 rounded bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5">
+              <Text className="text-xs font-medium text-amber-700 dark:text-amber-300">資訊未補齊</Text>
             </View>
           ) : null}
         </View>
-        <Text className="mt-1 text-xs text-gray-500">
+        <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
           {plot.sampling_protocol ?? '未設 protocol'}
           {plot.sample_size_value
             ? ` · ${plot.sample_size_value} ${plot.sample_size_unit ?? ''}`
             : ''}
         </Text>
         {plot.start_ts ? (
-          <Text className="mt-0.5 text-xs text-gray-400">{formatTime(plot.start_ts)}</Text>
+          <Text className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatTime(plot.start_ts)}</Text>
         ) : null}
       </View>
       <Ionicons name="chevron-forward" size={18} color="#9ca3af" />

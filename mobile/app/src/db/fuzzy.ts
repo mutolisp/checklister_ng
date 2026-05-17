@@ -1,6 +1,6 @@
 import { distance } from 'fastest-levenshtein';
 import { getTaicolDb } from './init';
-import { searchSpecies } from './search';
+import { SEARCH_COLUMNS, searchSpecies, TAXON_GROUP_FILTERS } from './search';
 import type { SearchResult, TaxonGroup } from './types';
 
 type FuzzyOptions = {
@@ -11,22 +11,46 @@ type FuzzyOptions = {
 };
 
 let cnameIndex: Array<{ cname: string; nameIds: number[] }> | null = null;
+let cnameIndexMissing = false;
 
-function loadCnameIndex(): Array<{ cname: string; nameIds: number[] }> {
+function loadCnameIndex(): Array<{ cname: string; nameIds: number[] }> | null {
   if (cnameIndex) return cnameIndex;
+  if (cnameIndexMissing) return null;
   const db = getTaicolDb();
-  const res = db.executeSync(`SELECT cname, name_ids FROM cname_fuzzy_index`);
-  cnameIndex = ((res.rows ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    cname: row.cname as string,
-    nameIds: (row.name_ids as string).split(',').map((s) => parseInt(s, 10)),
-  }));
-  return cnameIndex;
+  // The fuzzy index is built by `backend/scripts/build_mobile_fuzzy_index.py`
+  // before the asset DB is bundled. Older bundles (or bundles built without
+  // that step) won't have it — fail gracefully instead of throwing on every
+  // keystroke (an uncaught throw inside the search-debounce setTimeout has
+  // been observed to destabilize the Hermes runtime).
+  try {
+    const exists = db.executeSync(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='cname_fuzzy_index' LIMIT 1`,
+    );
+    if (!((exists.rows ?? []) as unknown[]).length) {
+      cnameIndexMissing = true;
+      // eslint-disable-next-line no-console
+      console.warn('[fuzzy] cname_fuzzy_index missing — fuzzy fallback disabled');
+      return null;
+    }
+    const res = db.executeSync(`SELECT cname, name_ids FROM cname_fuzzy_index`);
+    cnameIndex = ((res.rows ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      cname: row.cname as string,
+      nameIds: (row.name_ids as string).split(',').map((s) => parseInt(s, 10)),
+    }));
+    return cnameIndex;
+  } catch (e) {
+    cnameIndexMissing = true;
+    // eslint-disable-next-line no-console
+    console.warn('[fuzzy] failed to load cname_fuzzy_index, disabling fuzzy:', e);
+    return null;
+  }
 }
 
 export function fuzzySearch({ q, group, excludeIds, limit = 10 }: FuzzyOptions): SearchResult[] {
   if (!q || q.length < 2) return [];
 
   const index = loadCnameIndex();
+  if (!index) return [];
 
   let matches = index
     .map((entry) => ({ entry, dist: distance(q, entry.cname) }))
@@ -61,10 +85,18 @@ export function fuzzySearch({ q, group, excludeIds, limit = 10 }: FuzzyOptions):
 
   const db = getTaicolDb();
   const placeholders = matchedNameIds.map(() => '?').join(',');
-  const res = db.executeSync(
-    `SELECT * FROM taicol_names WHERE name_id IN (${placeholders})`,
-    matchedNameIds,
-  );
+  // Honor the user's taxon-group filter — without this the fuzzy index sweeps
+  // across all 62k cnames and returns matches from any kingdom, so picking
+  // "維管束植物" had no effect on fuzzy results (only exact-search was filtered).
+  let sql = `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE name_id IN (${placeholders})`;
+  const params: (string | number)[] = [...matchedNameIds];
+  if (group && TAXON_GROUP_FILTERS[group]) {
+    for (const [field, value] of Object.entries(TAXON_GROUP_FILTERS[group])) {
+      sql += ` AND "${field}" = ?`;
+      params.push(value);
+    }
+  }
+  const res = db.executeSync(sql, params);
 
   const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
   const results: SearchResult[] = [];
@@ -87,6 +119,7 @@ export function fuzzySearch({ q, group, excludeIds, limit = 10 }: FuzzyOptions):
       redlist: (row.redlist as string) ?? '',
       endemic: row.is_endemic === 'true' ? 1 : 0,
       source: '',
+      alien_type: (row.alien_type as string) ?? '',
       pt_name: '',
       taxon_id: (row.taxon_id as string) ?? '',
       usage_status: 'accepted',
@@ -130,14 +163,37 @@ export function searchWithFuzzyFallback(opts: {
   q: string;
   group?: TaxonGroup;
 }): SearchResult[] {
-  const exact = searchSpecies({ q: opts.q, group: opts.group, limit: 30 });
+  let exact: SearchResult[] = [];
+  try {
+    exact = searchSpecies({ q: opts.q, group: opts.group, limit: 30 });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[search] exact search failed:', e);
+    return [];
+  }
   if (exact.length >= 5) return exact;
 
-  const excludeIds = new Set(exact.map((r) => r.id));
-  const fuzzy = fuzzySearch({ q: opts.q, group: opts.group, excludeIds });
-  return [...exact, ...fuzzy];
+  try {
+    const excludeIds = new Set(exact.map((r) => r.id));
+    const fuzzy = fuzzySearch({ q: opts.q, group: opts.group, excludeIds });
+    return [...exact, ...fuzzy];
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[search] fuzzy fallback failed:', e);
+    return exact;
+  }
 }
 
 export function clearFuzzyIndexCache(): void {
   cnameIndex = null;
+  cnameIndexMissing = false;
+}
+
+/**
+ * Force-load the 62k cname fuzzy index into JS heap. Call this off the
+ * critical path (e.g. `setTimeout(prewarmFuzzyIndex, 0)` on SearchBox mount)
+ * so the *first* user query doesn't pay the ~200-500ms cold-load cost.
+ */
+export function prewarmFuzzyIndex(): void {
+  loadCnameIndex();
 }

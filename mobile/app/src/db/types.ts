@@ -49,6 +49,8 @@ export type SearchResult = {
   redlist: string;
   endemic: 0 | 1;
   source: string;
+  /** Raw alien_type from TaiCOL (native / naturalized / invasive / cultured / ''). */
+  alien_type: string;
   pt_name: string;
   taxon_id: string;
   usage_status: string;

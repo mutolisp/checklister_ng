@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -9,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Project, ProjectInput } from '~/db';
 
@@ -56,14 +56,14 @@ export function ProjectEditModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
       <View
-        className="flex-1 bg-white"
+        className="flex-1 bg-white dark:bg-gray-900"
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
-        <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3">
+        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={onCancel} hitSlop={8}>
-            <Text className="text-base text-gray-700">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900">{isNew ? newTitle : editTitle}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{isNew ? newTitle : editTitle}</Text>
           <Pressable
             onPress={() => {
               if (!canSave) return;
@@ -76,22 +76,19 @@ export function ProjectEditModal({
             }}
             hitSlop={8}
           >
-            <Text className={`text-base font-semibold ${canSave ? 'text-blue-600' : 'text-gray-300'}`}>
+            <Text className={`text-base font-semibold ${canSave ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300'}`}>
               儲存
             </Text>
           </Pressable>
         </View>
-        <KeyboardAvoidingView
-          className="flex-1"
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        >
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
           <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
             <Field label="計畫名稱">
               <TextInput
                 value={name}
                 onChangeText={setName}
                 autoFocus={isNew}
-                className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900"
+                className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
                 placeholder="例：玉山國家公園植物相調查"
                 placeholderTextColor="#9ca3af"
               />
@@ -101,7 +98,7 @@ export function ProjectEditModal({
                 value={abstract}
                 onChangeText={setAbstract}
                 multiline
-                className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900"
+                className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
                 style={{ minHeight: 70, textAlignVertical: 'top' }}
               />
             </Field>
@@ -109,7 +106,7 @@ export function ProjectEditModal({
               <TextInput
                 value={location}
                 onChangeText={setLocation}
-                className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900"
+                className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
               />
             </Field>
             <Field label="備註">
@@ -117,7 +114,7 @@ export function ProjectEditModal({
                 value={notes}
                 onChangeText={setNotes}
                 multiline
-                className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900"
+                className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
                 style={{ minHeight: 100, textAlignVertical: 'top' }}
               />
             </Field>
@@ -130,8 +127,8 @@ export function ProjectEditModal({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View className="border-b border-gray-100 px-4 py-3">
-      <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">{label}</Text>
+    <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+      <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</Text>
       {children}
     </View>
   );

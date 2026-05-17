@@ -93,29 +93,29 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
   const lengthStr = lengthM > 1000 ? `${(lengthM / 1000).toFixed(2)} km` : `${lengthM.toFixed(0)} m`;
 
   return (
-    <View className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+    <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
       <View className="flex-row items-center justify-between">
-        <Text className="text-xs font-medium text-gray-600">
+        <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">
           穿越線軌跡 <Text className="text-red-500">*</Text>
         </Text>
         {recording ? (
           <View className="flex-row items-center">
             <View className="mr-1.5 h-2 w-2 rounded-full bg-red-500" />
-            <Text className="text-xs font-medium text-red-600">記錄中</Text>
+            <Text className="text-xs font-medium text-red-600 dark:text-red-400">記錄中</Text>
           </View>
         ) : finalized ? (
-          <Text className="text-xs font-medium text-gray-500">已停止</Text>
+          <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">已停止</Text>
         ) : totalSegments > 0 ? (
           <Text className="text-xs font-medium text-amber-600">已暫停</Text>
         ) : null}
       </View>
 
       {totalPoints > 0 ? (
-        <Text className="mt-1 text-sm text-gray-900">
+        <Text className="mt-1 text-sm text-gray-900 dark:text-gray-100">
           {totalSegments} 段 · {totalPoints} 點 · {lengthStr}
         </Text>
       ) : (
-        <Text className="mt-1 text-xs text-gray-400">尚未開始記錄軌跡（物種輸入需此資料）</Text>
+        <Text className="mt-1 text-xs text-gray-400 dark:text-gray-500">尚未開始記錄軌跡（物種輸入需此資料）</Text>
       )}
 
       <View className="mt-3 flex-row gap-2">
@@ -179,8 +179,8 @@ function ControlButton({
         ? 'bg-amber-500 active:bg-amber-600'
         : tone === 'red'
           ? 'bg-red-500 active:bg-red-600'
-          : 'bg-gray-200 active:bg-gray-300';
-  const textColor = tone === 'gray' ? 'text-gray-800' : 'text-white';
+          : 'bg-gray-200 dark:bg-gray-700 active:bg-gray-300 dark:active:bg-gray-600';
+  const textColor = tone === 'gray' ? 'text-gray-800 dark:text-gray-200' : 'text-white';
   return (
     <Pressable
       onPress={disabled ? undefined : onPress}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Props = {
@@ -20,19 +21,19 @@ export function NotesEditModal({ visible, initialValue, title = '編輯備註', 
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
-      <View className="flex-1 bg-white" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
-        <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3">
+      <View className="flex-1 bg-white dark:bg-gray-900" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
+        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={onCancel} hitSlop={8}>
-            <Text className="text-base text-gray-700">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900">{title}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</Text>
           <Pressable onPress={() => onSave(value.trim())} hitSlop={8}>
-            <Text className="text-base font-semibold text-blue-600">儲存</Text>
+            <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">儲存</Text>
           </Pressable>
         </View>
-        <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
           <TextInput
-            className="flex-1 px-4 py-3 text-base text-gray-900"
+            className="flex-1 px-4 py-3 text-base text-gray-900 dark:text-gray-100"
             value={value}
             onChangeText={setValue}
             multiline

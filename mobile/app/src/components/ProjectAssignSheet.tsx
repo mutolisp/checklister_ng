@@ -21,6 +21,14 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
   }, [visible]);
 
   const handleCreateInline = async () => {
+    // iOS UIKit refuses to present a second Modal while a presented one is
+    // still on-screen. We dismiss ourselves, wait for the animation to
+    // finish, then open the text prompt — and only after a name comes back
+    // do we notify the parent through `onAssign` (which the parent uses to
+    // both pick the project AND close the sheet, which is already closed
+    // here, harmlessly).
+    onCancel();
+    await new Promise((r) => setTimeout(r, 350));
     const name = await promptText({
       title: '新建專案',
       message: '輸入專案名稱（其他欄位可之後在「專案管理」頁編輯）',
@@ -48,24 +56,24 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
         />
         <View
           style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: insets.bottom + 8 }}
-          className="rounded-t-2xl bg-white"
+          className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
-          <View className="border-b border-gray-200 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900">指派專案</Text>
-            <Text className="mt-0.5 text-xs text-gray-500">
+          <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指派專案</Text>
+            <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               選擇現有專案，或新建一個專案套用到本次記錄
             </Text>
           </View>
           <Pressable
             onPress={handleCreateInline}
-            className="flex-row items-center border-b border-gray-100 bg-blue-50 px-4 py-3 active:bg-blue-100"
+            className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 active:bg-blue-100 dark:active:bg-blue-900/60"
           >
             <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-blue-500">
               <Ionicons name="add" size={20} color="white" />
             </View>
             <View className="flex-1">
-              <Text className="text-base font-semibold text-blue-700">新建專案</Text>
-              <Text className="text-xs text-blue-600">建立後自動套用到此記錄</Text>
+              <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新建專案</Text>
+              <Text className="text-xs text-blue-600 dark:text-blue-400">建立後自動套用到此記錄</Text>
             </View>
           </Pressable>
           <ScrollView className="max-h-96">
@@ -75,7 +83,7 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
                 <Pressable
                   key={p.id}
                   onPress={() => onAssign(p.id)}
-                  className={`flex-row items-center border-b border-gray-100 px-4 py-3 ${active ? 'bg-blue-50' : 'active:bg-gray-50'}`}
+                  className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
                 >
                   <Ionicons
                     name={p.id === 0 ? 'help-circle-outline' : 'folder-outline'}
@@ -85,12 +93,12 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
                   />
                   <View className="flex-1">
                     <Text
-                      className={`text-base ${active ? 'font-semibold text-blue-700' : 'text-gray-900'} ${p.id === 0 ? 'italic text-gray-500' : ''}`}
+                      className={`text-base ${active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'} ${p.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : ''}`}
                     >
                       {p.name}
                     </Text>
                     {p.location_description ? (
-                      <Text className="text-xs text-gray-500" numberOfLines={1}>
+                      <Text className="text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
                         {p.location_description}
                       </Text>
                     ) : null}

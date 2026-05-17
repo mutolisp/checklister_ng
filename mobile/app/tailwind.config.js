@@ -6,6 +6,7 @@ module.exports = {
     './src/**/*.{js,jsx,ts,tsx}',
   ],
   presets: [require('nativewind/preset')],
+  darkMode: 'class',
   theme: {
     fontSize: {
       'xxs': ['var(--ts-xxs, 10px)', { lineHeight: 'var(--lh-xxs, 14px)' }],

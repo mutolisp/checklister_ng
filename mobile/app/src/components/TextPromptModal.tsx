@@ -17,7 +17,6 @@
  */
 import { useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -25,6 +24,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 
@@ -89,10 +89,7 @@ export function TextPromptHost() {
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={handleCancel}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
-      >
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
         <Pressable
           onPress={handleCancel}
           style={{
@@ -105,11 +102,11 @@ export function TextPromptHost() {
           }}
         />
         <SafeAreaView edges={['top', 'bottom']} className="flex-1 items-center justify-center px-6">
-          <View className="w-full max-w-md rounded-2xl bg-white">
+          <View className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900">
             <View className="px-5 pt-5 pb-3">
-              <Text className="text-base font-semibold text-gray-900">{pending.title}</Text>
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{pending.title}</Text>
               {pending.message ? (
-                <Text className="mt-1 text-sm text-gray-600">{pending.message}</Text>
+                <Text className="mt-1 text-sm text-gray-600 dark:text-gray-400">{pending.message}</Text>
               ) : null}
             </View>
             <View className="px-5 pb-3">
@@ -123,23 +120,23 @@ export function TextPromptHost() {
                 autoCapitalize={pending.autoCapitalize ?? 'sentences'}
                 autoFocus
                 returnKeyType="done"
-                className="rounded-lg border border-gray-300 bg-white px-3 py-3 text-base text-gray-900"
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
               />
             </View>
-            <View className="flex-row border-t border-gray-100">
+            <View className="flex-row border-t border-gray-100 dark:border-gray-800">
               <Pressable
                 onPress={handleCancel}
-                className="flex-1 items-center justify-center border-r border-gray-100 py-3 active:bg-gray-50"
+                className="flex-1 items-center justify-center border-r border-gray-100 dark:border-gray-800 py-3 active:bg-gray-50 dark:active:bg-gray-800"
               >
-                <Text className="text-base text-gray-700">{pending.cancelText ?? '取消'}</Text>
+                <Text className="text-base text-gray-700 dark:text-gray-300">{pending.cancelText ?? '取消'}</Text>
               </Pressable>
               <Pressable
                 onPress={canConfirm ? handleConfirm : undefined}
                 disabled={!canConfirm}
-                className={`flex-1 items-center justify-center py-3 ${canConfirm ? 'active:bg-blue-50' : ''}`}
+                className={`flex-1 items-center justify-center py-3 ${canConfirm ? 'active:bg-blue-50 dark:active:bg-blue-900/40' : ''}`}
               >
                 <Text
-                  className={`text-base font-semibold ${canConfirm ? 'text-blue-600' : 'text-gray-400'}`}
+                  className={`text-base font-semibold ${canConfirm ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`}
                 >
                   {pending.confirmText ?? '確定'}
                 </Text>

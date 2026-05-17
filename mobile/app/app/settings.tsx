@@ -57,7 +57,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50">
+    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen options={{ title: '偏好設定' }} />
       <ScrollView>
         <Section title="外觀">
@@ -94,18 +94,29 @@ export default function SettingsScreen() {
             onChange={(v) => settings.set('record_type_default', v)}
           />
         </Section>
+        <Section title="AI 辨識">
+          <RowSelect
+            label="GPS 過濾"
+            value={settings.ai_geomodel_filter ? 'on' : 'off'}
+            options={[
+              { value: 'on', label: '開啟（建議）' },
+              { value: 'off', label: '關閉' },
+            ]}
+            onChange={(v) => settings.set('ai_geomodel_filter', v === 'on')}
+          />
+        </Section>
         <Section title="資料">
           <Pressable
             onPress={handleClearHistory}
-            className="border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50"
+            className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
           >
-            <Text className="text-base text-gray-900">清除查詢歷史</Text>
+            <Text className="text-base text-gray-900 dark:text-gray-100">清除查詢歷史</Text>
           </Pressable>
           <Pressable
             onPress={() => {
               Alert.alert(
                 '清除所有資料？',
-                '所有 sessions、records、專案、設定都會刪除。TaiCOL 物種資料保留。',
+                '所有記錄、專案、設定都會刪除。TaiCOL 物種資料保留。',
                 [
                   { text: '取消', style: 'cancel' },
                   {
@@ -135,10 +146,10 @@ export default function SettingsScreen() {
                 ],
               );
             }}
-            className="border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50"
+            className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
           >
-            <Text className="text-base text-red-600">清除所有資料</Text>
-            <Text className="text-xs text-gray-500">不可復原，需二次確認</Text>
+            <Text className="text-base text-red-600 dark:text-red-400">清除所有資料</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400">不可復原，需二次確認</Text>
           </Pressable>
         </Section>
       </ScrollView>
@@ -149,7 +160,7 @@ export default function SettingsScreen() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <View className="mt-6">
-      <Text className="px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">{title}</Text>
+      <Text className="px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</Text>
       {children}
     </View>
   );
@@ -167,8 +178,8 @@ function RowSelect<T extends string | number>({
   onChange: (v: T) => void;
 }) {
   return (
-    <View className="border-b border-gray-100 bg-white px-4 py-3">
-      <Text className="text-sm text-gray-700">{label}</Text>
+    <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+      <Text className="text-sm text-gray-700 dark:text-gray-300">{label}</Text>
       <View className="mt-2 flex-row gap-2">
         {options.map((opt) => {
           const active = opt.value === value;
@@ -176,9 +187,9 @@ function RowSelect<T extends string | number>({
             <Pressable
               key={String(opt.value)}
               onPress={() => onChange(opt.value)}
-              className={`rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white'}`}
+              className={`rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
             >
-              <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700'}`}>{opt.label}</Text>
+              <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>{opt.label}</Text>
             </Pressable>
           );
         })}

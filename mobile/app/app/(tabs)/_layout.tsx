@@ -1,19 +1,12 @@
 import { Tabs } from 'expo-router';
 import { Platform, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
-import { useActivePlot } from '~/stores/activePlot';
-import { useActiveSession } from '~/stores/activeSession';
 import { useSettings } from '~/stores/settings';
 import { showActionSheet } from '~/components/ActionSheet';
-import { ActiveSessionBar } from '~/components/ActiveSessionBar';
-import { StalePlotWatcher } from '~/components/StalePlotWatcher';
-import { StaleSessionWatcher } from '~/components/StaleSessionWatcher';
 import { createPlotPromptAndOpen, startSessionAndOpen } from '~/lib/recordCreate';
 
 async function showCreateChooser(): Promise<void> {
@@ -70,29 +63,12 @@ function PlusButton() {
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const tint = Colors[colorScheme ?? 'light'].tint;
-  const insets = useSafeAreaInsets();
-  const session = useActiveSession((s) => s.session);
-  const plot = useActivePlot((s) => s.plot);
-  const hasActiveRecord = Boolean(session || plot);
 
+  // ActiveSessionBar + status-bar + safe-area spacer + StaleWatchers were
+  // lifted to app/_layout.tsx so they persist across stack screens (檢索表
+  // runner, session/plot detail, etc.). Tabs-only chrome stays here.
   return (
     <View className="flex-1">
-      {hasActiveRecord ? (
-        <>
-          <StatusBar style="light" />
-          <ActiveSessionBar />
-        </>
-      ) : (
-        // Top safe area filler when no active session, otherwise tab content
-        // sits under status bar / dynamic island. Force dark status bar text
-        // so 時間 / 電池 / 訊號 在白底上 readable（system auto 在 dark mode 會用白字）。
-        <>
-          <StatusBar style="dark" />
-          <View style={{ height: insets.top }} className="bg-white" />
-        </>
-      )}
-      <StaleSessionWatcher />
-      <StalePlotWatcher />
       <Tabs
         screenOptions={{
           tabBarActiveTintColor: tint,

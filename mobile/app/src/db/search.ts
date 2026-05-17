@@ -1,7 +1,7 @@
 import { getTaicolDb } from './init';
 import type { TaicolRow, SearchResult, AdvancedFilters, TaxonGroup } from './types';
 
-const TAXON_GROUP_FILTERS: Record<TaxonGroup, Partial<Record<'kingdom' | 'phylum' | 'class', string>>> = {
+export const TAXON_GROUP_FILTERS: Record<TaxonGroup, Partial<Record<'kingdom' | 'phylum' | 'class', string>>> = {
   Tracheophyta: { phylum: 'Tracheophyta' },
   Plantae: { kingdom: 'Plantae' },
   Aves: { class: 'Aves' },
@@ -71,6 +71,7 @@ function rowToResult(
     redlist: row.redlist ?? '',
     endemic: row.is_endemic === 'true' ? 1 : 0,
     source: mapAlienType(row.alien_type ?? '', row.kingdom ?? ''),
+    alien_type: row.alien_type ?? '',
     pt_name: buildPtName(row),
     taxon_id: row.taxon_id ?? '',
     usage_status: 'accepted',
@@ -140,6 +141,69 @@ export type SearchOptions = {
   limit?: number;
 };
 
+/** Lookup a taxon by its TaiCOL taxon_id, returning the full SearchResult
+ *  shape so the result fits into existing UI like LookupResultSheet. */
+export function searchByTaxonId(taxonId: string): SearchResult | null {
+  if (!taxonId) return null;
+  const db = getTaicolDb();
+  // Prefer the accepted row; fall back to any row keyed by this taxon_id
+  // so synonyms still surface basic metadata.
+  let res = db.executeSync(
+    `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE taxon_id = ? AND usage_status = 'accepted' LIMIT 1`,
+    [taxonId],
+  );
+  let row = (res.rows ?? [])[0] as TaicolRow | undefined;
+  if (!row) {
+    res = db.executeSync(`SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE taxon_id = ? LIMIT 1`, [taxonId]);
+    row = (res.rows ?? [])[0] as TaicolRow | undefined;
+  }
+  if (!row) return null;
+  return rowToResult(row);
+}
+
+/** Explicit column list used by `searchSpecies` / `searchByTaxonId` / fuzzy —
+ *  exactly the 33 fields `rowToResult` consumes. Selecting these instead of
+ *  `SELECT *` cuts JSI marshalling cost roughly in half (taicol_names has
+ *  ~70 columns; many are large nullable text like author / status notes
+ *  that we don't need in the autocomplete row). Exported so `fuzzy.ts` can
+ *  reuse the same projection. */
+export const SEARCH_COLUMNS = [
+  'name_id',
+  'simple_name',
+  'name_author',
+  'common_name_c',
+  'alternative_name_c',
+  'family',
+  'family_c',
+  'iucn',
+  'redlist',
+  'is_endemic',
+  'alien_type',
+  'taxon_id',
+  'usage_status',
+  'kingdom',
+  'kingdom_c',
+  'phylum',
+  'phylum_c',
+  '"class"',
+  'class_c',
+  '"order"',
+  'order_c',
+  'genus',
+  'genus_c',
+  'nomenclature_name',
+  'cites',
+  'protected',
+  'is_hybrid',
+  'is_terrestrial',
+  'is_freshwater',
+  'is_brackish',
+  'is_marine',
+  'is_fossil',
+  'alien_status_note',
+  'rank',
+].join(', ');
+
 export function searchSpecies({ q, group, advanced = {}, limit = 30 }: SearchOptions): SearchResult[] {
   const trimmed = q.trim();
   if (!trimmed) return [];
@@ -162,7 +226,7 @@ export function searchSpecies({ q, group, advanced = {}, limit = 30 }: SearchOpt
     params.push(pattern, pattern, pattern, pattern, pattern);
   }
 
-  let sql = `SELECT * FROM taicol_names WHERE (${likePatterns.join(' OR ')}) AND is_in_taiwan LIKE '%true%'`;
+  let sql = `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE (${likePatterns.join(' OR ')}) AND is_in_taiwan LIKE '%true%'`;
 
   if (group && TAXON_GROUP_FILTERS[group]) {
     for (const [field, value] of Object.entries(TAXON_GROUP_FILTERS[group])) {
@@ -227,7 +291,7 @@ export function searchSpecies({ q, group, advanced = {}, limit = 30 }: SearchOpt
     const ids = Array.from(needResolve.keys());
     const placeholders = ids.map(() => '?').join(',');
     const resolved = db.executeSync(
-      `SELECT * FROM taicol_names WHERE taxon_id IN (${placeholders}) AND usage_status='accepted' AND is_in_taiwan LIKE '%true%'`,
+      `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE taxon_id IN (${placeholders}) AND usage_status='accepted' AND is_in_taiwan LIKE '%true%'`,
       ids,
     );
     for (const accRow of (resolved.rows ?? []) as unknown as TaicolRow[]) {

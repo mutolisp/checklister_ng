@@ -2,6 +2,70 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+
+## Karpathy-inspired Claude Code guidelines
+
+source: https://github.com/multica-ai/andrej-karpathy-skills/blob/main/CLAUDE.md
+
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+Tradeoff: These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+1. Think Before Coding
+
+Don't assume. Don't hide confusion. Surface tradeoffs.
+
+Before implementing:
+
+State your assumptions explicitly. If uncertain, ask.
+If multiple interpretations exist, present them - don't pick silently.
+If a simpler approach exists, say so. Push back when warranted.
+If something is unclear, stop. Name what's confusing. Ask.
+
+2. Simplicity First
+
+Minimum code that solves the problem. Nothing speculative.
+
+No features beyond what was asked.
+No abstractions for single-use code.
+No "flexibility" or "configurability" that wasn't requested.
+No error handling for impossible scenarios.
+If you write 200 lines and it could be 50, rewrite it.
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+3. Surgical Changes
+
+Touch only what you must. Clean up only your own mess.
+
+When editing existing code:
+
+Don't "improve" adjacent code, comments, or formatting.
+Don't refactor things that aren't broken.
+Match existing style, even if you'd do it differently.
+If you notice unrelated dead code, mention it - don't delete it.
+When your changes create orphans:
+
+Remove imports/variables/functions that YOUR changes made unused.
+Don't remove pre-existing dead code unless asked.
+The test: Every changed line should trace directly to the user's request.
+
+4. Goal-Driven Execution
+Define success criteria. Loop until verified.
+
+Transform tasks into verifiable goals:
+
+"Add validation" → "Write tests for invalid inputs, then make them pass"
+"Fix the bug" → "Write a test that reproduces it, then make it pass"
+"Refactor X" → "Ensure tests pass before and after"
+For multi-step tasks, state a brief plan:
+
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+These guidelines are working if: fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+
 ## Project Overview
 
 Checklister-NG（次世代名錄產生器）是臺灣物種名錄產生工具，支援所有生物類群（維管束植物、鳥類、昆蟲、真菌等）。整合 TaiCOL 臺灣物種名錄（242k 筆），支援俗名/學名搜尋（含模糊比對）、同物異名、多分類群匯出、分類樹瀏覽、樣區地圖繪製等功能。
@@ -70,8 +134,11 @@ FastAPI app，在 `main.py` 註冊 routers 並 serve 前端靜態檔。含 CORS�
 - `utils/mapper.py` — 內部欄位名 ↔ Darwin Core 對應（36 欄，含 `*_c` → `*VernacularName`、`cites→CITES`、`protected→protectionStatus`、`is_hybrid→isHybrid` 等）
 - `utils/backup.py` — 資料庫備份工具
 - `services/taicol_import.py` — TaiCOL 匯入服務：name CSV（主資料，`_import_name_csv`）+ taxon CSV（補齊 21 欄，`_backfill_from_taxon_csv`，taxon_id 為 foreign key）+ 索引建立 + fuzzy 快取清空。CLI: `python -m backend.services.taicol_import <name.csv> [taxon.csv]`
+- `services/key_pdf_import.py` — 從 PDF 抽 dichotomous key（pdfplumber bbox extraction）。CLI: `python -m backend.services.key_pdf_import <pdf>`
+- `services/key_sheet_import.py` — 從 Google Sheets 拉 dichotomous key（gspread + google-auth），service account JSON 走 `GLORIA_GOOGLE_CREDENTIALS` env var。Sheet schema：一 spreadsheet = 一 family；`meta` worksheet 提供 scope_rank/name/cname/source；每個 key worksheet 名稱即 scope Latin 名（`aceae` → family，否則 genus），header `id|description|target/couplet`，同 id 連續 2 row = A/B；target 純數字 = next，含 CJK = 學名+俗名；學名 lowercase 開頭自動 prepend default_genus。CLI: `python -m backend.services.key_sheet_import <spreadsheet_id> [--dry-run]`
+- `api/keys_api.py` — `GET /api/keys`（list + filter `since` / `scope_rank` / `scope_name` / `mode`）、`GET /api/keys/{id}`（完整內容：couplets + features + taxon_features + children；taxon lead 自動 join accepted name + cname + 保育狀態）、`POST /api/admin/import-key-pdf`、`DELETE /api/admin/keys/{id}`
 - `db.py` — SQLModel engine，DB 路徑透過 `CHECKLISTER_DB_PATH` 環境變數配置
-- `models/schema.py` — ORM models：PlantType、PlantName、TaicolName
+- `models/schema.py` — ORM models：PlantType、PlantName、TaicolName、IdentificationKey、KeyCouplet、KeyFeature、KeyTaxonFeature
 
 ### Frontend (`frontend/`)
 
@@ -300,6 +367,24 @@ grep -rn "Platform.OS === 'ios'" src/ app/          # 只應出現在 KeyboardAv
 - 加 native module 後：`npx expo install <pkg> && cd ios && pod install && cd .. && npx expo run:ios`
 - Type check：`cd mobile/app && npx tsc --noEmit`（**改完一定要跑**）
 - 實機測試需 EAS Build dev client（`eas build --profile development --platform ios`）+ Apple Developer Program $99/yr
+
+### Bundle DB 更新流程（重要）
+
+更新 `mobile/app/assets/db/twnamelist.db` 時**必須一併重 build fuzzy index**，否則中文搜尋會 throw `no such table: cname_fuzzy_index`，未捕獲例外在 SearchBox debounce setTimeout 內反覆觸發後 destabilize Hermes runtime（GC `_newChunkAndPHV` EXC_BAD_ACCESS crash）。
+
+正確流程：
+
+```bash
+# 一鍵：copy backend DB → 重 build fuzzy index
+make mobile-db
+
+# 或手動：
+cp backend/twnamelist.db mobile/app/assets/db/twnamelist.db
+backend/venv/bin/python -m backend.scripts.build_mobile_fuzzy_index \
+    mobile/app/assets/db/twnamelist.db
+```
+
+`cname_fuzzy_index` 是 mobile-only table（runtime levenshtein 用的 cache），backend 自己不需要。Cold start 時 `ensureTaicolDb` 用 asset hash 比對，bundle 換了就 re-copy 到 `documentDirectory`。fuzzy.ts 雖然已加 try/catch 缺表時 graceful 退場，但缺 index 等於失去模糊比對能力，仍應補上。
 
 ### Mobile 主要設計文件
 

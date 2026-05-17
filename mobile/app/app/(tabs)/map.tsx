@@ -164,7 +164,7 @@ export default function MapScreen() {
     });
   }, [currentBasemap, sinicaLayer, sinicaOpacity, setSetting]);
 
-  if (!settingsLoaded) return <View className="flex-1 bg-gray-100" />;
+  if (!settingsLoaded) return <View className="flex-1 bg-gray-100 dark:bg-gray-800" />;
 
   const handleRegionChangeComplete = (region: Region) => {
     lastRegion.current = region;
@@ -306,7 +306,7 @@ export default function MapScreen() {
       // Bind site to the originating session and bounce back.
       updateSession(handoff, { site_id: newSiteId });
       handoffSessionId.current = null;
-      toast(`已綁定樣區到 session`);
+      toast(`已綁定樣區到記錄`);
       router.replace(`/session/${handoff}`);
     } else {
       toast(`已儲存樣區：${data.name}`);
@@ -386,7 +386,7 @@ export default function MapScreen() {
   };
 
   return (
-    <View className="flex-1 bg-gray-100">
+    <View className="flex-1 bg-gray-100 dark:bg-gray-800">
       <MapView
         ref={mapRef}
         provider={PROVIDER_DEFAULT}
@@ -550,11 +550,11 @@ export default function MapScreen() {
         <View
           pointerEvents="none"
           style={StyleSheet.absoluteFill}
-          className="items-center justify-center bg-gray-100/85"
+          className="items-center justify-center bg-gray-100 dark:bg-gray-800/85"
         >
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text className="mt-3 text-sm text-gray-700">載入地圖中...</Text>
-          <Text className="mt-1 text-xs text-gray-500">首次開啟需數秒</Text>
+          <Text className="mt-3 text-sm text-gray-700 dark:text-gray-300">載入地圖中...</Text>
+          <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">首次開啟需數秒</Text>
         </View>
       ) : null}
 
@@ -564,13 +564,13 @@ export default function MapScreen() {
         style={{ top: insets.top + 8, right: searchOpen ? 12 : undefined }}
       >
         {searchOpen ? (
-          <View className="flex-row items-center rounded-full bg-white/95 px-3 py-2 shadow-md">
+          <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
             <Pressable onPress={closeSearch} hitSlop={8}>
               <Ionicons name="arrow-back" size={18} color="#374151" />
             </Pressable>
             <TextInput
               ref={searchInputRef}
-              className="ml-2 flex-1 text-sm text-gray-900"
+              className="ml-2 flex-1 text-sm text-gray-900 dark:text-gray-100"
               placeholder="搜尋地點 / 地址..."
               placeholderTextColor="#9ca3af"
               value={searchQuery}
@@ -631,11 +631,11 @@ export default function MapScreen() {
       {/* Drawing toolbar (below search FAB row) */}
       {drawMode ? (
         <View className="absolute left-3 right-3" style={{ top: insets.top + 60 }}>
-          <View className="flex-row items-center rounded-full bg-white/95 px-3 py-2 shadow-md">
+          <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
             <Pressable onPress={cancelDraw} hitSlop={8} className="px-2">
-              <Text className="text-sm font-medium text-gray-700">取消</Text>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">取消</Text>
             </Pressable>
-            <Text className="flex-1 text-center text-xs text-gray-700">
+            <Text className="flex-1 text-center text-xs text-gray-700 dark:text-gray-300">
               繪製{DRAW_LABEL[drawMode]} · {drawPoints.length} 點
             </Text>
             {drawPoints.length > 0 ? (
@@ -652,7 +652,7 @@ export default function MapScreen() {
           {handoffSessionId.current !== null ? (
             <View className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 shadow-md">
               <Text className="text-center text-xs font-medium text-white">
-                為 session #{handoffSessionId.current} 建立樣區，完成後自動指派
+                為記錄 #{handoffSessionId.current} 建立樣區，完成後自動指派
               </Text>
             </View>
           ) : null}
@@ -705,7 +705,7 @@ function FabButton({
   return (
     <Pressable
       onPress={onPress}
-      className="h-11 w-11 items-center justify-center rounded-full bg-white/95 shadow-md active:bg-gray-100"
+      className="h-11 w-11 items-center justify-center rounded-full bg-white dark:bg-gray-900/95 shadow-md active:bg-gray-100 dark:active:bg-gray-700"
     >
       <Ionicons name={icon} size={20} color={accent ? '#2563eb' : '#374151'} />
     </Pressable>
@@ -726,9 +726,9 @@ function FabRow({
   return (
     <Pressable
       onPress={onPress}
-      className="mt-2 flex-row items-center rounded-full bg-white/95 px-3 py-2 shadow-md active:bg-gray-100"
+      className="mt-2 flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md active:bg-gray-100 dark:active:bg-gray-700"
     >
-      <Text className={`mr-2 text-xs font-medium ${accent ? 'text-blue-700' : 'text-gray-700'}`}>
+      <Text className={`mr-2 text-xs font-medium ${accent ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}>
         {label}
       </Text>
       <Ionicons name={icon} size={18} color={accent ? '#2563eb' : '#374151'} />

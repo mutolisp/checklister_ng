@@ -22,68 +22,71 @@ import { showActionSheet } from '~/components/ActionSheet';
 
 type NewRecordKind = 'session' | 'plot';
 
+type ActiveConflict = {
+  kind: NewRecordKind;
+  label: string;
+  href: Href;
+  end: () => void;
+};
+
 /**
- * Returns true once it's safe to create a new record of `wanted` kind:
- * either nothing is active, or the user chose to end the conflicting one.
- * Returns false if the user cancelled or chose to resume the active record.
+ * Read both active stores and return a description of the active record (if
+ * any) that conflicts with starting a new one. Plot takes precedence when
+ * both somehow coexist (it's the heavier-weight record).
  */
-async function ensureNoConflictingActive(wanted: NewRecordKind): Promise<boolean> {
-  const session = useActiveSession.getState().session;
+function findActiveConflict(): ActiveConflict | null {
   const plot = useActivePlot.getState().plot;
+  if (plot) {
+    return {
+      kind: 'plot',
+      label: plot.plotid || '樣區',
+      href: `/plot/${plot.id}` as Href,
+      end: () => {
+        const recording = useTrackRecorder.getState().recordingPlotId;
+        if (recording === plot.id) pauseTrackRecording();
+        endPlotSurvey(plot.id);
+        useActivePlot.getState().refresh();
+      },
+    };
+  }
+  const session = useActiveSession.getState().session;
+  if (session) {
+    return {
+      kind: 'session',
+      label: session.name,
+      href: `/session/${session.id}` as Href,
+      end: () => {
+        endSession(session.id);
+        useActiveSession.getState().refresh();
+      },
+    };
+  }
+  return null;
+}
 
-  // Decide which active record (if any) blocks the new one. Same-kind conflicts
-  // are handled by the existing reuse logic (sessions) or by the user
-  // creating intentionally; we only intervene on cross-kind clashes plus the
-  // plot→plot case (we don't allow >1 active plot either).
-  const conflict: { kind: NewRecordKind; label: string; href: Href; end: () => void } | null =
-    plot
-      ? {
-          kind: 'plot',
-          label: plot.plotid || '樣區',
-          href: `/plot/${plot.id}` as Href,
-          end: () => {
-            const recording = useTrackRecorder.getState().recordingPlotId;
-            if (recording === plot.id) pauseTrackRecording();
-            endPlotSurvey(plot.id);
-            useActivePlot.getState().refresh();
-          },
-        }
-      : session && wanted === 'plot'
-        ? {
-            kind: 'session',
-            label: session.name,
-            href: `/session/${session.id}` as Href,
-            end: () => {
-              endSession(session.id);
-              useActiveSession.getState().refresh();
-            },
-          }
-        : null;
+const NOUN: Record<NewRecordKind, string> = { session: '名錄', plot: '樣區' };
 
-  if (!conflict) return true;
-
-  // For a same-kind "session" request, reuse instead of conflict.
-  if (wanted === 'session' && conflict.kind === 'session') return true;
-
-  const nounMap = { session: '名錄', plot: '樣區' };
-  const conflictNoun = nounMap[conflict.kind];
-  const newNoun = nounMap[wanted];
-
-  return await new Promise<boolean>((resolve) => {
+/**
+ * Three-button Alert offering: cancel / open existing / end + start new.
+ * Resolves true only when the user picks "end + start new" (the only branch
+ * that frees up the active slot).
+ */
+function showConflictAlert(conflict: ActiveConflict, wanted: NewRecordKind): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
     Alert.alert(
-      `已有${conflictNoun}記錄中`,
-      `「${conflict.label}」正在進行。要先結束它，再開始新的${newNoun}嗎？`,
+      `已有${NOUN[conflict.kind]}記錄中`,
+      `「${conflict.label}」正在進行。要先結束它，再開始新的${NOUN[wanted]}嗎？`,
       [
         { text: '取消', style: 'cancel', onPress: () => resolve(false) },
         {
-          text: `前往${conflictNoun}`,
+          text: `前往${NOUN[conflict.kind]}`,
           onPress: () => {
             router.push(conflict.href);
             resolve(false);
           },
         },
         {
-          text: `結束並開始新${newNoun}`,
+          text: `結束並開始新${NOUN[wanted]}`,
           style: 'destructive',
           onPress: () => {
             conflict.end();
@@ -96,9 +99,26 @@ async function ensureNoConflictingActive(wanted: NewRecordKind): Promise<boolean
 }
 
 /**
+ * Returns true once it's safe to create a new record of `wanted` kind:
+ * either nothing is active, or the user chose to end the conflicting one.
+ * Returns false if the user cancelled or chose to resume the active record.
+ */
+async function ensureNoConflictingActive(wanted: NewRecordKind): Promise<boolean> {
+  // Refresh from DB before reading — another screen may have ended a record
+  // without the in-memory store seeing it yet, and we don't want to falsely
+  // detect a conflict (or miss a real one because the store is stale).
+  useActiveSession.getState().refresh();
+  useActivePlot.getState().refresh();
+
+  const conflict = findActiveConflict();
+  if (!conflict) return true;
+  return showConflictAlert(conflict, wanted);
+}
+
+/**
  * Start (or resume) the user's checklist session and navigate to it.
- * Reuses the active session if one exists; if a plot is active instead,
- * prompts to end / continue / cancel.
+ * Prompts (cancel / go to existing / end + new) when any record is already
+ * active.
  */
 export async function startSessionAndOpen(): Promise<void> {
   const ok = await ensureNoConflictingActive('session');

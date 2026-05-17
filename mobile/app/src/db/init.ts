@@ -8,19 +8,58 @@ let taicolDb: DB | null = null;
 let userDb: DB | null = null;
 
 const TAICOL_DB_NAME = 'twnamelist.db';
+const TAICOL_VERSION_FILE = 'twnamelist.db.version';
 const USER_DB_NAME = 'user.db';
 
 async function ensureTaicolDb(onProgress?: (step: string) => void): Promise<void> {
   const dest = new File(Paths.document, TAICOL_DB_NAME);
-  if (dest.exists) return;
+  const versionFile = new File(Paths.document, TAICOL_VERSION_FILE);
 
-  onProgress?.('解壓縮物種資料庫（首次安裝需數秒）...');
   const asset = Asset.fromModule(require('../../assets/db/twnamelist.db'));
+  // `asset.hash` is set by Metro at build time; if the bundled DB changes
+  // (e.g. we shipped a new keys table), the hash changes too and we re-copy.
+  const bundleHash = asset.hash ?? '';
+
+  let installedHash = '';
+  if (versionFile.exists) {
+    try {
+      const txt = await versionFile.text();
+      installedHash = (txt ?? '').trim();
+    } catch {
+      installedHash = '';
+    }
+  }
+
+  if (dest.exists && installedHash && installedHash === bundleHash) {
+    return; // up-to-date
+  }
+
+  const reason = !dest.exists
+    ? '首次安裝需數秒'
+    : '偵測到新版資料庫';
+  onProgress?.(`解壓縮物種資料庫（${reason}）...`);
+
   await asset.downloadAsync();
   if (!asset.localUri) throw new Error('TaiCOL asset localUri unavailable after download');
 
+  // Replace existing copy if any (schema may have new tables).
+  if (dest.exists) {
+    try {
+      dest.delete();
+    } catch {
+      // ignore — File.copy may overwrite
+    }
+  }
   const src = new File(asset.localUri);
   src.copy(dest);
+
+  // Record the hash so we skip the copy on subsequent cold starts.
+  try {
+    if (versionFile.exists) versionFile.delete();
+    versionFile.write(bundleHash);
+  } catch {
+    // non-fatal: next start will re-copy if write failed
+  }
 }
 
 export type InitProgressFn = (step: string) => void;

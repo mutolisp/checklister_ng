@@ -50,6 +50,7 @@ class IdentificationKey(SQLModel, table=True):
         default=None, index=True, foreign_key="identification_keys.id"
     )
     notes: Optional[str] = None
+    aliases: Optional[str] = None        # JSON array string, extra names for findSubkey fallback
     updated_at: Optional[int] = None     # epoch ms
 
 

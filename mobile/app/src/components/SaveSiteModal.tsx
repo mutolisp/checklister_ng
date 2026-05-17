@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createProject, listProjects, type Project } from '~/db';
 import { promptText } from './TextPromptModal';
@@ -51,9 +51,12 @@ export function SaveSiteModal({
   const [showProjectPicker, setShowProjectPicker] = useState(false);
 
   const handleCreateProjectInline = async () => {
-    // promptText is a cross-platform replacement for the iOS-only Alert.prompt;
-    // it renders a modal sibling that does not run into the iOS triple-nested
-    // Modal hang because TextPromptHost mounts at the navigation root.
+    // iOS UIKit refuses to stack a second Modal on top of an already-presented
+    // one (SaveSiteModal → project-picker overlay → text prompt would be 3 deep).
+    // Dismiss the inline project picker first, await the iOS animation, then
+    // open the text prompt.
+    setShowProjectPicker(false);
+    await new Promise((r) => setTimeout(r, 350));
     const name = await promptText({
       title: '新建專案',
       message: '輸入專案名稱（其他欄位可之後在「專案管理」頁編輯）',
@@ -70,7 +73,6 @@ export function SaveSiteModal({
     });
     setProjects(listProjects());
     setProjectId(id);
-    setShowProjectPicker(false);
   };
 
   useEffect(() => {
@@ -88,14 +90,14 @@ export function SaveSiteModal({
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onCancel}>
       <View
-        className="flex-1 bg-white"
+        className="flex-1 bg-white dark:bg-gray-900"
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
-        <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3">
+        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={onCancel} hitSlop={8}>
-            <Text className="text-base text-gray-700">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900">{title}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</Text>
           <Pressable
             onPress={() => {
               if (!canSave) return;
@@ -103,15 +105,15 @@ export function SaveSiteModal({
             }}
             hitSlop={8}
           >
-            <Text className={`text-base font-semibold ${canSave ? 'text-blue-600' : 'text-gray-300'}`}>
+            <Text className={`text-base font-semibold ${canSave ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300'}`}>
               儲存
             </Text>
           </Pressable>
         </View>
-        <KeyboardAvoidingView className="flex-1" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
           <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
-            <View className="border-b border-gray-100 bg-blue-50 px-4 py-3">
-              <Text className="text-sm text-blue-900">
+            <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3">
+              <Text className="text-sm text-blue-900 dark:text-blue-100">
                 類型：<Text className="font-bold">{TYPE_LABEL[geometryType]}</Text> · {vertexCount} 個頂點
               </Text>
             </View>
@@ -121,7 +123,7 @@ export function SaveSiteModal({
                 value={name}
                 onChangeText={setName}
                 autoFocus
-                className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900"
+                className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
                 placeholder="例：A 樣區"
                 placeholderTextColor="#9ca3af"
               />
@@ -130,9 +132,9 @@ export function SaveSiteModal({
             <Field label="專案">
               <Pressable
                 onPress={() => setShowProjectPicker(true)}
-                className="flex-row items-center justify-between rounded border border-gray-300 px-3 py-2 active:bg-gray-50"
+                className="flex-row items-center justify-between rounded border border-gray-300 dark:border-gray-600 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
               >
-                <Text className="text-base text-gray-900">{currentProject?.name ?? '未分類'}</Text>
+                <Text className="text-base text-gray-900 dark:text-gray-100">{currentProject?.name ?? '未分類'}</Text>
                 <Ionicons name="chevron-down" size={16} color="#6b7280" />
               </Pressable>
             </Field>
@@ -142,7 +144,7 @@ export function SaveSiteModal({
                 value={notes}
                 onChangeText={setNotes}
                 multiline
-                className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900"
+                className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
                 style={{ minHeight: 100, textAlignVertical: 'top' }}
                 placeholder="描述地點、海拔、植被等"
                 placeholderTextColor="#9ca3af"
@@ -172,19 +174,19 @@ export function SaveSiteModal({
           />
           <View
             style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: insets.bottom + 8 }}
-            className="rounded-t-2xl bg-white"
+            className="rounded-t-2xl bg-white dark:bg-gray-900"
           >
-            <View className="border-b border-gray-200 px-4 py-3">
-              <Text className="text-base font-semibold text-gray-900">選擇專案</Text>
+            <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">選擇專案</Text>
             </View>
             <Pressable
               onPress={handleCreateProjectInline}
-              className="flex-row items-center border-b border-gray-100 bg-blue-50 px-4 py-3 active:bg-blue-100"
+              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 active:bg-blue-100 dark:active:bg-blue-900/60"
             >
               <View className="mr-3 h-7 w-7 items-center justify-center rounded-full bg-blue-500">
                 <Ionicons name="add" size={18} color="white" />
               </View>
-              <Text className="text-base font-semibold text-blue-700">新建專案</Text>
+              <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新建專案</Text>
             </Pressable>
             <ScrollView className="max-h-96">
               {projects.map((p) => {
@@ -196,10 +198,10 @@ export function SaveSiteModal({
                       setProjectId(p.id);
                       setShowProjectPicker(false);
                     }}
-                    className={`flex-row items-center border-b border-gray-100 px-4 py-3 ${active ? 'bg-blue-50' : 'active:bg-gray-50'}`}
+                    className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
                   >
                     <Text
-                      className={`flex-1 text-base ${active ? 'font-semibold text-blue-700' : 'text-gray-900'} ${p.id === 0 ? 'italic text-gray-500' : ''}`}
+                      className={`flex-1 text-base ${active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'} ${p.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : ''}`}
                     >
                       {p.name}
                     </Text>
@@ -217,8 +219,8 @@ export function SaveSiteModal({
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View className="border-b border-gray-100 px-4 py-3">
-      <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500">{label}</Text>
+    <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+      <Text className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</Text>
       {children}
     </View>
   );

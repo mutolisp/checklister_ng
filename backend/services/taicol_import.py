@@ -150,6 +150,9 @@ def import_taicol_csv(
     except ImportError:
         pass
 
+    # 檢查既有檢索表是否引用到不存在的 taxon_id（stale references）
+    stale = _check_stale_key_taxon_ids()
+
     elapsed = time.time() - start
     return {
         "rows_imported": rows_imported,
@@ -157,6 +160,94 @@ def import_taicol_csv(
         "taxon_csv": os.path.basename(resolved_taxon_csv) if resolved_taxon_csv else None,
         "time_elapsed": round(elapsed, 2),
         "backup_path": backup_path,
+        "stale_key_taxon_refs": stale,
+    }
+
+
+def _check_stale_key_taxon_ids() -> dict:
+    """掃描 identification_keys / key_couplets 內引用到 taicol_names 已不存在的 taxon_id。
+
+    TaiCOL 重新匯入後，部分檢索表 terminal 的 taxon_id 可能因合併 / 刪除 / 升降級
+    而對不上新版 taicol_names。stale 引用不會破壞 schema（target_id 是 VARCHAR
+    非 FK），但 mobile / desktop 顯示 terminal 時 join 失敗，會缺俗名 / 保育狀態 /
+    分類路徑。本函式 warn-only，由 caller 決定如何處理。
+
+    Returns:
+        {
+            'total_stale_couplets': int,
+            'total_stale_scope': int,
+            'by_key': [
+                {
+                    'key_id': int,
+                    'scope_name': str,
+                    'scope_cname': str | None,
+                    'source': str | None,
+                    'stale_couplets': [
+                        {'number': int, 'lead': 'A'|'B', 'taxon_id': str},
+                        ...
+                    ],
+                    'stale_scope_taxon_id': str | None,
+                },
+                ...
+            ]
+        }
+    """
+    sql = """
+    WITH known AS (
+        SELECT DISTINCT taxon_id FROM taicol_names WHERE taxon_id IS NOT NULL
+    ),
+    couplet_stale AS (
+        SELECT c.key_id, c.number, 'A' AS lead, c.lead_a_target_id AS taxon_id
+        FROM key_couplets c
+        WHERE c.lead_a_target_type = 'taxon'
+          AND c.lead_a_target_id IS NOT NULL
+          AND c.lead_a_target_id NOT IN (SELECT taxon_id FROM known)
+        UNION ALL
+        SELECT c.key_id, c.number, 'B' AS lead, c.lead_b_target_id AS taxon_id
+        FROM key_couplets c
+        WHERE c.lead_b_target_type = 'taxon'
+          AND c.lead_b_target_id IS NOT NULL
+          AND c.lead_b_target_id NOT IN (SELECT taxon_id FROM known)
+    )
+    SELECT k.id AS key_id, k.scope_name, k.scope_cname, k.source,
+           cs.number, cs.lead, cs.taxon_id,
+           CASE WHEN k.scope_taxon_id IS NOT NULL
+                     AND k.scope_taxon_id NOT IN (SELECT taxon_id FROM known)
+                THEN k.scope_taxon_id END AS stale_scope_taxon_id
+    FROM identification_keys k
+    LEFT JOIN couplet_stale cs ON cs.key_id = k.id
+    WHERE cs.key_id IS NOT NULL
+       OR (k.scope_taxon_id IS NOT NULL
+           AND k.scope_taxon_id NOT IN (SELECT taxon_id FROM known))
+    ORDER BY k.id, cs.number, cs.lead
+    """
+    by_key: dict[int, dict] = {}
+    total_couplets = 0
+    total_scope = 0
+    with Session(engine) as session:
+        rows = session.exec(text(sql)).all()
+        for r in rows:
+            key_id = r.key_id
+            if key_id not in by_key:
+                by_key[key_id] = {
+                    "key_id": key_id,
+                    "scope_name": r.scope_name,
+                    "scope_cname": r.scope_cname,
+                    "source": r.source,
+                    "stale_couplets": [],
+                    "stale_scope_taxon_id": r.stale_scope_taxon_id,
+                }
+                if r.stale_scope_taxon_id:
+                    total_scope += 1
+            if r.number is not None and r.lead is not None:
+                by_key[key_id]["stale_couplets"].append(
+                    {"number": r.number, "lead": r.lead, "taxon_id": r.taxon_id}
+                )
+                total_couplets += 1
+    return {
+        "total_stale_couplets": total_couplets,
+        "total_stale_scope": total_scope,
+        "by_key": list(by_key.values()),
     }
 
 
@@ -281,6 +372,7 @@ def _create_indexes():
         "CREATE INDEX IF NOT EXISTS idx_taicol_simple_name ON taicol_names(simple_name)",
         "CREATE INDEX IF NOT EXISTS idx_taicol_family ON taicol_names(family)",
         "CREATE INDEX IF NOT EXISTS idx_taicol_family_c ON taicol_names(family_c)",
+        "CREATE INDEX IF NOT EXISTS idx_taicol_genus ON taicol_names(genus)",
         "CREATE INDEX IF NOT EXISTS idx_taicol_taxon_id ON taicol_names(taxon_id)",
         "CREATE INDEX IF NOT EXISTS idx_taicol_usage_status ON taicol_names(usage_status)",
         "CREATE INDEX IF NOT EXISTS idx_taicol_kingdom_phylum ON taicol_names(kingdom, phylum)",
@@ -307,3 +399,31 @@ if __name__ == "__main__":
     print(f"Backfilled records: {result.get('backfilled_records', 0)}")
     if result["backup_path"]:
         print(f"Backup: {result['backup_path']}")
+
+    stale = result.get("stale_key_taxon_refs") or {}
+    total_couplets = stale.get("total_stale_couplets", 0)
+    total_scope = stale.get("total_stale_scope", 0)
+    if total_couplets or total_scope:
+        print()
+        print(
+            f"[WARN] 檢索表發現 {total_couplets} 個 couplet lead + "
+            f"{total_scope} 個 key scope 引用到不存在的 taxon_id："
+        )
+        for entry in stale.get("by_key", []):
+            scope_label = entry.get("scope_cname") or entry.get("scope_name")
+            print(
+                f"  key_id={entry['key_id']} ({scope_label})"
+                f"  source={entry.get('source') or '-'}"
+            )
+            if entry.get("stale_scope_taxon_id"):
+                print(f"    scope_taxon_id stale: {entry['stale_scope_taxon_id']}")
+            for cp in entry["stale_couplets"]:
+                print(f"    couplet {cp['number']}{cp['lead']} → {cp['taxon_id']}")
+        print()
+        print(
+            "建議：到對應 sheet 修正學名後，跑 "
+            "`python -m backend.services.key_sheet_import <spreadsheet_id>` "
+            "重新匯入，再 `make mobile-db` 同步。"
+        )
+    else:
+        print("檢索表 taxon_id 引用全部對應到新版 TaiCOL，無 stale 參照。")

@@ -48,7 +48,7 @@ export default function ProjectsScreen() {
   };
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50">
+    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
           title: '專案管理',
@@ -67,7 +67,7 @@ export default function ProjectsScreen() {
             <Pressable
               onPress={() => setEditing(item)}
               disabled={item.id === 0}
-              className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50"
+              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
             >
               <Ionicons
                 name={item.id === 0 ? 'help-circle-outline' : 'folder-outline'}
@@ -76,14 +76,14 @@ export default function ProjectsScreen() {
                 style={{ marginRight: 10 }}
               />
               <View className="flex-1">
-                <Text className={`text-base ${item.id === 0 ? 'italic text-gray-500' : 'text-gray-900'}`}>
+                <Text className={`text-base ${item.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
                   {item.name}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-500">
+                <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                   名錄 {item.session_count} · 樣區 {item.plot_count}
                 </Text>
                 {item.location_description ? (
-                  <Text className="mt-0.5 text-xs text-gray-400" numberOfLines={1}>
+                  <Text className="mt-0.5 text-xs text-gray-400 dark:text-gray-500" numberOfLines={1}>
                     {item.location_description}
                   </Text>
                 ) : null}

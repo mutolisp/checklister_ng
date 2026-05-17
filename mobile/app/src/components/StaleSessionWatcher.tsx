@@ -30,7 +30,7 @@ export function StaleSessionWatcher() {
     const hours = Math.round(ageMs / (60 * 60 * 1000));
 
     Alert.alert(
-      '上次的 session 還沒結束',
+      '上次的記錄還沒結束',
       `「${session.name}」（${dateStr}）已經開了 ${hours} 小時，要繼續記錄還是結束？`,
       [
         {
