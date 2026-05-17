@@ -110,6 +110,16 @@ export default function TabLayout() {
           options={{
             title: '物種',
             tabBarIcon: ({ color }) => <Ionicons name="leaf-outline" size={24} color={color} />,
+            // Eager-mount: taxonomy tree is the heaviest tab (TaxonomySearchBox
+            // + segment subtree + cascade hydration of persisted expansion).
+            // With default lazy=true, the first tap pays mount + first-render
+            // + useEffect cost serially before the in-screen spinner can paint,
+            // so the user sees a frozen tab bar for several hundred ms.
+            // Mounting eagerly during app launch shifts that cost to splash
+            // (where the user already expects to wait) so subsequent taps are
+            // instant. The mount itself is cheap; the cascade SQL still runs
+            // inside the screen's chunked-async hydration with its own spinner.
+            lazy: false,
           }}
         />
         <Tabs.Screen

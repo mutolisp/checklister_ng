@@ -501,7 +501,7 @@ export default function KeyRunnerScreen() {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
         <Stack.Screen options={{ title: keyData.scope_name }} />
-        <Text className="text-sm text-gray-500 dark:text-gray-400">此檢索表沒有 couplet 內容</Text>
+        <Text className="text-sm text-gray-500 dark:text-gray-400">此檢索表沒有節點內容</Text>
       </SafeAreaView>
     );
   }
@@ -1158,11 +1158,11 @@ function CandidatesSheet({
             </View>
             <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
               <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                不確定？跳過此條件看候選
+                不確定？跳過此條件看候選節點或分類群
               </Text>
               <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                從檢索條件 {coupletNumber ?? '?'} 往下還能定到的物種（{sorted.length} 筆），
-                直接點選跳到該物種
+                從檢索條件 {coupletNumber ?? '?'} 往下還能檢索到的分類群（{sorted.length} 筆），
+                直接點選跳到該分類群
               </Text>
             </View>
             <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
@@ -1172,7 +1172,7 @@ function CandidatesSheet({
               {sorted.length === 0 ? (
                 <View className="px-4 py-12">
                   <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
-                    沒有可達物種
+                    沒有可檢索到之分類群
                   </Text>
                 </View>
               ) : null}

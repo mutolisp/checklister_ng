@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { prewarmFuzzyIndex, searchWithFuzzyFallback, type SearchResult } from '~/db';
 import type { TaxonGroup } from '~/db/types';
+import { alienBadge } from '~/lib/conservationColors';
 import { TaxonGroupPicker } from './TaxonGroupPicker';
 import { ScientificName } from './ScientificName';
 import { useSettings } from '~/stores/settings';
@@ -185,9 +186,6 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
             </Pressable>
           ) : null}
         </View>
-        <Pressable onPress={() => Keyboard.dismiss()} className="ml-2 px-2">
-          <Text className="text-sm text-blue-500">完成</Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -209,6 +207,8 @@ const AutocompleteRow = memo(function AutocompleteRow({
   const isSynonym = !!result.matched_as;
   const isFuzzy = !!result.fuzzy_match;
   const cname = result.cname || '(無中文名)';
+  const isEndemic = result.endemic === 1;
+  const ab = alienBadge(result.alien_type, result.kingdom);
   return (
     <Pressable
       onPress={onPress}
@@ -228,6 +228,12 @@ const AutocompleteRow = memo(function AutocompleteRow({
           nomenclature={result.nomenclature_name}
           className="text-sm text-gray-700 dark:text-gray-300"
         />
+        {isEndemic ? (
+          <Text className="ml-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+        ) : null}
+        {ab ? (
+          <Text className={`ml-1.5 text-xs font-medium ${ab.textClass}`}>{ab.shortLabel}</Text>
+        ) : null}
       </View>
       {result.matched_as ? (
         <Text className="mt-0.5 text-xs text-orange-700 dark:text-orange-300" numberOfLines={1}>

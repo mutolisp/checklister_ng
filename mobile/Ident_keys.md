@@ -1,5 +1,51 @@
 # Identification keys — 待辦與改進清單
 
+## 🐛 ACTIVE BUG (2026-05-17) — 續查 subordinate subkey 按鈕未渲染
+
+**症狀**: 在 Fagaceae 殼斗科 dichotomous key 跑到屬層 terminal (e.g. couplet 2A → Quercus 櫟屬 t0024667) 時, **沒有顯示「續查屬內檢索表」藍底按鈕**, 即使 Quercus 屬 subkey (id=6, dichotomous, 30 sp) 確實存在。
+
+**重現步驟**:
+1. 進入 Fagaceae 殼斗科 key (id=3)
+2. couplet 1 選 1B (子葉不出土) → couplet 2
+3. couplet 2 選 2A (雄蕊 3-6) → 應到達 Quercus 屬 terminal
+4. **預期**: 看到「Quercus 櫟屬」物種卡 + 藍底「續查屬內檢索表 Quercus 櫟屬 (30)」按鈕
+5. **實際**: 沒有藍底按鈕
+
+**已驗證資料正確 (mobile bundle DB)**:
+- `t0024667` accepted row: `simple_name=Quercus, rank=Genus, family=Fagaceae` ✓
+- `identification_keys` 有 `(id=6, scope_rank=genus, scope_name=Quercus, mode=dichotomous)` ✓
+- SQL 模擬 `findSubkeysByScopeName('Quercus','genus')` 直接 query 確實回傳 id=6 row, child_count=30 ✓
+- `RANK_TO_SCOPE['Genus']='genus'` 對應正確 ✓
+- 同樣 case Castanopsis (t0023404, key id=4) / Lithocarpus (t0024178, key id=5) 結構相同
+
+**已驗證 mobile code logic (`mobile/app/app/key/[id].tsx`, `src/db/keys.ts`)**:
+- `findSubkeysForTaxon(taxonId)` 內部呼叫 `findSubkeysByScopeName(simple_name, scope)` plural variant 回傳 `IdentificationKey[]`
+- key runner pre-cache `useEffect` 對每個 lead target tid 跑 `findSubkeysForTaxon(tid)` + fallback `findSubkeysByScopeName(tid)`, 然後 `sCache.set(tid, subs.filter(s => s.id !== keyId))`
+- `TerminalTaxon` component (line 826) 接收 `subkeys: IdentificationKey[]`, 在 taxon-not-null 分支 line 948 用 `{subkeys.map(...)} → SubkeyButton`
+- `npx tsc --noEmit` 無錯
+
+**已嘗試的修法 (none 確定有效)**: 無
+**Working theory**: 環境問題, 非 code bug
+1. Mobile bundle DB 沒被 re-copy: `ensureTaicolDb` 用 `asset.hash` 偵測, **冷啟動才會觸發**; Metro hot-reload (`r`) 只 reload JS, 不 re-copy native asset
+2. Metro 沒重 build JS bundle (cached); 需要 `npx expo start --clear`
+
+但 **session context 滿了, 我除錯能力下降**, 不能 100% 排除是 code/data bug 我漏看。下次 session 從清新 context 重看。
+
+**Next session 接手 checklist**:
+1. 先請 user 冷啟動 app + Metro `--clear` 看是否解決
+2. 若仍壞: 加 debug log 到 `key/[id].tsx` pre-cache + TerminalTaxon, 看 subs.length 實際是多少
+3. 也要確認 user 用的是 dev client 還是已 build 的 app — EAS dev client 可能用 cached 不會 pick up 新 code
+4. 若 subs.length 在 runtime 真的是 0, 對比 SQL simulation 結果, 找出 mobile runtime vs sqlite3 CLI 差異
+5. 不要被 DB 顯示正確誤導 — bug 可能在 op-sqlite query 結果處理 (e.g. row 為 array 而非 object?)
+
+**相關背景**:
+- 本 session 跑了 TaiCOL 20260424 import + Stage 2b sibling backfill + Stage 2c override config + Stage 5 stale tid auto-remap (詳見 Plan.md 10.95)
+- 用 git 確認 [id].tsx / keys.ts **沒有未 commit 的改動** (d9b773b 之後沒新 commit)
+- mobile DB `make mobile-db` synced 過 (cname_fuzzy_index 62997)
+- backup: `backend/twnamelist.db.preimport-20260424` 可 rollback
+
+---
+
 本檔記錄檢索表 (IK) 系統的：
 - **PDF 結構問題** (印刷遺漏、不可達 subkey)
 - **未解析 leads** (PDF 名稱在 TaiCOL 不存在)

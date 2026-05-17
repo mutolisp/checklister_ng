@@ -1,7 +1,9 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
-import { initDb, prewarmFuzzyIndex, prewarmKeys } from '~/db';
+import * as Font from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
+import { initDb, prewarmFuzzyIndex, prewarmKeys, prewarmKingdoms } from '~/db';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { useSettings } from '~/stores/settings';
@@ -20,6 +22,12 @@ export function DBProvider({ children }: Props) {
     let cancelled = false;
     (async () => {
       try {
+        // Preload icon font in parallel with DB init. Without this, tab
+        // labels appear before tab icons on cold start (Ionicons font is
+        // lazy-loaded by @expo/vector-icons on first glyph render).
+        const fontPromise = Font.loadAsync(Ionicons.font).catch(() => {
+          // Non-fatal: icons fall back to boxes; labels still readable.
+        });
         await initDb((step) => {
           if (!cancelled) setProgress(step);
         });
@@ -29,10 +37,23 @@ export function DBProvider({ children }: Props) {
         setProgress('載入當前記錄...');
         refreshActiveSession();
         refreshActivePlot();
+        setProgress('載入分類群...');
+        // Kingdom prewarm moved BEFORE setReady. Cost is ~200ms but the user
+        // already sees splash + progress text; the cost is invisible here and
+        // GUARANTEES the 物種 tab opens cached even if the user taps it the
+        // moment splash hides (the previous setTimeout(0) variant lost that
+        // race when the tap landed before the macrotask fired).
+        try {
+          prewarmKingdoms();
+        } catch {
+          // non-fatal: taxonomy tab falls back to lazy SQL
+        }
+        setProgress('載入字型...');
+        await fontPromise;
+        if (cancelled) return;
         setReady(true);
-        // Off-critical-path warmups. Done *after* setReady(true) so UI render
-        // doesn't wait. setTimeout(0) hands control back to React first; both
-        // queries run sequentially on the JS thread.
+        // Off-critical-path warmups for things the user may or may not hit.
+        // Kept in setTimeout(0) so they don't delay first paint.
         //   - fuzzy index: 62k cname index, ~200-500ms cold-load
         //   - keys list: per-key child_count subqueries scan 242k taicol_names,
         //     ~1-2s; the first KeyListView mount or KeyPopup tap would otherwise

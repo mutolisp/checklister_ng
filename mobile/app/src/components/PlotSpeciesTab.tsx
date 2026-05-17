@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Keyboard, Platform, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addPlotSpecies,
   deletePlotSpecies,
@@ -38,6 +39,10 @@ export function PlotSpeciesTab({
   onChanged: () => void;
 }) {
   const isTransect = plot.plot_type === 'transect';
+  // KSV gap fix: parent plot/[id] wraps in <SafeAreaView edges={['bottom']}>,
+  // so KSV's natural bottom sits `insets.bottom` above the screen bottom.
+  // Without compensation, the search box floats that gap above the keyboard.
+  const insets = useSafeAreaInsets();
   // Transect plots have no layer concept — every record is stored under 'T'.
   const [layer, setLayer] = useState<Layer>(isTransect ? 'T' : 'E1');
   const [records, setRecords] = useState<PlotSpeciesRecordWithTaxon[]>([]);
@@ -274,7 +279,7 @@ export function PlotSpeciesTab({
       />
 
       {/* SearchBox sticks above the keyboard, follows accessory-bar changes */}
-      <KeyboardStickyView>
+      <KeyboardStickyView offset={{ opened: insets.bottom }}>
         <SearchBox onSelect={handleSelect} />
       </KeyboardStickyView>
 

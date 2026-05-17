@@ -9,6 +9,7 @@
  *   - (tabs)/taxonomy.tsx (Search segment)
  */
 import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { Keyboard, Text, View } from 'react-native';
@@ -34,6 +35,10 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
   const start = useActiveSession((s) => s.start);
   const refreshActive = useActiveSession((s) => s.refresh);
   const toast = useToast((s) => s.show);
+  // KSV opened-offset so SearchBox sits flush against the keyboard top (without
+  // this it floats `tabBarHeight` above the keyboard — see same fix in
+  // taxonomy.tsx tree segment + KeyListView).
+  const tabBarHeight = useBottomTabBarHeight();
   const [active, setActive] = useState<SearchResult | null>(null);
 
   const handleSelect = (result: SearchResult) => {
@@ -84,7 +89,7 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
           </View>
         )}
       </View>
-      <KeyboardStickyView>
+      <KeyboardStickyView offset={{ opened: tabBarHeight }}>
         <SearchBox
           onSelect={handleSelect}
           onLongPressResult={handleLongPress}

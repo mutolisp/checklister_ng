@@ -120,11 +120,30 @@ function buildStatsDict(row: Record<string, unknown>, rankIdx: number): Record<s
   return stats;
 }
 
+/** Module-level cache for the top-level kingdom listing. The bundled TaiCOL
+ *  DB is read-only at runtime so the result never changes mid-session.
+ *  Hit by `getTopLevel()` → triggered by every taxonomy tab mount; the
+ *  uncached SQL runs ~200ms (GROUP BY + 7 aggregations over in-Taiwan
+ *  accepted rows) which is enough to feel laggy when switching tabs. */
+let CACHED_KINGDOMS: TaxonNode[] | null = null;
+
+function getTopLevel(): TaxonNode[] {
+  if (CACHED_KINGDOMS === null) CACHED_KINGDOMS = computeTopLevel();
+  return CACHED_KINGDOMS;
+}
+
+/** Force-fill the kingdom cache. Mirrors `prewarmKeys()` / `prewarmFuzzyIndex()`:
+ *  call from DBProvider after splash so the first taxonomy tab open is
+ *  instant instead of paying the ~200ms SQL cost on mount. */
+export function prewarmKingdoms(): void {
+  if (CACHED_KINGDOMS === null) CACHED_KINGDOMS = computeTopLevel();
+}
+
 /**
  * Top-level: non-virus kingdoms.
  * (Virus realm handling deferred from MVP.)
  */
-function getTopLevel(): TaxonNode[] {
+function computeTopLevel(): TaxonNode[] {
   const db = getTaicolDb();
   const virusList = [...VIRUS_KINGDOMS].map((k) => `'${k.replace(/'/g, "''")}'`).join(', ');
   const statsCols = buildStatsCols(0);

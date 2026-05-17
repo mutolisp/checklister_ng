@@ -29,7 +29,7 @@ export default function AboutScreen() {
         </Section>
         <Section title="Data Source">
           <Text className="text-sm text-gray-700 dark:text-gray-300">
-            臺灣物種名錄 TaiCOL（242k 筆，包含維管束植物、鳥類、昆蟲、真菌等）
+            臺灣物種名錄 TaiCOL（251540 筆學名，96176 Taxa）v2026-04-24
           </Text>
           <Pressable onPress={() => Linking.openURL('https://taicol.tw')} className="mt-2 active:opacity-70">
             <Text className="text-sm text-blue-600 dark:text-blue-400">https://taicol.tw</Text>
@@ -54,6 +54,7 @@ export default function AboutScreen() {
           <Text className="text-sm text-gray-700 dark:text-gray-300">臺灣生物多樣性機構(TaiBIF)</Text>
           <Text className="text-sm text-gray-700 dark:text-gray-300">臺灣物種名錄(TaiCOL)</Text>
           <Text className="text-sm text-gray-700 dark:text-gray-300">臺灣生物多樣性資訊聯盟(TBIA)</Text>
+          <Text className="text-sm text-gray-700 dark:text-gray-300">農業部林業及自然保育署宜蘭分署</Text>
         </Section>
       </ScrollView>
     </SafeAreaView>

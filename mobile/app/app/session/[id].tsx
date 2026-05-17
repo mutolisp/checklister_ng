@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import { showActionSheet } from '~/components/ActionSheet';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import {
   addRecord,
@@ -98,6 +98,12 @@ export default function SessionDetailScreen() {
   const router = useRouter();
   const toast = useToast((s) => s.show);
   const refreshActive = useActiveSession((s) => s.refresh);
+  // KSV offset compensation: the outer <SafeAreaView edges={['bottom']}>
+  // pulls the container bottom up by safe-area-bottom (~34px home indicator
+  // on iPhone). Without re-adding this as `opened` offset, the search box
+  // floats that gap above the keyboard top. Same family of bug as the tabs'
+  // tabBarHeight gap fix in taxonomy.tsx / KeyListView / SpeciesSearchPanel.
+  const insets = useSafeAreaInsets();
 
   const [session, setSession] = useState<Session | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -701,7 +707,7 @@ export default function SessionDetailScreen() {
         // changes (e.g. iOS predictive suggestions). Sibling to the content
         // View, not a child, so kbd-driven translation doesn't push the
         // records list around.
-        <KeyboardStickyView>
+        <KeyboardStickyView offset={{ opened: insets.bottom }}>
           <SearchBox
             onSelect={handleAdd}
             onLongPressResult={async (r) => {

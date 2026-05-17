@@ -4,8 +4,11 @@
  *
  * Sources read by Expo CLI:
  *   - Local dev: `.env` file at this directory (gitignored). See `.env.example`.
- *   - EAS build: secrets set via `eas secret:create --name X --value Y`
- *     or via EAS Dashboard → Project Settings → Secrets.
+ *   - EAS cloud build: secrets set via `eas secret:create --name X --type string`
+ *     or via EAS Dashboard → Project Settings → Secrets. `.env` is NOT pulled
+ *     from git into EAS, so secrets MUST be configured separately on EAS — a
+ *     missing secret causes the conditional native config to be skipped, which
+ *     surfaces as runtime errors (e.g. "API key not found" on map load).
  *
  * Required env vars:
  *   - GOOGLE_MAPS_ANDROID_API_KEY  → injected into AndroidManifest as
@@ -100,6 +103,11 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
     reactCompiler: true,
+  },
+  extra: {
+    eas: {
+      projectId: '5841ea3d-e6a9-42d6-805a-962aa55f68fb',
+    },
   },
 };
 

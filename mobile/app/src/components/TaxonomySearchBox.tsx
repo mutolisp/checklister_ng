@@ -86,9 +86,6 @@ export function TaxonomySearchBox({ onPick }: Props) {
             </Pressable>
           ) : null}
         </View>
-        <Pressable onPress={() => Keyboard.dismiss()} className="ml-2 px-2">
-          <Text className="text-sm text-blue-500">完成</Text>
-        </Pressable>
       </View>
     </View>
   );

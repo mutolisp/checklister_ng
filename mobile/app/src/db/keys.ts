@@ -397,7 +397,12 @@ export function findSubkeyByScopeName(
     WHEN 'subfamily' THEN 4
     WHEN 'family' THEN 5
     ELSE 9 END`;
-  const params: any[] = preferredRank ? [preferredRank, t, t] : [t, t];
+  // Placeholder order in the SQL below is: scope_name, alias_value,
+  // (optionally) scope_rank for the ORDER BY tiebreaker. Pass params in
+  // that exact order — the previous [preferredRank, t, t] arrangement
+  // bound preferredRank into scope_name (`WHERE scope_name='genus'`),
+  // so no row ever matched and the subkey button silently never showed.
+  const params: any[] = preferredRank ? [t, t, preferredRank] : [t, t];
   const sql = `${KEY_WITH_CHILD_COUNT_SQL}
     WHERE k.scope_name = ?
        OR (k.aliases IS NOT NULL AND EXISTS (
@@ -438,7 +443,9 @@ export function findSubkeysByScopeName(
     WHEN 'multi_access' THEN 1
     WHEN 'both' THEN 2
     ELSE 3 END`;
-  const params: any[] = preferredRank ? [preferredRank, t, t] : [t, t];
+  // Placeholder order: scope_name, alias_value, optional rank for ORDER BY.
+  // See findSubkeyByScopeName above — same param-order trap, kept in sync.
+  const params: any[] = preferredRank ? [t, t, preferredRank] : [t, t];
   const sql = `${KEY_WITH_CHILD_COUNT_SQL}
     WHERE k.scope_name = ?
        OR (k.aliases IS NOT NULL AND EXISTS (

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -10,6 +11,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { KeyboardController } from 'react-native-keyboard-controller';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import {
   addRecord,
@@ -94,10 +96,45 @@ export default function TaxonomyScreen() {
   const persistedExpanded = useSettings((s) => s.taxonomy_expanded);
   const setSetting = useSettings((s) => s.set);
   const settingsLoaded = useSettings((s) => s.loaded);
+  // KeyboardStickyView translates by -keyboard_height from its natural laid-out
+  // position. Inside a Tabs screen the natural bottom = top of tab bar, NOT
+  // screen bottom, so without compensating offset the search box ends up
+  // sitting `tabBarHeight` ABOVE the keyboard's top edge (the ~88-100px gap
+  // user reported). Adding `offset.opened: tabBarHeight` pushes it back down
+  // by that much so the bar sits flush against the keyboard.
+  const tabBarHeight = useBottomTabBarHeight();
 
   const [segment, setSegment] = useState<'tree' | 'key' | 'search'>('tree');
+
+  // Segment switch needs to clear the KeyboardStickyView's stale offset.
+  // Empirically (per user report after multiple fixes) just calling
+  // KeyboardController.dismiss inside an effect doesn't bring the lib's
+  // sticky-view animated value back to 0 — it stays latched at the previous
+  // keyboard height, so TaxonomySearchBox ends up floating mid-screen on
+  // entry to the tree segment. The only known-working workaround is the
+  // user's own discovery: tap another bottom tab and come back, which
+  // unmounts taxonomy.tsx entirely and resets every KSV instance.
+  //
+  // We mirror that behaviour by wrapping each segment's subtree in a
+  // `<View key={segment}>` below (segment value as key → React unmounts the
+  // previous subtree + mounts the next, KSV resets fresh from 0). The
+  // explicit dismiss is still useful so the native keyboard doesn't linger
+  // visually during the swap.
+  const handleSwitchSegment = useCallback(async (next: 'tree' | 'key' | 'search') => {
+    if (next === segment) return;
+    try {
+      await KeyboardController.dismiss({ keepFocus: false });
+    } catch {
+      // best effort — lib not initialized yet etc.
+    }
+    setSegment(next);
+  }, [segment]);
   const [roots, setRoots] = useState<TaxonNodeData[]>([]);
   const [loading, setLoading] = useState(true);
+  // Separate stage labels so the spinner says something concrete (「載入分類樹...」
+  // → 「展開上次狀態 (3/8)...」) instead of leaving the user staring at a frozen
+  // empty tree while the cascade SQL runs.
+  const [loadStage, setLoadStage] = useState('載入分類樹...');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [nodeMap, setNodeMap] = useState<Map<string, TaxonNodeData>>(new Map());
   const [childrenMap, setChildrenMap] = useState<Map<string, TaxonNodeData[]>>(new Map());
@@ -122,52 +159,81 @@ export default function TaxonomyScreen() {
     }, [refreshActive]),
   );
 
-  // Initial load: roots (kingdoms)
+  // Initial load + hydration of persisted expansion, gated under a single
+  // loading spinner. Previously these were two effects: the spinner hid after
+  // root load, then a synchronous cascade SQL fired for every persisted
+  // expanded node, freezing the JS thread (10+ queries for nested taxa) while
+  // the user stared at an empty tree. Now we keep `loading=true` until BOTH
+  // root + cascade are done, and we yield to the event loop between batches
+  // so the spinner + progress text actually paint.
   useEffect(() => {
-    setLoading(true);
-    try {
-      const r = getTaxonChildren({ rank: 'kingdom' });
-      setRoots(r);
-      setNodeMap((prev) => {
-        const m = new Map(prev);
-        for (const n of r) m.set(nodeKeyFor(n), n);
-        return m;
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Hydrate persisted expanded set + cascade-load all referenced nodes
-  useEffect(() => {
-    if (!settingsLoaded || hydratedRef.current || roots.length === 0) return;
+    if (!settingsLoaded || hydratedRef.current) return;
     hydratedRef.current = true;
-    if (persistedExpanded.length === 0) return;
+    let cancelled = false;
+
+    setLoading(true);
+    setLoadStage('載入分類樹...');
+
+    // Step 1: root kingdoms (cached after DBProvider prewarm → instant)
+    const r = getTaxonChildren({ rank: 'kingdom' });
+    if (cancelled) return;
+    const nm = new Map<string, TaxonNodeData>();
+    for (const n of r) nm.set(nodeKeyFor(n), n);
+    setRoots(r);
+
+    // Step 2: cascade-load persisted expanded set, in async batches so the
+    // spinner can paint between SQL bursts. Empty-set fast path skips the
+    // entire animation frame round-trip.
+    if (persistedExpanded.length === 0) {
+      setNodeMap(nm);
+      setLoading(false);
+      return;
+    }
 
     const wantExpanded = new Set(persistedExpanded);
-    const nm = new Map(nodeMap);
-    const cm = new Map(childrenMap);
-    const sm = new Map(speciesMap);
+    const cm = new Map<string, TaxonNodeData[]>();
+    const sm = new Map<string, TaxonSpecies[]>();
+    const BATCH = 5;
 
-    // Repeated passes: load known-but-not-yet-loaded nodes in expanded set.
-    // Each pass may reveal new known nodes via children loading.
-    let progress = true;
-    while (progress) {
-      progress = false;
+    const runBatch = () => {
+      if (cancelled) return;
+      let loadedThisBatch = 0;
+      let totalRemaining = 0;
       for (const key of wantExpanded) {
         if (cm.has(key) || sm.has(key)) continue;
         const node = nm.get(key);
         if (!node) continue;
+        totalRemaining++;
+        if (loadedThisBatch >= BATCH) continue;
         loadInto(node, nm, cm, sm);
-        progress = true;
+        loadedThisBatch++;
       }
-    }
+      if (loadedThisBatch === 0) {
+        // Done — flush state.
+        setNodeMap(nm);
+        setChildrenMap(cm);
+        setSpeciesMap(sm);
+        setExpanded(wantExpanded);
+        setLoading(false);
+        return;
+      }
+      const done = wantExpanded.size - totalRemaining + loadedThisBatch;
+      setLoadStage(`展開上次狀態 (${done}/${wantExpanded.size})...`);
+      // Yield so the spinner repaints; setTimeout(0) is enough — RAF is
+      // throttled when the screen has nothing to draw.
+      setTimeout(runBatch, 0);
+    };
 
-    setNodeMap(nm);
-    setChildrenMap(cm);
-    setSpeciesMap(sm);
-    setExpanded(wantExpanded);
-  }, [settingsLoaded, persistedExpanded, roots, nodeMap, childrenMap, speciesMap]);
+    // Yield once before the first batch so the spinner is on screen before
+    // any SQL fires.
+    setTimeout(runBatch, 0);
+
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately depends only on settingsLoaded — we hydrate once per mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsLoaded]);
 
   const persistExpanded = useCallback(
     (next: Set<string>) => {
@@ -409,7 +475,7 @@ export default function TaxonomyScreen() {
             return (
               <Pressable
                 key={opt.value}
-                onPress={() => setSegment(opt.value)}
+                onPress={() => handleSwitchSegment(opt.value)}
                 className={`flex-1 items-center rounded-lg py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
               >
                 <Text className={`text-sm font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
@@ -425,7 +491,7 @@ export default function TaxonomyScreen() {
         loading ? (
           <View className="flex-1 items-center justify-center">
             <ActivityIndicator />
-            <Text className="mt-3 text-sm text-gray-600 dark:text-gray-400">載入分類樹...</Text>
+            <Text className="mt-3 text-sm text-gray-600 dark:text-gray-400">{loadStage}</Text>
           </View>
         ) : (
           <View className="flex-1">
@@ -434,6 +500,14 @@ export default function TaxonomyScreen() {
               className="flex-1"
               data={flatItems}
               keyExtractor={(item) => item.key}
+              // Perf tuning for taxonomy tree: rows are mostly text + small
+              // badges so we can render more per batch. removeClippedSubviews
+              // helps on Android (native view recycling); on iOS it can hide
+              // rows on fast scroll so we keep it off there.
+              initialNumToRender={20}
+              maxToRenderPerBatch={10}
+              windowSize={10}
+              removeClippedSubviews={Platform.OS === 'android'}
               onScrollToIndexFailed={(info) => {
                 // 先粗滾到估算 offset，強迫 FlatList 渲染目標附近的 row，
                 // 等量到正確高度後再 retry scrollToIndex 做精準定位。
@@ -520,7 +594,7 @@ export default function TaxonomyScreen() {
                 return <LoadingRow depth={item.depth} />;
               }}
             />
-            <KeyboardStickyView>
+            <KeyboardStickyView offset={{ opened: tabBarHeight }}>
               <TaxonomySearchBox onPick={handleSearchPick} />
             </KeyboardStickyView>
           </View>
