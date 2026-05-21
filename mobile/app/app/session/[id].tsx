@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { BackHeaderLeft, goBackOrHome } from '~/lib/goBack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
@@ -50,9 +51,10 @@ import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { SiteAssignSheet } from '~/components/SiteAssignSheet';
 import { BatchImportModal } from '~/components/BatchImportModal';
 import { SwipeRow } from '~/components/SwipeRow';
-import { useSettings, type RecordSort } from '~/stores/settings';
+import { useSettings, type RecordSort, type SortDirection } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
+import { useActivePlot } from '~/stores/activePlot';
 
 const SORT_LABEL: Record<RecordSort, string> = {
   observed: '加入順序',
@@ -61,24 +63,33 @@ const SORT_LABEL: Record<RecordSort, string> = {
   family: '科',
 };
 
-function sortRecords(rs: RecordWithTaxon[], order: RecordSort): RecordWithTaxon[] {
+function sortRecords(
+  rs: RecordWithTaxon[],
+  order: RecordSort,
+  direction: SortDirection,
+): RecordWithTaxon[] {
   const cmp = (a: string, b: string) => a.localeCompare(b);
   const arr = [...rs];
-  switch (order) {
-    case 'cname':
-      return arr.sort((a, b) => cmp(a.common_name_c || a.simple_name, b.common_name_c || b.simple_name));
-    case 'name':
-      return arr.sort((a, b) => cmp(a.simple_name, b.simple_name));
-    case 'family':
-      return arr.sort((a, b) => {
-        const f = cmp(a.family || '', b.family || '');
-        if (f !== 0) return f;
-        return cmp(a.simple_name, b.simple_name);
-      });
-    case 'observed':
-    default:
-      return arr.sort((a, b) => a.observed_at - b.observed_at);
-  }
+  const sorted = (() => {
+    switch (order) {
+      case 'cname':
+        return arr.sort((a, b) =>
+          cmp(a.common_name_c || a.simple_name, b.common_name_c || b.simple_name),
+        );
+      case 'name':
+        return arr.sort((a, b) => cmp(a.simple_name, b.simple_name));
+      case 'family':
+        return arr.sort((a, b) => {
+          const f = cmp(a.family || '', b.family || '');
+          if (f !== 0) return f;
+          return cmp(a.simple_name, b.simple_name);
+        });
+      case 'observed':
+      default:
+        return arr.sort((a, b) => a.observed_at - b.observed_at);
+    }
+  })();
+  return direction === 'desc' ? sorted.reverse() : sorted;
 }
 
 const HIGH_LEVEL_GROUPS: Array<{ key: string; label: string; field: 'kingdom' | 'phylum' | 'class' | 'order'; value: string }> = [
@@ -98,6 +109,7 @@ export default function SessionDetailScreen() {
   const router = useRouter();
   const toast = useToast((s) => s.show);
   const refreshActive = useActiveSession((s) => s.refresh);
+  const refreshActivePlot = useActivePlot((s) => s.refresh);
   // KSV offset compensation: the outer <SafeAreaView edges={['bottom']}>
   // pulls the container bottom up by safe-area-bottom (~34px home indicator
   // on iPhone). Without re-adding this as `opened` offset, the search box
@@ -122,6 +134,7 @@ export default function SessionDetailScreen() {
   const trackSubRef = useRef<Location.LocationSubscription | null>(null);
   const trackPointsRef = useRef<[number, number][]>([]);
   const sortOrder = useSettings((s) => s.last_record_sort);
+  const sortDir = useSettings((s) => s.last_record_sort_dir);
   const setSetting = useSettings((s) => s.set);
 
   const reload = useCallback(() => {
@@ -145,8 +158,8 @@ export default function SessionDetailScreen() {
       const group = HIGH_LEVEL_GROUPS.find((g) => g.key === filterKey);
       if (group) result = records.filter((r) => r[group.field] === group.value);
     }
-    return sortRecords(result, sortOrder);
-  }, [records, filterKey, sortOrder]);
+    return sortRecords(result, sortOrder, sortDir);
+  }, [records, filterKey, sortOrder, sortDir]);
 
   const groupCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -204,7 +217,7 @@ export default function SessionDetailScreen() {
       endSession(session.id, data);
       refreshActive();
       setEndModalOpen(false);
-      router.back();
+      goBackOrHome();
     }
   };
 
@@ -495,7 +508,11 @@ export default function SessionDetailScreen() {
     const otherActive = getActiveSession();
     const proceed = () => {
       reopenSession(session.id);
+      // Reopen force-ends any active plot DB-side too, so refresh both stores
+      // — otherwise activePlot store keeps the stale plot reference and the
+      // ActiveSessionBar / StalePlotWatcher misbehave until the next nav.
       refreshActive();
+      refreshActivePlot();
       reload();
       toast('已重新啟用');
     };
@@ -524,9 +541,28 @@ export default function SessionDetailScreen() {
     const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
     const idx = await showActionSheet({
       title: '排序方式',
-      options: orders.map((o) => ({ label: SORT_LABEL[o] })),
+      options: orders.map((o) => ({
+        label:
+          o === sortOrder
+            ? `${SORT_LABEL[o]}（再點翻轉方向）`
+            : SORT_LABEL[o],
+      })),
     });
-    if (idx >= 0 && idx < orders.length) setSetting('last_record_sort', orders[idx]);
+    if (idx < 0 || idx >= orders.length) return;
+    const picked = orders[idx];
+    if (picked === sortOrder) {
+      // Tap the active sort again → flip direction.
+      setSetting('last_record_sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSetting('last_record_sort', picked);
+      // Reset direction to that sort's natural default — observed goes
+      // newest-first; everything else goes A→Z.
+      setSetting('last_record_sort_dir', picked === 'observed' ? 'desc' : 'asc');
+    }
+  };
+
+  const handleToggleSortDir = () => {
+    setSetting('last_record_sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
   };
 
   const handleLongPressRecord = async (record: RecordWithTaxon) => {
@@ -546,6 +582,7 @@ export default function SessionDetailScreen() {
   if (!session) {
     return (
       <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
+        <Stack.Screen options={{ title: '記錄', headerLeft: BackHeaderLeft }} />
         <Text className="text-gray-500 dark:text-gray-400">載入中...</Text>
       </View>
     );
@@ -559,6 +596,9 @@ export default function SessionDetailScreen() {
       <Stack.Screen
         options={{
           title: headerTitle,
+          // Override the default chevron back so a fresh deep-link / replace
+          // entry doesn't strand the user with a dead button.
+          headerLeft: BackHeaderLeft,
           headerRight: isActive
             ? () => (
                 <Pressable onPress={handleEnd} hitSlop={8}>
@@ -640,9 +680,23 @@ export default function SessionDetailScreen() {
               {records.length}
               {filtered.length !== records.length ? `/${filtered.length}` : ''}
             </Text>
-            <Pressable onPress={handlePickSort} hitSlop={8} className="active:opacity-70">
-              <Ionicons name="swap-vertical" size={18} color="#6b7280" />
-            </Pressable>
+            <View className="flex-row items-center">
+              <Pressable
+                onPress={handlePickSort}
+                hitSlop={8}
+                className="flex-row items-center active:opacity-70"
+              >
+                <Ionicons name="swap-vertical" size={18} color="#6b7280" />
+                <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">{SORT_LABEL[sortOrder]}</Text>
+              </Pressable>
+              <Pressable onPress={handleToggleSortDir} hitSlop={6} className="ml-0.5 active:opacity-50">
+                <Ionicons
+                  name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'}
+                  size={14}
+                  color="#6b7280"
+                />
+              </Pressable>
+            </View>
             {isActive ? (
               <Pressable
                 onPress={() => setBatchImportOpen(true)}
@@ -732,10 +786,10 @@ export default function SessionDetailScreen() {
           }
         }}
         onSaveNotes={handleSaveActiveNotes}
-        onSaveLocation={(lat, lng) => {
+        onSaveLocation={(lat, lng, accuracy) => {
           if (!activeRecord) return;
-          updateRecordLocation(activeRecord.id, lat, lng);
-          setActiveRecord({ ...activeRecord, lat, lng });
+          updateRecordLocation(activeRecord.id, lat, lng, accuracy);
+          setActiveRecord({ ...activeRecord, lat, lng, accuracy });
           reload();
           toast(lat === null ? '已清除座標' : '已記錄此物種座標');
         }}
@@ -783,7 +837,7 @@ export default function SessionDetailScreen() {
             deleteSession(session.id);
             refreshActive();
             setEndModalOpen(false);
-            router.back();
+            goBackOrHome();
           }}
         />
       ) : null}

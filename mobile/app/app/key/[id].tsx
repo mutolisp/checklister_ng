@@ -20,6 +20,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { BackHeaderLeft } from '~/lib/goBack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -475,7 +476,7 @@ export default function KeyRunnerScreen() {
   if (!loaded) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: '檢索表' }} />
+        <Stack.Screen options={{ title: '檢索表', headerLeft: BackHeaderLeft }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">載入中...</Text>
       </SafeAreaView>
     );
@@ -484,7 +485,7 @@ export default function KeyRunnerScreen() {
   if (!keyData) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: '檢索表' }} />
+        <Stack.Screen options={{ title: '檢索表', headerLeft: BackHeaderLeft }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">找不到此檢索表</Text>
       </SafeAreaView>
     );
@@ -500,7 +501,7 @@ export default function KeyRunnerScreen() {
   if (couplets.length === 0) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: keyData.scope_name }} />
+        <Stack.Screen options={{ title: keyData.scope_name, headerLeft: BackHeaderLeft }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">此檢索表沒有節點內容</Text>
       </SafeAreaView>
     );
@@ -508,12 +509,9 @@ export default function KeyRunnerScreen() {
 
   // Show child count (family→genera, genus→species in台) so the user knows
   // the key's coverage from the header alone. Falsy/0 → omit silently.
-  const titleBase = keyData.scope_cname
+  const screenTitle = keyData.scope_cname
     ? `${keyData.scope_name} ${keyData.scope_cname}`
     : keyData.scope_name;
-  const screenTitle = keyData.child_count != null && keyData.child_count > 0
-    ? `${titleBase} (${keyData.child_count})`
-    : titleBase;
 
   const openTerminalDetail = useCallback(() => {
     if (state.terminal?.kind !== 'taxon') return;
@@ -572,6 +570,7 @@ export default function KeyRunnerScreen() {
         options={{
           title: screenTitle,
           headerBackTitle: '返回',
+          headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable onPress={restart} hitSlop={8}>
               <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">重來</Text>
@@ -1001,9 +1000,6 @@ function SubkeyButton({
           />
           {subkey.scope_cname ? (
             <Text className="ml-2 text-sm text-gray-600 dark:text-gray-400">{subkey.scope_cname}</Text>
-          ) : null}
-          {subkey.child_count != null && subkey.child_count > 0 ? (
-            <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">({subkey.child_count})</Text>
           ) : null}
         </View>
       </View>

@@ -244,12 +244,18 @@ export type TaxonSpecies = {
   protected: string;
   is_hybrid: string;
   kingdom: string;
+  kingdom_c: string;
   phylum: string;
+  phylum_c: string;
   class: string;
+  class_c: string;
   order: string;
+  order_c: string;
   genus: string;
+  genus_c: string;
   alternative_name_c: string;
   nomenclature_name: string;
+  alien_status_note: string;
   is_autonym: boolean;
 };
 
@@ -259,22 +265,15 @@ function isAutonym(simpleName: string, rank: string): boolean {
   return parts.length >= 3 && parts[1] === parts[parts.length - 1];
 }
 
-export function getSpeciesUnder(ancestors?: Ancestors): TaxonSpecies[] {
-  const db = getTaicolDb();
-  let where = `usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank IN ('Species','Subspecies','Variety','Form')`;
-  const params: string[] = [];
-  where += buildAncestorWhere(ancestors, params);
-  const sql = `
-    SELECT taxon_id, simple_name, name_author, common_name_c, family, family_c, rank,
-           is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
-           kingdom, phylum, class, "order", genus, alternative_name_c, nomenclature_name
-    FROM taicol_names
-    WHERE ${where}
-    ORDER BY simple_name
-  `;
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
+const TAXON_SPECIES_COLUMNS = `
+  taxon_id, simple_name, name_author, common_name_c, family, family_c, rank,
+  is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
+  kingdom, kingdom_c, phylum, phylum_c, class, class_c, "order", order_c,
+  genus, genus_c, alternative_name_c, nomenclature_name, alien_status_note
+`;
+
+function taxonRowToSpecies(row: Record<string, unknown>): TaxonSpecies {
+  return {
     taxon_id: (row.taxon_id as string) ?? '',
     simple_name: (row.simple_name as string) ?? '',
     name_author: (row.name_author as string) ?? '',
@@ -290,19 +289,60 @@ export function getSpeciesUnder(ancestors?: Ancestors): TaxonSpecies[] {
     protected: (row.protected as string) ?? '',
     is_hybrid: (row.is_hybrid as string) ?? '',
     kingdom: (row.kingdom as string) ?? '',
+    kingdom_c: (row.kingdom_c as string) ?? '',
     phylum: (row.phylum as string) ?? '',
+    phylum_c: (row.phylum_c as string) ?? '',
     class: (row.class as string) ?? '',
+    class_c: (row.class_c as string) ?? '',
     order: (row.order as string) ?? '',
+    order_c: (row.order_c as string) ?? '',
     genus: (row.genus as string) ?? '',
+    genus_c: (row.genus_c as string) ?? '',
     alternative_name_c: (row.alternative_name_c as string) ?? '',
     nomenclature_name: (row.nomenclature_name as string) ?? '',
+    alien_status_note: (row.alien_status_note as string) ?? '',
     is_autonym: isAutonym((row.simple_name as string) ?? '', (row.rank as string) ?? ''),
-  }));
+  };
+}
+
+export function getSpeciesUnder(ancestors?: Ancestors): TaxonSpecies[] {
+  const db = getTaicolDb();
+  let where = `usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank IN ('Species','Subspecies','Variety','Form')`;
+  const params: string[] = [];
+  where += buildAncestorWhere(ancestors, params);
+  const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM taicol_names WHERE ${where} ORDER BY simple_name`;
+  const res = db.executeSync(sql, params);
+  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
+  return rows.map(taxonRowToSpecies);
 }
 
 function getSpeciesAsNodes(): TaxonNode[] {
   // The actual species rendering uses getSpeciesUnder + a different list UI.
   return [];
+}
+
+/** Accepted infraspecies (Subspecies / Variety / Form) sitting under a binomial
+ *  species name. Used by the species detail panel to surface "下級分類群". The
+ *  caller passes the binomial + the species' ancestor chain so we can defend
+ *  against homonym genera by matching ancestors as well as the LIKE prefix. */
+export function getInfraspeciesOf(
+  speciesName: string,
+  ancestors?: Ancestors,
+): TaxonSpecies[] {
+  if (!speciesName || speciesName.split(/\s+/).length !== 2) return [];
+  const db = getTaicolDb();
+  const pattern = `${speciesName.replace(/%/g, '\\%').replace(/_/g, '\\_')} %`;
+  const params: string[] = [pattern, speciesName];
+  let where = `simple_name LIKE ? ESCAPE '\\'
+      AND simple_name != ?
+      AND rank IN ('Subspecies','Variety','Form')
+      AND usage_status='accepted'
+      AND is_in_taiwan LIKE '%true%'`;
+  where += buildAncestorWhere(ancestors, params);
+  const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM taicol_names WHERE ${where} ORDER BY simple_name`;
+  const res = db.executeSync(sql, params);
+  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
+  return rows.map(taxonRowToSpecies);
 }
 
 /**

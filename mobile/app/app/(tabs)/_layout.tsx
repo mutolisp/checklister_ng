@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Platform, Pressable, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { HapticTab } from '@/components/haptic-tab';
@@ -8,6 +8,7 @@ import { Colors } from '@/constants/theme';
 import { useSettings } from '~/stores/settings';
 import { showActionSheet } from '~/components/ActionSheet';
 import { createPlotPromptAndOpen, startSessionAndOpen } from '~/lib/recordCreate';
+import { perf } from '~/lib/perf';
 
 async function showCreateChooser(): Promise<void> {
   const idx = await showActionSheet({
@@ -53,7 +54,10 @@ function PlusButton() {
       onPress={onPress}
       onLongPress={showLongPressMenu}
       delayLongPress={350}
-      className="absolute -top-4 left-1/2 -ml-7 h-14 w-14 items-center justify-center rounded-full bg-blue-500 shadow-lg active:bg-blue-600"
+      // Brand color #008F51. NativeWind 4 supports `bg-[#xxx]` arbitrary
+      // hex as long as the literal appears verbatim in source so the JIT
+      // scanner can pick it up. Press state darkens by ~20%.
+      className="absolute -top-4 left-1/2 -ml-7 h-14 w-14 items-center justify-center rounded-full shadow-lg bg-[#008F51] active:bg-[#007241]"
     >
       <Ionicons name="add" size={32} color="white" />
     </Pressable>
@@ -67,6 +71,13 @@ export default function TabLayout() {
   // ActiveSessionBar + status-bar + safe-area spacer + StaleWatchers were
   // lifted to app/_layout.tsx so they persist across stack screens (檢索表
   // runner, session/plot detail, etc.). Tabs-only chrome stays here.
+  //
+  // Tab bar height: NOT overridden. react-navigation 7 already computes
+  // iOS = 49pt (HIG) + safe-area-bottom and Android = 56dp (Material) +
+  // insets.bottom, tracking system-nav style across devices (3-button vs
+  // gesture pill, notch vs non-notch). A hard-coded value here would just
+  // recreate the very Android nav-bar overlap we hit earlier on Samsung
+  // 3-button nav.
   return (
     <View className="flex-1">
       <Tabs
@@ -74,7 +85,6 @@ export default function TabLayout() {
           tabBarActiveTintColor: tint,
           headerShown: false,
           tabBarButton: HapticTab,
-          tabBarStyle: { height: Platform.OS === 'ios' ? 88 : 64 },
         }}
       >
         <Tabs.Screen
@@ -120,6 +130,13 @@ export default function TabLayout() {
             // instant. The mount itself is cheap; the cascade SQL still runs
             // inside the screen's chunked-async hydration with its own spinner.
             lazy: false,
+          }}
+          listeners={{
+            // Fires the instant the user taps the tab button — the gap between
+            // this and taxonomy:focus / taxonomy:render-start tells us whether
+            // the perceived lag is the native tab transition (no JS in the
+            // gap) or post-focus JS work.
+            tabPress: () => perf.mark('taxonomy:tab-press'),
           }}
         />
         <Tabs.Screen

@@ -32,6 +32,10 @@ export type PlotSurvey = {
   site_id: number | null;
   start_ts: number | null;
   stop_ts: number | null;
+  /** Most recent reopen timestamp (status: done → active). Used by
+   *  `StalePlotWatcher` so reopening an old plot doesn't immediately re-fire
+   *  the idle alert. */
+  resumed_at: number | null;
   status: PlotStatus;
   decimal_longitude: number | null;
   decimal_latitude: number | null;
@@ -98,9 +102,13 @@ export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & {
   rank: string;
   is_endemic: string;
   alien_type: string;
+  is_hybrid: string;
   kingdom: string;
   /** Class name from TaiCOL (used by life-stage UI for animals). */
   class: string;
+  phylum: string;
+  order: string;
+  genus: string;
 };
 
 export function generateUuid(): string {
@@ -139,11 +147,15 @@ export function endAllActivePlots(): void {
 export function createPlotSurvey(input: CreatePlotInput): number {
   const db = getUserDb();
   const now = Date.now();
-  // Belt + suspenders: enforce single active before we open another.
+  // Belt + suspenders: enforce single-active across BOTH kinds before we open
+  // another. UI gate (recordCreate.ts) is the primary check, but the plots
+  // tab "+" button bypasses it, so the DB layer must close any active session
+  // AND any active plot here.
   db.executeSync(
     `UPDATE plot_surveys SET status = 'done', stop_ts = COALESCE(stop_ts, ?), updated_at = ? WHERE status = 'active'`,
     [now, now],
   );
+  db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`, [now]);
   const res = db.executeSync(
     `INSERT INTO plot_surveys (
        uuid, plotid, plot_type, project_id, status,
@@ -344,14 +356,19 @@ export function endPlotSurvey(id: number): void {
 export function reopenPlotSurvey(id: number): void {
   const db = getUserDb();
   const now = Date.now();
-  // Force-end any other active plot first to keep the single-active invariant.
+  // Force-end any other active plot AND any active session first to keep the
+  // single-active-across-kinds invariant. UI's `recordCreate.ts` is the
+  // primary gate but the plot/[id] "重開" button bypasses it.
   db.executeSync(
     `UPDATE plot_surveys SET status = 'done', stop_ts = COALESCE(stop_ts, ?), updated_at = ? WHERE status = 'active' AND id != ?`,
     [now, now, id],
   );
+  db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`, [now]);
+  // Stamp `resumed_at` so StalePlotWatcher's baseline isn't the original
+  // `start_ts` (which could be days old when reopening an ended plot).
   db.executeSync(
-    `UPDATE plot_surveys SET status = 'active', stop_ts = NULL, updated_at = ? WHERE id = ?`,
-    [now, id],
+    `UPDATE plot_surveys SET status = 'active', stop_ts = NULL, resumed_at = ?, updated_at = ? WHERE id = ?`,
+    [now, now, id],
   );
 }
 
@@ -498,6 +515,14 @@ export function updatePlotSpeciesValue(
   db.executeSync(`UPDATE plot_species_records SET ${sets.join(', ')} WHERE id = ?`, args);
 }
 
+/** Persist the list of photo URIs (`ph://` or `file://`) for a plot species
+ *  record. Pass an empty array to clear. Stored as JSON in `photo_paths`. */
+export function updatePlotSpeciesPhotos(id: number, paths: string[]): void {
+  const db = getUserDb();
+  const value = paths.length > 0 ? JSON.stringify(paths) : null;
+  db.executeSync(`UPDATE plot_species_records SET photo_paths = ? WHERE id = ?`, [value, id]);
+}
+
 /** Last species observation epoch (ms) for the given plot; null if none. */
 export function latestPlotActivityAt(plotSurveyId: number): number | null {
   const db = getUserDb();
@@ -524,7 +549,8 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
   const placeholders = taxonIds.map(() => '?').join(',');
   const taxaRes = taicolDb.executeSync(
     `SELECT taxon_id, simple_name, name_author, common_name_c,
-            family, family_c, rank, is_endemic, alien_type, kingdom, class
+            family, family_c, rank, is_endemic, alien_type, is_hybrid,
+            kingdom, class, phylum, "order", genus
      FROM taicol_names
      WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
     taxonIds,
@@ -546,8 +572,12 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
       rank: (t.rank as string) ?? '',
       is_endemic: (t.is_endemic as string) ?? '',
       alien_type: (t.alien_type as string) ?? '',
+      is_hybrid: (t.is_hybrid as string) ?? '',
       kingdom: (t.kingdom as string) ?? '',
       class: (t.class as string) ?? '',
+      phylum: (t.phylum as string) ?? '',
+      order: (t.order as string) ?? '',
+      genus: (t.genus as string) ?? '',
     };
   });
 }

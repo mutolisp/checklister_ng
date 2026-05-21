@@ -13,6 +13,7 @@ import {
 } from '~/db';
 import { ProjectEditModal, type ProjectEditTarget } from '~/components/ProjectEditModal';
 import { SwipeRow } from '~/components/SwipeRow';
+import { BackHeaderLeft } from '~/lib/goBack';
 
 export default function ProjectsScreen() {
   const [projects, setProjects] = useState<ProjectWithCounts[]>([]);
@@ -52,6 +53,7 @@ export default function ProjectsScreen() {
       <Stack.Screen
         options={{
           title: '專案管理',
+          headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable onPress={() => setEditing('new')} hitSlop={8}>
               <Ionicons name="add" size={26} color="#2563eb" />

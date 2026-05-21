@@ -8,7 +8,16 @@ import {
   type RecordWithTaxon,
 } from '~/db';
 import { convertToDwc } from './dwcMapper';
+import { parseMultiAttribute } from './dwcAttributes';
 import { generateMarkdown, type MarkdownItem } from './markdown';
+
+/** DwC multi-value convention: pipe-separated. JSON-array DB cells are
+ *  unpacked via parseMultiAttribute, then joined. Empty → null so the value
+ *  drops out of the export instead of appearing as an empty string column. */
+function multiToDwc(raw: string | null | undefined): string | null {
+  const arr = parseMultiAttribute(raw);
+  return arr.length === 0 ? null : arr.join('|');
+}
 
 type ExportItem = Record<string, unknown>;
 
@@ -32,6 +41,11 @@ function recordToExportItem(rec: RecordWithTaxon, extra: ExportItem = {}): Expor
     protected: rec.protected,
     endemic: isEndemic,
     is_hybrid: rec.is_hybrid,
+    // DwC species attributes (single-value enums + multi-value pipe-separated).
+    sex: rec.sex,
+    life_stage: rec.life_stage,
+    reproductive_condition: multiToDwc(rec.reproductive_condition),
+    leaf_phenology: multiToDwc(rec.leaf_phenology),
     eventDate: new Date(rec.observed_at).toISOString(),
     ...extra,
   };

@@ -6,6 +6,7 @@ export type Theme = 'light' | 'dark' | 'auto';
 export type CardDensity = 'compact' | 'comfortable';
 
 export type RecordSort = 'observed' | 'cname' | 'name' | 'family';
+export type SortDirection = 'asc' | 'desc';
 export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
 export type MapBasemap = 'standard' | 'satellite' | 'hybrid' | 'terrain';
 export type RecordTypeDefault = 'session' | 'plot' | 'ask';
@@ -59,6 +60,10 @@ type SettingsValues = {
   card_density: CardDensity;
   last_search_group: TaxonGroup | '';
   last_record_sort: RecordSort;
+  /** Direction for `last_record_sort`. Observed defaults to 'desc' (latest
+   *  on top); other sorts default to 'asc'. Tapping the same sort option a
+   *  second time flips this. */
+  last_record_sort_dir: SortDirection;
   taxonomy_expanded: string[];
   font_scale: FontScale;
   map_view: MapViewState;
@@ -72,6 +77,12 @@ type SettingsValues = {
    *  filter). On = predictions skewed to species likely at this location;
    *  off = vision-only. Default on, per user request. */
   ai_geomodel_filter: boolean;
+  /** Geo file formats to include in the export bundle. At least one entry is
+   *  required; if the list ends up empty after restore we coerce to KML. */
+  export_geo_formats: Array<'geojson' | 'gpx' | 'kml'>;
+  /** Whether photos referenced by records get packed into the bundle's
+   *  `photos/` folder. Off = text-only export (much smaller, faster). */
+  export_include_photos: boolean;
 };
 
 const DEFAULTS: SettingsValues = {
@@ -80,6 +91,7 @@ const DEFAULTS: SettingsValues = {
   card_density: 'comfortable',
   last_search_group: '',
   last_record_sort: 'observed',
+  last_record_sort_dir: 'desc',
   taxonomy_expanded: [],
   font_scale: 'normal',
   map_view: DEFAULT_MAP_VIEW,
@@ -87,6 +99,8 @@ const DEFAULTS: SettingsValues = {
   key_recent_ids: [],
   key_runner_states: {},
   ai_geomodel_filter: true,
+  export_geo_formats: ['kml'],
+  export_include_photos: true,
 };
 
 type SettingsState = SettingsValues & {
@@ -148,6 +162,8 @@ function readAll(): SettingsValues {
     card_density: (map.get('card_density') as CardDensity) ?? DEFAULTS.card_density,
     last_search_group: (map.get('last_search_group') as TaxonGroup | '') ?? DEFAULTS.last_search_group,
     last_record_sort: (map.get('last_record_sort') as RecordSort) ?? DEFAULTS.last_record_sort,
+    last_record_sort_dir:
+      (map.get('last_record_sort_dir') as SortDirection) ?? DEFAULTS.last_record_sort_dir,
     taxonomy_expanded: taxonomyExpanded,
     font_scale: (map.get('font_scale') as FontScale) ?? DEFAULTS.font_scale,
     map_view: mapView,
@@ -159,7 +175,29 @@ function readAll(): SettingsValues {
       map.get('ai_geomodel_filter') == null
         ? DEFAULTS.ai_geomodel_filter
         : map.get('ai_geomodel_filter') === 'true',
+    export_geo_formats: parseGeoFormats(map.get('export_geo_formats')),
+    export_include_photos:
+      map.get('export_include_photos') == null
+        ? DEFAULTS.export_include_photos
+        : map.get('export_include_photos') === 'true',
   };
+}
+
+function parseGeoFormats(raw: string | undefined): Array<'geojson' | 'gpx' | 'kml'> {
+  if (!raw) return DEFAULTS.export_geo_formats;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const allowed = new Set(['geojson', 'gpx', 'kml']);
+      const filtered = parsed.filter((v): v is 'geojson' | 'gpx' | 'kml' =>
+        typeof v === 'string' && allowed.has(v),
+      );
+      if (filtered.length > 0) return filtered;
+    }
+  } catch {
+    // ignore corrupt setting
+  }
+  return DEFAULTS.export_geo_formats;
 }
 
 /** Push a key id to the most-recent slot. Dedupes + caps at 10. Module-level

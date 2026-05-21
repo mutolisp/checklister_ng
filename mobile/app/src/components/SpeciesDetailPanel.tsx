@@ -6,12 +6,24 @@
  *   - SpeciesSearchPanel (renders inline above the search box, no modal)
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useRouter } from 'expo-router';
+import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
-import { getSynonyms, type SearchResult, type Synonym } from '~/db';
+import {
+  getInfraspeciesOf,
+  getSynonyms,
+  type Ancestors,
+  type Rank,
+  type SearchResult,
+  type Synonym,
+  type TaxonSpecies,
+} from '~/db';
 import { buildSpeciesCopyText, copyToClipboard, speciesCopyActions } from '~/lib/clipboard';
 import { alienBadge } from '~/lib/conservationColors';
+import { rankColor } from '~/lib/rankColors';
+import { useTaxonomyJump, type JumpPath } from '~/stores/taxonomyJump';
 import { showActionSheet } from './ActionSheet';
+import { CollapsibleSection, SynonymStatusBadge } from './CollapsibleSection';
 import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 
@@ -23,6 +35,11 @@ type Props = {
   /** Override the add button text (e.g. for inline mode you might want
    *  「加入並繼續搜尋」 someday). Defaults to「加到當前記錄」. */
   addButtonLabel?: string;
+  /** Called when the user taps an infraspecies row in the「下級分類群」section.
+   *  The caller is expected to swap the visible detail to the picked taxon
+   *  (`LookupResultSheet` / `SpeciesSearchPanel` route this to their internal
+   *  `currentResult` state). When omitted, the row is rendered non-tappable. */
+  onPickSubordinate?: (sp: TaxonSpecies) => void;
 };
 
 function externalLinks(result: SearchResult): Array<{ label: string; url: string }> {
@@ -34,9 +51,11 @@ function externalLinks(result: SearchResult): Array<{ label: string; url: string
   links.push({ label: 'GBIF', url: `https://www.gbif.org/species/search?q=${sciEnc}` });
   links.push({ label: 'iNaturalist', url: `https://www.inaturalist.org/taxa/search?q=${sciEnc}` });
   links.push({ label: 'Wikispecies', url: `https://species.wikimedia.org/wiki/${sciEnc}` });
+  links.push({ label: 'NCBI', url: `https://www.ncbi.nlm.nih.gov/taxonomy/?term=${sciEnc}` });
   if (result.kingdom === 'Plantae') {
-    links.push({ label: 'POWO', url: `https://powo.science.kew.org/?q=${sciEnc}` });
+    links.push({ label: 'POWO', url: `https://powo.science.kew.org/results?q=${sciEnc}` });
     links.push({ label: 'IPNI', url: `https://www.ipni.org/?q=${sciEnc}` });
+    links.push({ label: '台灣植物資訊整合查詢', url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}` });
   }
   return links;
 }
@@ -46,12 +65,53 @@ export function SpeciesDetailPanel({
   onAddToSession,
   onClose,
   addButtonLabel = '加到當前記錄',
+  onPickSubordinate,
 }: Props) {
   const [synonyms, setSynonyms] = useState<Synonym[]>([]);
+  const [infraspecies, setInfraspecies] = useState<TaxonSpecies[]>([]);
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     if (result.taxon_id) setSynonyms(getSynonyms(result.taxon_id));
     else setSynonyms([]);
+  }, [result.taxon_id]);
+
+  // Look up infraspecies only when this is a binomial Species (rank='Species'
+  // or unknown rank but two-token name). Subspecies/Variety/Form pages don't
+  // have children, so skip the SQL.
+  useEffect(() => {
+    const isSpecies =
+      result.rank === 'Species' ||
+      (!result.rank && result.name && result.name.split(/\s+/).length === 2);
+    if (!isSpecies) {
+      setInfraspecies([]);
+      return;
+    }
+    const ancestors: Ancestors = {};
+    if (result.kingdom) ancestors.kingdom = result.kingdom;
+    if (result.phylum) ancestors.phylum = result.phylum;
+    if (result.class_name) ancestors.class = result.class_name;
+    if (result.order) ancestors.order = result.order;
+    if (result.family) ancestors.family = result.family;
+    if (result.genus) ancestors.genus = result.genus;
+    setInfraspecies(getInfraspeciesOf(result.name, ancestors));
+  }, [
+    result.name,
+    result.rank,
+    result.kingdom,
+    result.phylum,
+    result.class_name,
+    result.order,
+    result.family,
+    result.genus,
+  ]);
+
+  // Scroll body back to top whenever the displayed taxon changes — important
+  // when `onPickSubordinate` swaps the result in-place (the parent re-renders
+  // this same panel with a new taxon, ScrollView would otherwise stay at the
+  // old scroll position deep in the previous taxon's body).
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [result.taxon_id]);
 
   const links = externalLinks(result);
@@ -71,9 +131,6 @@ export function SpeciesDetailPanel({
             className="text-sm text-gray-700 dark:text-gray-300"
             selectable
           />
-          <Text selectable className="text-xs text-gray-500 dark:text-gray-400">
-            {result.family_cname} {result.family}
-          </Text>
         </View>
         <Pressable
           onPress={async () => {
@@ -102,13 +159,22 @@ export function SpeciesDetailPanel({
       {result.matched_as ? (
         <View className="border-b border-gray-100 dark:border-gray-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2">
           <Text selectable className="text-xs text-orange-900 dark:text-orange-200">
-            你輸入的是 <Text className="font-medium italic">{result.matched_as.name}</Text>（
-            {result.matched_as.status}），上方為接受名
+            你輸入的是{' '}
+            <ScientificName
+              name={result.matched_as.name}
+              kingdom={result.kingdom}
+              nomenclature={result.nomenclature_name}
+            />
+            （{result.matched_as.status}），上方為接受名
           </Text>
         </View>
       ) : null}
 
-      <ScrollView className="flex-1">
+      <ScrollView ref={scrollRef} className="flex-1">
+        <View className="px-4 py-3">
+          <RankChipRow result={result} onClose={onClose} />
+        </View>
+
         {result.alternative_name_c ? (
           <Section title="其他俗名">
             <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
@@ -128,6 +194,9 @@ export function SpeciesDetailPanel({
               return <Tag color={color} label={ab.longLabel} />;
             })()}
             {result.is_hybrid === 'true' ? <Tag color="purple" label="雜交" /> : null}
+            {habitatLabels(result).map((label) => (
+              <Tag key={label} color="blue" label={label} />
+            ))}
           </View>
         </Section>
 
@@ -138,22 +207,109 @@ export function SpeciesDetailPanel({
           <ConservationRow label="保育類" value={result.protected} />
         </Section>
 
-        {synonyms.length > 1 ? (
-          <Section title={`同物異名 (${synonyms.length - 1})`}>
-            {synonyms
-              .filter((s) => s.status !== 'accepted')
-              .map((s, idx) => (
-                <Text key={idx} selectable className="text-sm text-gray-700 dark:text-gray-300">
-                  {'• '}
-                  <ScientificName
-                    name={s.scientificName}
-                    author={s.authorship}
-                    kingdom={result.kingdom}
-                    nomenclature={result.nomenclature_name}
+        {result.alien_status_note ? (
+          <Section title="來源文獻">
+            <View>
+              {parseAlienStatusNote(result.alien_status_note).map((entry, idx) => (
+                <View
+                  key={idx}
+                  className={`flex-row py-1.5 ${idx > 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
+                >
+                  <Text
                     selectable
-                  />
-                </Text>
+                    className="w-20 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    {entry.type}
+                  </Text>
+                  <Text
+                    selectable
+                    className="flex-1 text-xs text-gray-700 dark:text-gray-300"
+                  >
+                    {entry.citation}
+                  </Text>
+                </View>
               ))}
+            </View>
+          </Section>
+        ) : null}
+
+        {(() => {
+          const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
+          if (nonAccepted.length === 0) return null;
+          return (
+            <CollapsibleSection title="同物異名 Synonyms" count={nonAccepted.length} defaultOpen={false}>
+              {nonAccepted.map((s, idx) => (
+                <View key={idx} className="flex-row flex-wrap items-baseline">
+                  <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
+                    {'• '}
+                    <ScientificName
+                      name={s.scientificName}
+                      author={s.authorship}
+                      kingdom={result.kingdom}
+                      nomenclature={result.nomenclature_name}
+                      selectable
+                    />
+                  </Text>
+                  <SynonymStatusBadge status={s.status} />
+                </View>
+              ))}
+            </CollapsibleSection>
+          );
+        })()}
+
+        {infraspecies.length > 0 ? (
+          <Section title={`下級分類群 (${infraspecies.length})`}>
+            <View>
+              {infraspecies.map((sp) => {
+                const rc = rankColor(sp.rank);
+                const row = (
+                  <View className="flex-row items-start py-2">
+                    <Ionicons
+                      name="leaf-outline"
+                      size={14}
+                      color="#10b981"
+                      style={{ marginRight: 8, marginTop: 3 }}
+                    />
+                    <View className="flex-1">
+                      <Text className="text-sm text-gray-700 dark:text-gray-300">
+                        {sp.common_name_c ? (
+                          <Text className="font-medium text-gray-900 dark:text-gray-100">
+                            {sp.common_name_c}{' '}
+                          </Text>
+                        ) : null}
+                        <ScientificName
+                          name={sp.simple_name}
+                          kingdom={sp.kingdom}
+                          nomenclature={sp.nomenclature_name}
+                        />
+                        {sp.is_autonym ? (
+                          <Text className="text-xs italic text-gray-500 dark:text-gray-400">
+                            {' '}
+                            s.str.
+                          </Text>
+                        ) : null}
+                      </Text>
+                      {sp.rank ? (
+                        <View className={`mt-0.5 self-start rounded px-1.5 py-0.5 ${rc.bg}`}>
+                          <Text className={`text-[10px] font-medium ${rc.text}`}>{sp.rank}</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+                );
+                return onPickSubordinate ? (
+                  <Pressable
+                    key={sp.taxon_id || sp.simple_name}
+                    onPress={() => onPickSubordinate(sp)}
+                    className="active:bg-blue-50 dark:active:bg-blue-900/40"
+                  >
+                    {row}
+                  </Pressable>
+                ) : (
+                  <View key={sp.taxon_id || sp.simple_name}>{row}</View>
+                );
+              })}
+            </View>
           </Section>
         ) : null}
 
@@ -171,6 +327,14 @@ export function SpeciesDetailPanel({
             ))}
           </View>
         </Section>
+
+        {result.nomenclature_name ? (
+          <View className="px-4 pt-3">
+            <Text className="text-xs text-gray-400 dark:text-gray-500">
+              命名法規：{result.nomenclature_name}
+            </Text>
+          </View>
+        ) : null}
 
         <View className="px-4 pb-6 pt-4">
           <Pressable
@@ -195,11 +359,127 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
+
 function splitAltNames(s: string): string[] {
   return s
     .split(/[,、]/)
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+/** Parse TaiCOL `alien_status_note` field. Format: `type: citation | type: citation | …`
+ *  Entries lacking the `type:` prefix are kept as citation-only (type = ''). */
+/** Build the cascade path used by `useTaxonomyJump` from a SearchResult. Stops
+ *  at the deepest rank requested — e.g. tapping 「科」 builds path up to family,
+ *  not down to genus. */
+function buildJumpPath(result: SearchResult, depth: Rank): JumpPath {
+  const order: Rank[] = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'];
+  const stopIdx = order.indexOf(depth);
+  const path: JumpPath = [];
+  const valueFor: Record<Rank, string> = {
+    kingdom: result.kingdom,
+    phylum: result.phylum,
+    class: result.class_name,
+    order: result.order,
+    family: result.family,
+    genus: result.genus,
+  };
+  for (let i = 0; i <= stopIdx; i++) {
+    const r = order[i];
+    const v = valueFor[r];
+    if (v) path.push({ rank: r, value: v });
+  }
+  return path;
+}
+
+const RANK_LABEL_ZH: Record<Rank, string> = {
+  kingdom: '界',
+  phylum: '門',
+  class: '綱',
+  order: '目',
+  family: '科',
+  genus: '屬',
+};
+
+function RankChipRow({
+  result,
+  onClose,
+}: {
+  result: SearchResult;
+  onClose?: () => void;
+}) {
+  const router = useRouter();
+  const requestJump = useTaxonomyJump((s) => s.request);
+
+  const items: Array<{ rank: Rank; name: string; nameC: string }> = [];
+  if (result.kingdom) items.push({ rank: 'kingdom', name: result.kingdom, nameC: result.kingdom_c });
+  if (result.phylum) items.push({ rank: 'phylum', name: result.phylum, nameC: result.phylum_c });
+  if (result.class_name)
+    items.push({ rank: 'class', name: result.class_name, nameC: result.class_c });
+  if (result.order) items.push({ rank: 'order', name: result.order, nameC: result.order_c });
+  if (result.family)
+    items.push({ rank: 'family', name: result.family, nameC: result.family_cname });
+  if (result.genus) items.push({ rank: 'genus', name: result.genus, nameC: result.genus_c });
+
+  if (items.length === 0) return null;
+
+  return (
+    <View className="mt-1 flex-row flex-wrap gap-1.5">
+      {items.map(({ rank, name, nameC }) => (
+        <Pressable
+          key={rank}
+          onPress={() => {
+            const path = buildJumpPath(result, rank);
+            if (path.length === 0) return;
+            requestJump(path);
+            onClose?.();
+            // Defer the navigation a frame so the modal close animation starts
+            // before the tab switch — avoids a flash where both transitions
+            // overlap on iOS.
+            requestAnimationFrame(() => {
+              router.push('/(tabs)/taxonomy');
+            });
+          }}
+          className="flex-row items-center rounded-full bg-gray-100 px-2.5 py-1 active:bg-blue-100 dark:bg-gray-800 dark:active:bg-blue-900/60"
+          hitSlop={4}
+        >
+          <Text className="text-[10px] font-semibold uppercase text-gray-500 dark:text-gray-400">
+            {RANK_LABEL_ZH[rank]}
+          </Text>
+          {nameC ? (
+            <Text className="ml-1 text-xs text-gray-800 dark:text-gray-200">{nameC}</Text>
+          ) : null}
+          <Text
+            className={`ml-1 text-xs text-gray-600 dark:text-gray-400 ${rank === 'genus' ? 'italic' : ''}`}
+          >
+            {name}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+function habitatLabels(result: SearchResult): string[] {
+  const out: string[] = [];
+  if (result.is_terrestrial === 'true') out.push('陸域');
+  if (result.is_freshwater === 'true') out.push('淡水');
+  if (result.is_brackish === 'true') out.push('半鹹水');
+  if (result.is_marine === 'true') out.push('海洋');
+  if (result.is_fossil === 'true') out.push('化石');
+  return out;
+}
+
+function parseAlienStatusNote(note: string): Array<{ type: string; citation: string }> {
+  return note
+    .split('|')
+    .map((seg) => seg.trim())
+    .filter(Boolean)
+    .map((seg) => {
+      const m = seg.match(/^([^:]+):\s*(.+)$/);
+      if (m) return { type: m[1].trim(), citation: m[2].trim() };
+      return { type: '', citation: seg };
+    });
 }
 
 const TAG_STYLES: Record<'emerald' | 'blue' | 'purple' | 'rose', { bg: string; text: string }> = {

@@ -44,9 +44,12 @@ import {
   taxonCopyActions,
 } from '~/lib/clipboard';
 import { alienBadge } from '~/lib/conservationColors';
+import { perf } from '~/lib/perf';
 import { rankColor } from '~/lib/rankColors';
+import { taxonSpeciesToSearchResult } from '~/lib/taxonSpecies';
 import { useActiveSession } from '~/stores/activeSession';
 import { useSettings } from '~/stores/settings';
+import { useTaxonomyJump } from '~/stores/taxonomyJump';
 import { useToast } from '~/stores/toast';
 
 type FlatItem =
@@ -88,6 +91,15 @@ function flatten(
 }
 
 export default function TaxonomyScreen() {
+  // Mount-time marker — paired with `taxonomy:first-paint` below.
+  // Must fire only ONCE on first render; putting it bare in the function body
+  // would re-mark on every re-render and make `first-paint` measure from the
+  // last render instead of mount.
+  const renderStartMarkedRef = useRef(false);
+  if (!renderStartMarkedRef.current) {
+    renderStartMarkedRef.current = true;
+    perf.mark('taxonomy:render-start');
+  }
   const session = useActiveSession((s) => s.session);
   const start = useActiveSession((s) => s.start);
   const refreshActive = useActiveSession((s) => s.refresh);
@@ -151,21 +163,49 @@ export default function TaxonomyScreen() {
   }, []);
 
   const listRef = useRef<FlatList<FlatItem>>(null);
+  // A jump request sets this to the target node key. A follow-up effect
+  // resolves it against the latest flatItems and runs a multi-attempt scroll
+  // (FlatList virtualization can delay the target row's mount; one-shot
+  // scrollToIndex would land on the wrong offset via the fallback estimate).
+  const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
+  // Row-height cache for getItemLayout. Populated by each row's onLayout the
+  // first time it renders, so subsequent scrollToIndex calls have accurate
+  // offsets even for previously-unrendered rows. Ref (not state) — onLayout
+  // writes do not need to trigger a re-render; FlatList reads the latest map
+  // every time it calls getItemLayout.
+  const heightCacheRef = useRef<Map<string, number>>(new Map());
   const hydratedRef = useRef(false);
+  // FlatList milestone tracking — each fires at most once so we measure the
+  // first time the tree actually paints natively. onLayout = wrapper measured;
+  // first renderItem call = JS started building rows; onContentSizeChange =
+  // native ScrollView received its child views and laid them out (good proxy
+  // for "user sees something").
+  const flatListMarkedRef = useRef({ layout: false, firstRow: false, content: false });
 
   useFocusEffect(
     useCallback(() => {
-      refreshActive();
+      perf.measure('taxonomy:focus', 'taxonomy:tab-press');
+      perf.time('taxonomy:focus-refresh-active', refreshActive);
+      // Probe: schedule a microtask + a macrotask. The gap from focus to
+      // each tells us when the JS thread finishes whatever it's doing after
+      // the focus event. If "macro-idle" is several seconds, something is
+      // synchronously blocking the JS thread between focus and idle.
+      const tFocus = Date.now();
+      queueMicrotask(() => {
+        console.log(`[perf] taxonomy:focus → micro-idle: ${Date.now() - tFocus}ms`);
+      });
+      setTimeout(() => {
+        console.log(`[perf] taxonomy:focus → macro-idle: ${Date.now() - tFocus}ms`);
+      }, 0);
     }, [refreshActive]),
   );
 
-  // Initial load + hydration of persisted expansion, gated under a single
-  // loading spinner. Previously these were two effects: the spinner hid after
-  // root load, then a synchronous cascade SQL fired for every persisted
-  // expanded node, freezing the JS thread (10+ queries for nested taxa) while
-  // the user stared at an empty tree. Now we keep `loading=true` until BOTH
-  // root + cascade are done, and we yield to the event loop between batches
-  // so the spinner + progress text actually paint.
+  // Initial load + hydration of persisted expansion, both run synchronously
+  // in this single effect. Cumulative SQL is ~160ms which is fine to block
+  // on; the previous chunked-async setTimeout(0) pattern was measured to
+  // wait 15+ seconds per yield during cold-start contention with other tab
+  // mounts. The initial render already committed with loading=true so the
+  // spinner is on screen while this work runs.
   useEffect(() => {
     if (!settingsLoaded || hydratedRef.current) return;
     hydratedRef.current = true;
@@ -173,60 +213,62 @@ export default function TaxonomyScreen() {
 
     setLoading(true);
     setLoadStage('載入分類樹...');
+    perf.mark('taxonomy:hydrate-start');
+    if (__DEV__) {
+      console.log(
+        `[perf] taxonomy:hydrate-state settingsLoaded=${settingsLoaded} persistedExpanded.length=${persistedExpanded.length}`,
+      );
+    }
 
     // Step 1: root kingdoms (cached after DBProvider prewarm → instant)
-    const r = getTaxonChildren({ rank: 'kingdom' });
+    const r = perf.time('taxonomy:load-roots', () =>
+      getTaxonChildren({ rank: 'kingdom' }),
+    );
     if (cancelled) return;
     const nm = new Map<string, TaxonNodeData>();
     for (const n of r) nm.set(nodeKeyFor(n), n);
     setRoots(r);
 
-    // Step 2: cascade-load persisted expanded set, in async batches so the
-    // spinner can paint between SQL bursts. Empty-set fast path skips the
-    // entire animation frame round-trip.
+    // Step 2: cascade-load persisted expanded set.
     if (persistedExpanded.length === 0) {
       setNodeMap(nm);
       setLoading(false);
+      perf.measure('taxonomy:hydrate-done', 'taxonomy:hydrate-start');
       return;
     }
 
     const wantExpanded = new Set(persistedExpanded);
     const cm = new Map<string, TaxonNodeData[]>();
     const sm = new Map<string, TaxonSpecies[]>();
-    const BATCH = 5;
 
-    const runBatch = () => {
-      if (cancelled) return;
-      let loadedThisBatch = 0;
-      let totalRemaining = 0;
-      for (const key of wantExpanded) {
-        if (cm.has(key) || sm.has(key)) continue;
-        const node = nm.get(key);
-        if (!node) continue;
-        totalRemaining++;
-        if (loadedThisBatch >= BATCH) continue;
-        loadInto(node, nm, cm, sm);
-        loadedThisBatch++;
+    // Run cascade synchronously in the effect body. NO setTimeout — measured
+    // on real device, a setTimeout(0) callback during cold start sits behind
+    // queued JS work for 15+ seconds even though cumulative cascade SQL is
+    // only ~160ms. Blocking the JS thread for 160ms once is dramatically
+    // better than a 15s setTimeout wait. The initial render already committed
+    // with loading=true so the spinner is on screen while this runs.
+    perf.time('taxonomy:cascade-all', () => {
+      let progress = true;
+      // Repeated passes: child loads may register new keys in nm that
+      // satisfy other persisted-expanded entries deeper in the tree.
+      while (progress) {
+        progress = false;
+        for (const key of wantExpanded) {
+          if (cm.has(key) || sm.has(key)) continue;
+          const node = nm.get(key);
+          if (!node) continue;
+          loadInto(node, nm, cm, sm);
+          progress = true;
+        }
       }
-      if (loadedThisBatch === 0) {
-        // Done — flush state.
-        setNodeMap(nm);
-        setChildrenMap(cm);
-        setSpeciesMap(sm);
-        setExpanded(wantExpanded);
-        setLoading(false);
-        return;
-      }
-      const done = wantExpanded.size - totalRemaining + loadedThisBatch;
-      setLoadStage(`展開上次狀態 (${done}/${wantExpanded.size})...`);
-      // Yield so the spinner repaints; setTimeout(0) is enough — RAF is
-      // throttled when the screen has nothing to draw.
-      setTimeout(runBatch, 0);
-    };
-
-    // Yield once before the first batch so the spinner is on screen before
-    // any SQL fires.
-    setTimeout(runBatch, 0);
+    });
+    if (cancelled) return;
+    setNodeMap(nm);
+    setChildrenMap(cm);
+    setSpeciesMap(sm);
+    setExpanded(wantExpanded);
+    setLoading(false);
+    perf.measure('taxonomy:hydrate-done', 'taxonomy:hydrate-start');
 
     return () => {
       cancelled = true;
@@ -234,6 +276,16 @@ export default function TaxonomyScreen() {
     // Deliberately depends only on settingsLoaded — we hydrate once per mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsLoaded]);
+
+  // First-paint marker: fires after the first non-loading render commits.
+  // This is "when the user actually sees the tree", which is the number that
+  // matters for perceived perf.
+  const firstPaintMarkedRef = useRef(false);
+  useEffect(() => {
+    if (loading || firstPaintMarkedRef.current) return;
+    firstPaintMarkedRef.current = true;
+    perf.measure('taxonomy:first-paint', 'taxonomy:render-start');
+  }, [loading]);
 
   const persistExpanded = useCallback(
     (next: Set<string>) => {
@@ -272,140 +324,247 @@ export default function TaxonomyScreen() {
   };
 
   const flatItems = useMemo(
-    () => flatten(roots, expanded, childrenMap, speciesMap),
+    () =>
+      perf.time('taxonomy:flatten', () => {
+        const items = flatten(roots, expanded, childrenMap, speciesMap);
+        if (__DEV__) console.log(`[perf] taxonomy:flatten-size ${items.length}`);
+        return items;
+      }),
     [roots, expanded, childrenMap, speciesMap],
   );
 
-  const handleSearchPick = (hit: TaxonSearchHit) => {
-    if (hit.path.length === 0 || roots.length === 0) return;
-
-    const wantExpanded = new Set(expanded);
-    const nm = new Map(nodeMap);
-    const cm = new Map(childrenMap);
-    const sm = new Map(speciesMap);
-
-    // Cascade: for each path entry, ensure node is known & children loaded.
-    // Path entries beyond loaded levels need synthetic nodes derived from
-    // search hit. Each synthetic node carries the strict-ancestor lineage
-    // (path[0..i-1]) so subsequent SQL filters by full chain — without this
-    // a homonym genus like Taiwania (plant vs insect) would mix species.
-    for (let i = 0; i < hit.path.length; i++) {
-      const p = hit.path[i];
-      const ancestors: Ancestors = {};
-      for (let j = 0; j < i; j++) ancestors[hit.path[j].rank] = hit.path[j].value;
-
-      const tempNode: TaxonNodeData = {
-        name: p.value,
-        name_c: '',
-        rank: '',
-        rank_key: p.rank,
-        child_rank: 'species', // overwritten below if not leaf
-        stats: {},
-        ancestors,
-      };
-      const k = nodeKeyFor(tempNode);
-      wantExpanded.add(k);
-
-      let node = nm.get(k);
-      if (!node) {
-        const childRankIdx = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'].indexOf(p.rank) + 1;
-        const childRank =
-          childRankIdx < 6
-            ? (['kingdom', 'phylum', 'class', 'order', 'family', 'genus'] as Rank[])[childRankIdx]
-            : ('species' as const);
-        node = { ...tempNode, child_rank: childRank };
-        nm.set(k, node);
+  // Per-kind row-height defaults for getItemLayout. Used for any row whose
+  // actual height has not been measured yet (no onLayout fired). Calibrated
+  // by spot-measuring real renders. Note: TaiCOL taxa pretty much always
+  // have non-zero stats so the "with stats line" case is dominant, hence the
+  // ~60 default for taxon (rather than the 50 median between the two
+  // extremes). Slightly biased LOW so first scroll lands BEFORE target
+  // (visible below the viewPosition mark) rather than past it (off-screen
+  // above). Multi-attempt refines once real measurements land in cache.
+  const DEFAULT_ROW_HEIGHT: Record<FlatItem['kind'], number> = {
+    taxon: 60,
+    species: 40,
+    loading: 32,
+  };
+  const getItemLayout = useCallback(
+    (data: ArrayLike<FlatItem> | null | undefined, index: number) => {
+      const fallback = DEFAULT_ROW_HEIGHT.taxon;
+      if (!data || index < 0) {
+        return { length: fallback, offset: 0, index };
       }
-      if (!cm.has(k) && !sm.has(k)) loadInto(node, nm, cm, sm);
-    }
+      // Sum offsets up to index. O(n) per call but FlatList caches the
+      // result and only re-invokes on data change / explicit scrollToIndex;
+      // for our list of ~5k items this is <1ms on Hermes.
+      const list = data as readonly FlatItem[];
+      let offset = 0;
+      for (let i = 0; i < index; i++) {
+        const it = list[i];
+        if (!it) continue;
+        offset += heightCacheRef.current.get(it.key) ?? DEFAULT_ROW_HEIGHT[it.kind];
+      }
+      const item = list[index];
+      const length = item
+        ? (heightCacheRef.current.get(item.key) ?? DEFAULT_ROW_HEIGHT[item.kind])
+        : fallback;
+      return { length, offset, index };
+    },
+    // heightCacheRef is a ref so the callback identity is stable; safe to
+    // pass empty deps.
+    [],
+  );
 
-    setNodeMap(nm);
-    setChildrenMap(cm);
-    setSpeciesMap(sm);
-    setExpanded(wantExpanded);
-    persistExpanded(wantExpanded);
+  /** Cascade-expand the tree along a rank path, then scroll to the deepest
+   *  entry. Used by both the in-tab search hit handler and the
+   *  cross-screen taxonomy jump (rank chip on SpeciesDetailPanel). */
+  const expandToPath = useCallback(
+    (path: Array<{ rank: Rank; value: string }>, toastLabel?: string) => {
+      if (path.length === 0 || roots.length === 0) return;
 
-    // Compute flat after expansion + scroll to deepest path entry. Build
-    // target key from full hit.path so it matches the synthesized node key.
-    const flat = flatten(roots, wantExpanded, cm, sm);
-    const targetAncestors: Ancestors = {};
-    for (let j = 0; j < hit.path.length - 1; j++) {
-      targetAncestors[hit.path[j].rank] = hit.path[j].value;
-    }
-    const target = hit.path[hit.path.length - 1];
-    const targetKey = nodeKeyFor({
-      rank_key: target.rank,
-      name: target.value,
-      ancestors: targetAncestors,
-    });
-    const idx = flat.findIndex((item) => item.kind === 'taxon' && item.key === targetKey);
-    if (idx >= 0) {
-      // 雙幀延遲，等 setExpanded 觸發的 layout pass 完成。
-      // 失敗（目標 row 還沒被 measure）時交給 onScrollToIndexFailed 接手。
-      requestAnimationFrame(() =>
-        requestAnimationFrame(() => {
-          try {
-            listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.25 });
-          } catch {
-            // no-op: onScrollToIndexFailed handles it
-          }
-        }),
-      );
-    }
+      const wantExpanded = new Set(expanded);
+      const nm = new Map(nodeMap);
+      const cm = new Map(childrenMap);
+      const sm = new Map(speciesMap);
 
-    toast(`已展開 ${hit.cname || hit.name}`);
+      for (let i = 0; i < path.length; i++) {
+        const p = path[i];
+        const ancestors: Ancestors = {};
+        for (let j = 0; j < i; j++) ancestors[path[j].rank] = path[j].value;
+
+        const tempNode: TaxonNodeData = {
+          name: p.value,
+          name_c: '',
+          rank: '',
+          rank_key: p.rank,
+          child_rank: 'species',
+          stats: {},
+          ancestors,
+        };
+        const k = nodeKeyFor(tempNode);
+        wantExpanded.add(k);
+
+        let node = nm.get(k);
+        if (!node) {
+          const childRankIdx =
+            ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'].indexOf(p.rank) + 1;
+          const childRank =
+            childRankIdx < 6
+              ? (['kingdom', 'phylum', 'class', 'order', 'family', 'genus'] as Rank[])[childRankIdx]
+              : ('species' as const);
+          node = { ...tempNode, child_rank: childRank };
+          nm.set(k, node);
+        }
+        if (!cm.has(k) && !sm.has(k)) loadInto(node, nm, cm, sm);
+      }
+
+      setNodeMap(nm);
+      setChildrenMap(cm);
+      setSpeciesMap(sm);
+      setExpanded(wantExpanded);
+      persistExpanded(wantExpanded);
+
+      const targetAncestors: Ancestors = {};
+      for (let j = 0; j < path.length - 1; j++) {
+        targetAncestors[path[j].rank] = path[j].value;
+      }
+      const target = path[path.length - 1];
+      const targetKey = nodeKeyFor({
+        rank_key: target.rank,
+        name: target.value,
+        ancestors: targetAncestors,
+      });
+      // Defer the scroll to a follow-up effect that runs once flatItems has
+      // recomputed against the new state — virtualization needs the new
+      // children rows mounted before scrollToIndex can land. Direct rAF
+      // here would race the FlatList re-render.
+      setPendingScrollKey(targetKey);
+
+      if (toastLabel) toast(`已展開 ${toastLabel}`);
+    },
+    [roots, expanded, nodeMap, childrenMap, speciesMap, persistExpanded, toast],
+  );
+
+  const handleSearchPick = (hit: TaxonSearchHit) => {
+    expandToPath(hit.path, hit.cname || hit.name);
   };
 
-  const speciesToSearchResult = (sp: TaxonSpecies): SearchResult => ({
-    id: 0,
-    name: sp.simple_name,
-    fullname: sp.name_author ? `${sp.simple_name} ${sp.name_author}` : sp.simple_name,
-    cname: sp.common_name_c,
-    _raw_cname: sp.common_name_c,
-    family: sp.family,
-    family_cname: sp.family_c,
-    iucn_category: sp.iucn,
-    redlist: sp.redlist,
-    endemic: sp.is_endemic === 'true' ? 1 : 0,
-    source:
-      sp.alien_type === 'native'
-        ? '原生'
-        : sp.alien_type === 'naturalized' || sp.alien_type === 'invasive'
-          ? '歸化'
-          : sp.alien_type === 'cultured'
-            ? sp.kingdom === 'Animalia'
-              ? '圈養'
-              : '栽培'
-            : '',
-    alien_type: sp.alien_type,
-    pt_name: '',
-    taxon_id: sp.taxon_id,
-    usage_status: 'accepted',
-    alternative_name_c: sp.alternative_name_c,
-    kingdom: sp.kingdom,
-    kingdom_c: '',
-    phylum: sp.phylum,
-    phylum_c: '',
-    class_name: sp.class,
-    class_c: '',
-    order: sp.order,
-    order_c: '',
-    genus: sp.genus,
-    genus_c: '',
-    nomenclature_name: sp.nomenclature_name,
-    cites: sp.cites,
-    protected: sp.protected,
-    is_hybrid: sp.is_hybrid,
-    is_terrestrial: '',
-    is_freshwater: '',
-    is_brackish: '',
-    is_marine: '',
-    is_fossil: '',
-    alien_status_note: '',
-    rank: sp.rank,
-    is_autonym: sp.is_autonym,
-    is_sensu_lato: false,
-  });
+  // Cross-screen taxonomy jump: SpeciesDetailPanel's rank chip writes a
+  // `pendingPath` to the store and pushes us here. Drain it once the tree is
+  // ready (settings hydrated + roots loaded), forcing the segment back to
+  // 'tree' so the cascade is actually visible.
+  const pendingJumpPath = useTaxonomyJump((s) => s.pendingPath);
+  const clearJump = useTaxonomyJump((s) => s.clear);
+  useEffect(() => {
+    if (!pendingJumpPath || loading || roots.length === 0) return;
+    setSegment('tree');
+    expandToPath(pendingJumpPath, pendingJumpPath[pendingJumpPath.length - 1]?.value);
+    clearJump();
+  }, [pendingJumpPath, loading, roots.length, expandToPath, clearJump]);
+
+  // Scroll-to-target resolver. Uses getItemLayout-derived offset and a
+  // direct scrollToOffset (bypassing scrollToIndex entirely) so we control
+  // the exact pixel target instead of relying on FlatList's viewPosition
+  // computation. Multi-attempt because heightCacheRef gets fuller between
+  // attempts as more rows render + onLayout-measure, so subsequent offset
+  // estimates converge to truth.
+  useEffect(() => {
+    if (!pendingScrollKey) return;
+    const idx = flatItems.findIndex(
+      (item) => item.kind === 'taxon' && item.key === pendingScrollKey,
+    );
+    if (idx < 0) {
+      if (__DEV__) console.log(`[scroll] target key not in flatItems: ${pendingScrollKey}`);
+      return;
+    }
+
+    let cancelled = false;
+    let n = 0;
+    const MAX_ATTEMPTS = 8;
+    const INTERVAL_MS = 220;
+    // Approximation: phone viewport minus segment tabs (~120px) and search
+    // box (~60px). We don't need a real value to land at the top quarter —
+    // any reasonable number does, and the inaccuracy just shifts the
+    // landing band by a row or two.
+    const VIEWPORT_HEIGHT_APPROX = 600;
+    const VIEW_POSITION = 0.25;
+
+    const tick = () => {
+      if (cancelled) return;
+      const { offset, length } = getItemLayout(flatItems, idx);
+      const targetY = Math.max(
+        0,
+        offset - VIEW_POSITION * (VIEWPORT_HEIGHT_APPROX - length),
+      );
+      const beforeY = treeScrollOffsetRef.current;
+      try {
+        listRef.current?.scrollToOffset({ offset: targetY, animated: false });
+      } catch (err) {
+        if (__DEV__) console.log(`[scroll] scrollToOffset threw on attempt ${n + 1}`, err);
+      }
+      // Read scrollY one frame later — gives FlatList a paint cycle to
+      // actually apply the scroll (or fail to). Diff before/after tells us
+      // whether the scroll command landed.
+      requestAnimationFrame(() => {
+        if (__DEV__) {
+          const afterY = treeScrollOffsetRef.current;
+          console.log(
+            `[scroll] att ${n + 1}/${MAX_ATTEMPTS} idx=${idx} ` +
+              `est=${Math.round(offset)} target=${Math.round(targetY)} ` +
+              `before=${Math.round(beforeY)} after=${Math.round(afterY)} ` +
+              `measured=${heightCacheRef.current.size}`,
+          );
+        }
+      });
+      n++;
+      if (n < MAX_ATTEMPTS) {
+        setTimeout(tick, INTERVAL_MS);
+      } else {
+        setPendingScrollKey(null);
+      }
+    };
+
+    // Slight delay before first attempt — gives FlatList time to commit
+    // the new data prop internally before we ask it to scroll. Double rAF
+    // alone was insufficient in some cases (in-tree search after large
+    // expandToPath; FlatList's _frames not yet built for new rows).
+    const initial = setTimeout(() => {
+      requestAnimationFrame(() => requestAnimationFrame(tick));
+    }, 60);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(initial);
+    };
+  }, [flatItems, pendingScrollKey, getItemLayout]);
+
+  // ── Bug 2 (scroll position survives segment switch) ─────────────────────
+  // The 'tree' segment's FlatList unmounts when user switches to 'key' or
+  // 'search' (conditional ternary in render). Save the last-known scroll
+  // offset in a ref (survives the unmount — TaxonomyScreen itself stays
+  // mounted) and restore it the next time 'tree' becomes active. Skipped
+  // when a cross-screen jump is pending — that flow sets pendingScrollKey
+  // and the scroll-to-target effect above handles positioning instead.
+  const treeScrollOffsetRef = useRef(0);
+  const treeScrollRestoredRef = useRef(false);
+  useEffect(() => {
+    if (segment !== 'tree' || loading) {
+      // Reset the once-per-mount latch so the next 'tree' entry restores again.
+      treeScrollRestoredRef.current = false;
+      return;
+    }
+    if (treeScrollRestoredRef.current) return;
+    if (pendingScrollKey || pendingJumpPath) return;
+    const offset = treeScrollOffsetRef.current;
+    if (offset <= 0) {
+      treeScrollRestoredRef.current = true;
+      return;
+    }
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToOffset({ offset, animated: false });
+        treeScrollRestoredRef.current = true;
+      }),
+    );
+  }, [segment, loading, pendingScrollKey, pendingJumpPath]);
 
   const handleQuickAdd = (sp: TaxonSpecies) => {
     if (!sp.taxon_id) {
@@ -500,6 +659,23 @@ export default function TaxonomyScreen() {
               className="flex-1"
               data={flatItems}
               keyExtractor={(item) => item.key}
+              getItemLayout={getItemLayout}
+              onScroll={(e) => {
+                // Record last-known offset so we can restore on segment
+                // switch back to 'tree'. Ref write only — no re-render.
+                treeScrollOffsetRef.current = e.nativeEvent.contentOffset.y;
+              }}
+              scrollEventThrottle={32}
+              onLayout={() => {
+                if (flatListMarkedRef.current.layout) return;
+                flatListMarkedRef.current.layout = true;
+                perf.measure('taxonomy:flatlist-layout', 'taxonomy:render-start');
+              }}
+              onContentSizeChange={() => {
+                if (flatListMarkedRef.current.content) return;
+                flatListMarkedRef.current.content = true;
+                perf.measure('taxonomy:flatlist-content-ready', 'taxonomy:render-start');
+              }}
               // Perf tuning for taxonomy tree: rows are mostly text + small
               // badges so we can render more per batch. removeClippedSubviews
               // helps on Android (native view recycling); on iOS it can hide
@@ -509,8 +685,10 @@ export default function TaxonomyScreen() {
               windowSize={10}
               removeClippedSubviews={Platform.OS === 'android'}
               onScrollToIndexFailed={(info) => {
-                // 先粗滾到估算 offset，強迫 FlatList 渲染目標附近的 row，
-                // 等量到正確高度後再 retry scrollToIndex 做精準定位。
+                // With getItemLayout in place this should fire rarely (only
+                // if scrollToIndex is called against stale data). Single
+                // scrollToOffset using avg + retry; outer multi-attempt
+                // tick() will continue from here.
                 listRef.current?.scrollToOffset({
                   offset: info.averageItemLength * info.index,
                   animated: false,
@@ -519,17 +697,32 @@ export default function TaxonomyScreen() {
                   try {
                     listRef.current?.scrollToIndex({
                       index: info.index,
-                      animated: true,
+                      animated: false,
                       viewPosition: 0.25,
                     });
                   } catch {
-                    // 第二次仍失敗就放棄，避免無限 loop
+                    // give up; outer multi-attempt loop will retry anyway
                   }
-                }, 250);
+                }, 200);
               }}
               renderItem={({ item }) => {
+                if (!flatListMarkedRef.current.firstRow) {
+                  flatListMarkedRef.current.firstRow = true;
+                  perf.measure('taxonomy:flatlist-first-row', 'taxonomy:render-start');
+                }
+                // Wrap each row in a measuring View so getItemLayout can use
+                // real heights instead of per-kind defaults. onLayout fires
+                // once on mount + on size change; the cache is keyed by
+                // item.key so it survives re-renders of the same item.
+                const measure = (e: { nativeEvent: { layout: { height: number } } }) => {
+                  const h = Math.round(e.nativeEvent.layout.height);
+                  if (h > 0 && heightCacheRef.current.get(item.key) !== h) {
+                    heightCacheRef.current.set(item.key, h);
+                  }
+                };
+                let row: React.ReactNode;
                 if (item.kind === 'taxon') {
-                  return (
+                  row = (
                     <TaxonRow
                       node={item.node}
                       depth={item.depth}
@@ -553,13 +746,12 @@ export default function TaxonomyScreen() {
                       }}
                     />
                   );
-                }
-                if (item.kind === 'species') {
-                  return (
+                } else if (item.kind === 'species') {
+                  row = (
                     <SpeciesRow
                       species={item.species}
                       depth={item.depth}
-                      onPress={() => setActiveSpecies(speciesToSearchResult(item.species))}
+                      onPress={() => setActiveSpecies(taxonSpeciesToSearchResult(item.species))}
                       onLongPress={async () => {
                         const title = item.species.common_name_c || item.species.simple_name;
                         const idx = await showActionSheet({
@@ -572,7 +764,7 @@ export default function TaxonomyScreen() {
                         });
                         if (idx === 0) handleQuickAdd(item.species);
                         else if (idx === 1)
-                          setActiveSpecies(speciesToSearchResult(item.species));
+                          setActiveSpecies(taxonSpeciesToSearchResult(item.species));
                         else if (idx === 2) {
                           const actions = speciesCopyActions(item.species);
                           const sub = await showActionSheet({
@@ -590,8 +782,10 @@ export default function TaxonomyScreen() {
                       }}
                     />
                   );
+                } else {
+                  row = <LoadingRow depth={item.depth} />;
                 }
-                return <LoadingRow depth={item.depth} />;
+                return <View onLayout={measure}>{row}</View>;
               }}
             />
             <KeyboardStickyView offset={{ opened: tabBarHeight }}>

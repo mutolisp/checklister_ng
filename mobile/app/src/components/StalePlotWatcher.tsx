@@ -61,10 +61,15 @@ function maybeWarn(
   router: ReturnType<typeof useRouter>,
   refreshActivePlot: () => void,
 ) {
-  // Baseline: latest species observation if any, else plot.start_ts.
+  // Baseline = MAX(start_ts, resumed_at, latest_species_observed_at). Without
+  // resumed_at, reopening an old plot would instantly hit IDLE_THRESHOLD_MS.
   const lastSpeciesAt = latestPlotActivityAt(plot.id);
-  const baseline = lastSpeciesAt ?? plot.start_ts;
-  if (baseline == null) return;
+  const candidates: number[] = [];
+  if (plot.start_ts != null) candidates.push(plot.start_ts);
+  if (plot.resumed_at != null) candidates.push(plot.resumed_at);
+  if (lastSpeciesAt != null) candidates.push(lastSpeciesAt);
+  if (candidates.length === 0) return;
+  const baseline = Math.max(...candidates);
 
   const idleMs = Date.now() - baseline;
   if (idleMs < IDLE_THRESHOLD_MS) return;

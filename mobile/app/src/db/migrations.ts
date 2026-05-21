@@ -335,6 +335,30 @@ const MIGRATIONS: Migration[] = [
       `);
     },
   },
+  {
+    // v10: capture per-record GPS accuracy (meters) so DwC
+    // `coordinateUncertaintyInMeters` can be populated on export.
+    // expo-location returns `pos.coords.accuracy` for free; without a column
+    // to land it in we were dropping it on the floor.
+    version: 10,
+    up: (db) => {
+      db.executeSync(`ALTER TABLE checklist_records ADD COLUMN accuracy REAL;`);
+    },
+  },
+  {
+    // v11: track when a session / plot was last resumed (status: done → active
+    // toggle). Stale-record watchers were using `started_at` as the baseline,
+    // which triggers a noisy "已開了 72 小時" alert the moment a user reopens
+    // a 3-day-old record to add one more taxon. With `resumed_at` populated on
+    // reopen, the watcher can compute the baseline as
+    // `MAX(started_at, resumed_at, latest_activity)` and only warn when the
+    // ACTIVE session has genuinely been idle/running too long.
+    version: 11,
+    up: (db) => {
+      db.executeSync(`ALTER TABLE sessions ADD COLUMN resumed_at INTEGER;`);
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN resumed_at INTEGER;`);
+    },
+  },
 ];
 
 export async function runUserMigrations(db: DB): Promise<void> {

@@ -22,6 +22,7 @@ import {
 import { useSettings } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 import { SwipeRow } from '~/components/SwipeRow';
+import { BackHeaderLeft } from '~/lib/goBack';
 
 type ExportFormat = 'geojson' | 'kml' | 'gpx' | 'wkt';
 
@@ -149,6 +150,7 @@ export default function SitesScreen() {
         options={{
           title: '樣區管理',
           headerBackTitle: '返回',
+          headerLeft: BackHeaderLeft,
           headerRight: () =>
             sites.length > 0 ? (
               <Pressable onPress={() => askExportFormat(sites, 'sites')} hitSlop={8}>

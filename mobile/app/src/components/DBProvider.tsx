@@ -4,6 +4,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
 import { initDb, prewarmFuzzyIndex, prewarmKeys, prewarmKingdoms } from '~/db';
+import { perf } from '~/lib/perf';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { useSettings } from '~/stores/settings';
@@ -22,6 +23,7 @@ export function DBProvider({ children }: Props) {
     let cancelled = false;
     (async () => {
       try {
+        perf.mark('app:db-init-start');
         // Preload icon font in parallel with DB init. Without this, tab
         // labels appear before tab icons on cold start (Ionicons font is
         // lazy-loaded by @expo/vector-icons on first glyph render).
@@ -31,12 +33,15 @@ export function DBProvider({ children }: Props) {
         await initDb((step) => {
           if (!cancelled) setProgress(step);
         });
+        perf.measure('app:db-init-done', 'app:db-init-start');
         if (cancelled) return;
         setProgress('載入偏好設定...');
-        loadSettings();
+        perf.time('app:load-settings', loadSettings);
         setProgress('載入當前記錄...');
-        refreshActiveSession();
-        refreshActivePlot();
+        perf.time('app:refresh-active', () => {
+          refreshActiveSession();
+          refreshActivePlot();
+        });
         setProgress('載入分類群...');
         // Kingdom prewarm moved BEFORE setReady. Cost is ~200ms but the user
         // already sees splash + progress text; the cost is invisible here and
@@ -44,31 +49,36 @@ export function DBProvider({ children }: Props) {
         // moment splash hides (the previous setTimeout(0) variant lost that
         // race when the tap landed before the macrotask fired).
         try {
-          prewarmKingdoms();
+          perf.time('app:prewarm-kingdoms', prewarmKingdoms);
         } catch {
           // non-fatal: taxonomy tab falls back to lazy SQL
         }
         setProgress('載入字型...');
-        await fontPromise;
+        await perf.timeAsync('app:font-load', () => fontPromise);
         if (cancelled) return;
+        perf.measure('app:set-ready', 'app:db-init-start');
         setReady(true);
         // Off-critical-path warmups for things the user may or may not hit.
         // Kept in setTimeout(0) so they don't delay first paint.
-        //   - fuzzy index: 62k cname index, ~200-500ms cold-load
-        //   - keys list: per-key child_count subqueries scan 242k taicol_names,
-        //     ~1-2s; the first KeyListView mount or KeyPopup tap would otherwise
-        //     pay this synchronously.
+        //   - fuzzy index: 62k cname index, ~80ms cold-load on real device
+        //   - keys list: plain SELECT from identification_keys (~5ms) +
+        //     scope index build. Previously this ran a per-key child_count
+        //     subquery which measured 15s on real device, blocking the JS
+        //     thread for the full duration after splash so user taps on any
+        //     tab got queued behind it. child_count was decorative only and
+        //     was dropped; the prewarm slot is kept for the scope index.
         setTimeout(() => {
           try {
-            prewarmFuzzyIndex();
+            perf.time('app:prewarm-fuzzy', prewarmFuzzyIndex);
           } catch {
             // non-fatal: search still works via exact path
           }
           try {
-            prewarmKeys();
+            perf.time('app:prewarm-keys', prewarmKeys);
           } catch {
             // non-fatal: KeyListView falls back to lazy load
           }
+          console.log('[perf] app:bg-warmups-done');
         }, 0);
       } catch (e) {
         if (cancelled) return;

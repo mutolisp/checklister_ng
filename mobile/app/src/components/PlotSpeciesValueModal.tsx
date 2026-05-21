@@ -11,13 +11,15 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
+import { showActionSheet } from './ActionSheet';
 import { useColorScheme as useNwColorScheme } from 'nativewind';
 import type { Layer } from '~/db';
 import {
@@ -60,6 +62,12 @@ type Props = {
   className?: string | null;
   /** Plot/layer-suggested default type when starting from blank. */
   defaultType?: string | null;
+  /** Existing photo URIs for the record (edit mode only). */
+  photoUris?: string[];
+  /** Capture / library handlers for the photo section. Parent owns the
+   *  capture flow + DB write; omit to hide the section (create mode). */
+  onAddPhoto?: (mode: 'camera' | 'library') => void;
+  onRemovePhoto?: (uri: string) => void;
   onCancel: () => void;
   onSave: (v: PlotValueDraft) => void;
 };
@@ -72,6 +80,9 @@ export function PlotSpeciesValueModal({
   kingdom,
   className,
   defaultType,
+  photoUris,
+  onAddPhoto,
+  onRemovePhoto,
   onCancel,
   onSave,
 }: Props) {
@@ -86,6 +97,7 @@ export function PlotSpeciesValueModal({
   const [customValue, setCustomValue] = useState<string>('');
   const [customType, setCustomType] = useState<string>('');
   const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const [attrs, setAttrs] = useState<SpeciesAttributesDraft>({
     sex: initial?.sex ?? null,
     life_stage: initial?.life_stage ?? null,
@@ -169,6 +181,8 @@ export function PlotSpeciesValueModal({
     onSave({ ...base, organism_quantity: quantity, organism_quantity_type: type });
   };
 
+  const insets = useSafeAreaInsets();
+
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
       <KeyboardAvoidingView behavior="padding" className="flex-1 justify-end">
@@ -183,19 +197,33 @@ export function PlotSpeciesValueModal({
             backgroundColor: 'rgba(0,0,0,0.4)',
           }}
         />
-        <View style={{ maxHeight: '90%' }} className="rounded-t-2xl bg-white dark:bg-gray-900">
-          <SafeAreaView edges={['bottom']}>
+        {/* `marginTop = insets.top + 16` puts the top of the sheet below the
+            Dynamic Island / notch even when the keyboard pushes content up.
+            `flex-1` lets the sheet fill the remaining viewport so the inner
+            ScrollView's height is properly bounded. */}
+        <View
+          style={{ marginTop: insets.top + 16 }}
+          className="flex-1 rounded-t-2xl bg-white dark:bg-gray-900"
+        >
+          <SafeAreaView edges={['bottom']} className="flex-1">
             <View className="items-center pt-2">
               <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
-            <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={1}>
-                {title}
-              </Text>
-              <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
-            </View>
-
-            <ScrollView className="max-h-[520px] px-4 py-3" keyboardShouldPersistTaps="handled">
+            {/* Title region is INSIDE the scroll so when content is long, the
+                user can scroll the title up out of the way. iOS bottom-sheet
+                guidance + the user spec ("做成可以 scroll"). */}
+            <KeyboardAwareScrollView
+              className="flex-1"
+              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
+            >
+              <View className="mb-3 border-b border-gray-100 dark:border-gray-800 pb-3">
+                <Text className="text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={2}>
+                  {title}
+                </Text>
+                <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
+              </View>
               {/* Quantity type picker */}
               <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">豐度單位</Text>
               <View className="flex-row flex-wrap gap-1.5">
@@ -279,8 +307,28 @@ export function PlotSpeciesValueModal({
                   onChange={setAttrs}
                 />
               </View>
+
+              {onAddPhoto ? (
+                <View className="mt-4">
+                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">照片</Text>
+                  <PhotoGrid
+                    photos={photoUris ?? []}
+                    onView={(idx) => setViewerIndex(idx)}
+                    onAdd={async () => {
+                      const idx = await showActionSheet({
+                        title: '加照片',
+                        options: [{ label: '拍照' }, { label: '從相簿選' }],
+                      });
+                      if (idx === 0) onAddPhoto('camera');
+                      else if (idx === 1) onAddPhoto('library');
+                    }}
+                    onRemove={onRemovePhoto}
+                  />
+                </View>
+              ) : null}
+
               <View className="h-4" />
-            </ScrollView>
+            </KeyboardAwareScrollView>
 
             <View className="flex-row gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
               <Pressable
@@ -299,6 +347,12 @@ export function PlotSpeciesValueModal({
           </SafeAreaView>
         </View>
       </KeyboardAvoidingView>
+
+      <PhotoViewerModal
+        photos={photoUris ?? []}
+        index={viewerIndex}
+        onClose={() => setViewerIndex(null)}
+      />
     </Modal>
   );
 }

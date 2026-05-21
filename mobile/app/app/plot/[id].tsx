@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { BackHeaderLeft } from '~/lib/goBack';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Platform,
   Pressable,
-  ScrollView,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   endPlotSurvey,
@@ -30,6 +31,7 @@ import { PlotSpeciesTab } from '~/components/PlotSpeciesTab';
 import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { TransectTrackControl } from '~/components/TransectTrackControl';
 import { useActivePlot } from '~/stores/activePlot';
+import { useActiveSession } from '~/stores/activeSession';
 
 type Tab = 'env' | 'species' | 'layers';
 
@@ -41,6 +43,7 @@ export default function PlotDetailScreen() {
   const [tab, setTab] = useState<Tab>('env');
   const [speciesCount, setSpeciesCount] = useState(0);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
+  const refreshActiveSession = useActiveSession((s) => s.refresh);
 
   const reload = useCallback(() => {
     const p = getPlotSurvey(plotId);
@@ -56,7 +59,7 @@ export default function PlotDetailScreen() {
   if (!plot) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <Stack.Screen options={{ title: '樣區' }} />
+        <Stack.Screen options={{ title: '樣區', headerLeft: BackHeaderLeft }} />
         <Text className="text-gray-500 dark:text-gray-400">找不到此樣區</Text>
       </SafeAreaView>
     );
@@ -69,11 +72,16 @@ export default function PlotDetailScreen() {
       <Stack.Screen
         options={{
           title: plot.plotid,
+          headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable
               onPress={() => {
                 if (plot.status === 'done') {
                   reopenPlotSurvey(plot.id);
+                  // Reopen force-ends any active session DB-side too; refresh
+                  // both stores so the UI bars + watchers reflect reality.
+                  refreshActivePlot();
+                  refreshActiveSession();
                   reload();
                 } else {
                   Alert.alert('結束樣區?', '結束後仍可重新開啟編輯。', [
@@ -111,9 +119,12 @@ export default function PlotDetailScreen() {
       </View>
 
       <View className="flex-1">
-        {/* EnvTab / LayersTab each wrap their content in a ScrollView with
-            `keyboardShouldPersistTaps="handled"`, which natively scrolls the
-            focused TextInput above the keyboard — no outer KAV needed.
+        {/* EnvTab / LayersTab each wrap their content in a
+            `KeyboardAwareScrollView` (from `react-native-keyboard-controller`)
+            which auto-scrolls the focused TextInput above the keyboard. The
+            plain `ScrollView + keyboardShouldPersistTaps` we used before does
+            NOT do that — it only controls tap-dismiss behaviour, leaving the
+            focused input hidden when the user typed values in E3 etc.
             PlotSpeciesTab wraps its SearchBox in KeyboardStickyView so the
             search row follows the kbd top across accessory-bar changes. */}
         {tab === 'env' ? <EnvTab plot={plot} onUpdated={reload} /> : null}
@@ -202,7 +213,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
     plot.coord_uncertainty_m !== null;
 
   return (
-    <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView className="flex-1" keyboardShouldPersistTaps="handled" bottomOffset={24}>
       <Section title="必填" required>
         <Field
           label="Plotid"
@@ -388,7 +399,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           setProjectSheetOpen(false);
         }}
       />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -558,7 +569,7 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
   };
 
   return (
-    <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
+    <KeyboardAwareScrollView className="flex-1" keyboardShouldPersistTaps="handled" bottomOffset={24}>
       <View className="px-4 py-3">
         <Text className="text-xs text-gray-500 dark:text-gray-400">
           各分層獨立設定 cover% / height(cm) / 預設豐度單位。物種輸入時開啟 modal
@@ -604,6 +615,6 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
         );
       })}
       <View className="h-12" />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 }

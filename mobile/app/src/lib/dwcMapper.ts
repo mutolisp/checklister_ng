@@ -39,6 +39,22 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   occurrenceID: 'occurrenceID',
   eventDate: 'eventDate',
   modified: 'modified',
+  // GPS — internal fields → DwC location terms.
+  lat: 'decimalLatitude',
+  lng: 'decimalLongitude',
+  accuracy: 'coordinateUncertaintyInMeters',
+  // Abundance (Plot species) — generalised DwC terms.
+  simple_name: 'scientificName',
+  common_name_c: 'vernacularName',
+  organism_quantity: 'organismQuantity',
+  organism_quantity_type: 'organismQuantityType',
+  // Per-record species attributes. Multi-value fields (reproductive_condition,
+  // leaf_phenology) are serialized to DwC's pipe-separated convention by the
+  // exporter before reaching this mapper.
+  sex: 'sex',
+  life_stage: 'lifeStage',
+  reproductive_condition: 'reproductiveCondition',
+  leaf_phenology: 'leafPhenology',
 };
 
 export function convertToDwc(obj: Record<string, unknown>): Record<string, unknown> {

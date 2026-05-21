@@ -1,11 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Alert,
-  Dimensions,
-  FlatList,
   Linking,
   Modal,
   Pressable,
@@ -13,13 +10,23 @@ import {
   Text,
   View,
 } from 'react-native';
+import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { showActionSheet } from './ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getSynonyms, type RecordWithTaxon, type Synonym } from '~/db';
+import { useRouter } from 'expo-router';
+import {
+  getKeysForScope,
+  getSynonyms,
+  type IdentificationKey,
+  type RecordWithTaxon,
+  type Synonym,
+} from '~/db';
 import { buildSpeciesCopyText, copyToClipboard, speciesCopyActions } from '~/lib/clipboard';
 import { alienBadge } from '~/lib/conservationColors';
+import { CollapsibleSection, SynonymStatusBadge } from './CollapsibleSection';
 import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
+import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import { NotesEditModal } from './NotesEditModal';
 import {
   SpeciesAttributesBlock,
@@ -34,7 +41,7 @@ type Props = {
   /** Called when user saves new notes for the current record. The sheet handles its own NotesEditModal. */
   onSaveNotes: (newNotes: string) => void;
   /** Save / clear per-record GPS coordinates. Pass null to clear. */
-  onSaveLocation?: (lat: number | null, lng: number | null) => void;
+  onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
   /** Capture or pick a photo for the current record. Parent persists the URI. */
   onAddPhoto?: (mode: 'camera' | 'library') => void;
   /** Remove a single photo URI from the current record. */
@@ -80,9 +87,11 @@ export function SpeciesDetailSheet({
   onRemovePhoto,
   onSaveAttributes,
 }: Props) {
+  const router = useRouter();
   const [synonyms, setSynonyms] = useState<Synonym[]>([]);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [parentKeys, setParentKeys] = useState<IdentificationKey[]>([]);
 
   useEffect(() => {
     if (record?.taxon_id) {
@@ -91,6 +100,28 @@ export function SpeciesDetailSheet({
       setSynonyms([]);
     }
   }, [record?.taxon_id]);
+
+  // Surface identification keys defined for the record's genus / family
+  // ("上一階層"). Each key is shown as a tappable chip that closes this
+  // sheet and pushes the user to the key runner.
+  useEffect(() => {
+    if (!record) {
+      setParentKeys([]);
+      return;
+    }
+    const found: IdentificationKey[] = [];
+    if (record.genus) found.push(...getKeysForScope('genus', record.genus));
+    if (record.family) found.push(...getKeysForScope('family', record.family));
+    // Dedupe by id (same key can index via alias on multiple scopes).
+    const seen = new Set<number>();
+    setParentKeys(
+      found.filter((k) => {
+        if (seen.has(k.id)) return false;
+        seen.add(k.id);
+        return true;
+      }),
+    );
+  }, [record]);
 
   // Reset internal modal when the underlying record changes
   useEffect(() => {
@@ -133,9 +164,6 @@ export function SpeciesDetailSheet({
                   className="text-sm text-gray-700 dark:text-gray-300"
                   selectable
                 />
-                <Text selectable className="text-xs text-gray-500 dark:text-gray-400">
-                  {record.family_c} {record.family}
-                </Text>
               </View>
               <Pressable
                 onPress={async () => {
@@ -160,6 +188,56 @@ export function SpeciesDetailSheet({
             </View>
 
             <ScrollView className="flex-1">
+              {record.family ? (
+                <View className="px-4 py-3">
+                  <View className="flex-row flex-wrap items-center gap-2">
+                    <TaxonomyJumpChip
+                      rank="family"
+                      lineage={{
+                        kingdom: record.kingdom,
+                        phylum: record.phylum,
+                        class: record.class,
+                        order: record.order,
+                        family: record.family,
+                      }}
+                      name={record.family}
+                      nameC={record.family_c}
+                      beforeJump={onClose}
+                    />
+                    {parentKeys.map((k) => (
+                      <Pressable
+                        key={k.id}
+                        onPress={() => {
+                          onClose();
+                          requestAnimationFrame(() => router.push(`/key/${k.id}`));
+                        }}
+                        className={`flex-row items-center rounded-full px-2.5 py-1 active:opacity-80 ${
+                          k.mode === 'multi_access'
+                            ? 'bg-blue-100 dark:bg-blue-900/60'
+                            : 'bg-emerald-100 dark:bg-emerald-900/60'
+                        }`}
+                        hitSlop={4}
+                      >
+                        <Ionicons
+                          name="key"
+                          size={12}
+                          color={k.mode === 'multi_access' ? '#2563eb' : '#10b981'}
+                        />
+                        <Text
+                          className={`ml-1 text-xs font-medium ${
+                            k.mode === 'multi_access'
+                              ? 'text-blue-700 dark:text-blue-300'
+                              : 'text-emerald-700 dark:text-emerald-300'
+                          }`}
+                        >
+                          檢索表 ({k.scope_name})
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
               {record.alternative_name_c ? (
                 <Section title="其他俗名">
                   <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
@@ -178,6 +256,11 @@ export function SpeciesDetailSheet({
                     />
                   ) : null}
                   {record.is_hybrid === 'true' ? <Tag color="purple" label="雜交" /> : null}
+                  {record.is_terrestrial === 'true' ? <Tag color="blue" label="陸域" /> : null}
+                  {record.is_freshwater === 'true' ? <Tag color="blue" label="淡水" /> : null}
+                  {record.is_brackish === 'true' ? <Tag color="blue" label="半鹹水" /> : null}
+                  {record.is_marine === 'true' ? <Tag color="blue" label="海洋" /> : null}
+                  {record.is_fossil === 'true' ? <Tag color="blue" label="化石" /> : null}
                 </View>
               </Section>
 
@@ -190,23 +273,28 @@ export function SpeciesDetailSheet({
                 </View>
               </Section>
 
-              {synonyms.length > 1 ? (
-                <Section title={`同物異名 (${synonyms.length - 1})`}>
-                  {synonyms
-                    .filter((s) => s.status !== 'accepted')
-                    .map((s, idx) => (
-                      <Text key={idx} selectable className="text-sm text-gray-700 dark:text-gray-300">
-                        {'• '}
-                        <ScientificName
-                          name={s.scientificName}
-                          author={s.authorship}
-                          kingdom={record.kingdom}
-                          selectable
-                        />
-                      </Text>
+              {(() => {
+                const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
+                if (nonAccepted.length === 0) return null;
+                return (
+                  <CollapsibleSection title="同物異名 Synonyms" count={nonAccepted.length} defaultOpen={false}>
+                    {nonAccepted.map((s, idx) => (
+                      <View key={idx} className="flex-row flex-wrap items-baseline">
+                        <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
+                          {'• '}
+                          <ScientificName
+                            name={s.scientificName}
+                            author={s.authorship}
+                            kingdom={record.kingdom}
+                            selectable
+                          />
+                        </Text>
+                        <SynonymStatusBadge status={s.status} />
+                      </View>
                     ))}
-                </Section>
-              ) : null}
+                  </CollapsibleSection>
+                );
+              })()}
 
               <Section title="此次紀錄">
                 <Text selectable className="text-sm text-gray-700 dark:text-gray-300">時間：{observedStr}</Text>
@@ -248,7 +336,11 @@ export function SpeciesDetailSheet({
                         const pos = await Location.getCurrentPositionAsync({
                           accuracy: Location.Accuracy.Balanced,
                         });
-                        onSaveLocation(pos.coords.latitude, pos.coords.longitude);
+                        onSaveLocation(
+                          pos.coords.latitude,
+                          pos.coords.longitude,
+                          pos.coords.accuracy ?? null,
+                        );
                       } catch (e) {
                         Alert.alert('無法取得位置', e instanceof Error ? e.message : String(e));
                       }
@@ -261,7 +353,7 @@ export function SpeciesDetailSheet({
                               {
                                 text: '清除座標',
                                 style: 'destructive',
-                                onPress: () => onSaveLocation(null, null),
+                                onPress: () => onSaveLocation(null, null, null),
                               },
                             ]);
                           }
@@ -276,7 +368,11 @@ export function SpeciesDetailSheet({
                     />
                     <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300" selectable>
                       {record.lat !== null && record.lng !== null
-                        ? `${record.lat.toFixed(5)}, ${record.lng.toFixed(5)}`
+                        ? `${record.lat.toFixed(5)}, ${record.lng.toFixed(5)}${
+                            record.accuracy !== null
+                              ? ` (±${Math.round(record.accuracy)}m)`
+                              : ''
+                          }`
                         : '定位此物種'}
                     </Text>
                     <Text className="text-xs text-gray-400 dark:text-gray-500">
@@ -418,125 +514,3 @@ function ConservationBadgeRow({ label, value }: { label: string; value: string }
   );
 }
 
-function PhotoGrid({
-  photos,
-  onAdd,
-  onView,
-  onRemove,
-}: {
-  photos: string[];
-  onAdd: () => void;
-  onView?: (index: number) => void;
-  onRemove?: (uri: string) => void;
-}) {
-  return (
-    <View className="mt-2 flex-row flex-wrap gap-2">
-      {photos.map((uri, idx) => (
-        <Pressable
-          key={uri}
-          onPress={onView ? () => onView(idx) : undefined}
-          onLongPress={
-            onRemove
-              ? () => {
-                  Alert.alert('照片', undefined, [
-                    { text: '取消', style: 'cancel' },
-                    { text: '移除', style: 'destructive', onPress: () => onRemove(uri) },
-                  ]);
-                }
-              : undefined
-          }
-          className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
-          style={{ width: 88, height: 88 }}
-        >
-          <Image
-            source={{ uri }}
-            style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
-          />
-        </Pressable>
-      ))}
-      <Pressable
-        onPress={onAdd}
-        className="items-center justify-center rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-950 active:bg-gray-100 dark:active:bg-gray-700"
-        style={{ width: 88, height: 88 }}
-      >
-        <Ionicons name="camera-outline" size={24} color="#6b7280" />
-        <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400">加照片</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function PhotoViewerModal({
-  photos,
-  index,
-  onClose,
-}: {
-  photos: string[];
-  index: number | null;
-  onClose: () => void;
-}) {
-  const listRef = useRef<FlatList<string>>(null);
-  const [current, setCurrent] = useState(index ?? 0);
-  const { width, height } = Dimensions.get('window');
-
-  useEffect(() => {
-    if (index !== null) {
-      setCurrent(index);
-    }
-  }, [index]);
-
-  if (index === null || photos.length === 0) return null;
-
-  return (
-    <Modal visible animationType="fade" transparent onRequestClose={onClose}>
-      <View className="flex-1 bg-black">
-        <FlatList
-          ref={listRef}
-          data={photos}
-          keyExtractor={(uri) => uri}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          initialScrollIndex={index}
-          getItemLayout={(_, i) => ({ length: width, offset: width * i, index: i })}
-          onMomentumScrollEnd={(e) => {
-            const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-            setCurrent(idx);
-          }}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={onClose}
-              style={{ width, height, alignItems: 'center', justifyContent: 'center' }}
-            >
-              <Image
-                source={{ uri: item }}
-                style={{ width, height: height * 0.85 }}
-                contentFit="contain"
-              />
-            </Pressable>
-          )}
-        />
-        <Pressable
-          onPress={onClose}
-          hitSlop={12}
-          style={{ position: 'absolute', top: 56, right: 20 }}
-        >
-          <Ionicons name="close" size={32} color="#fff" />
-        </Pressable>
-        {photos.length > 1 ? (
-          <View
-            style={{ position: 'absolute', bottom: 40, left: 0, right: 0 }}
-            className="items-center"
-          >
-            <View className="rounded-full bg-black/60 px-3 py-1">
-              <Text className="text-sm text-white">
-                {current + 1} / {photos.length}
-              </Text>
-            </View>
-          </View>
-        ) : null}
-      </View>
-    </Modal>
-  );
-}

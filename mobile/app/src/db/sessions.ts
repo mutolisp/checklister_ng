@@ -9,6 +9,10 @@ export type Session = {
   site_id: number | null;
   started_at: number;
   ended_at: number | null;
+  /** Most recent time the session was reopened (status: done → active). Used
+   *  by `StaleSessionWatcher` so reopening an old session doesn't immediately
+   *  re-fire the "已開了 N 小時" alert. */
+  resumed_at: number | null;
   gps_mode: 'off' | 'single_point' | 'full_track' | null;
   start_lat: number | null;
   start_lng: number | null;
@@ -74,9 +78,16 @@ export function endAllActiveSessions(): void {
 
 export function createSession(input: CreateSessionInput = {}): number {
   const db = getUserDb();
-  // Belt + suspenders: enforce single active before we open another.
-  db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`, [Date.now()]);
   const now = Date.now();
+  // Belt + suspenders: enforce single-active across BOTH kinds before we open
+  // another. UI gate (recordCreate.ts) is the primary check, but reopen / fab
+  // paths in session/[id] + plots tab bypass it, so the DB layer must close
+  // any active session AND any active plot here.
+  db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`, [now]);
+  db.executeSync(
+    `UPDATE plot_surveys SET status = 'done', stop_ts = COALESCE(stop_ts, ?), updated_at = ? WHERE status = 'active'`,
+    [now, now],
+  );
   const res = db.executeSync(
     `INSERT INTO sessions (name, type, project_id, started_at, gps_mode, start_lat, start_lng)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -124,10 +135,19 @@ export function deleteSession(id: number): void {
   db.executeSync(`DELETE FROM sessions WHERE id = ?`, [id]);
 }
 
-/** Re-open an ended session. Force-ends any other active session first
- *  to keep the single-active invariant DB-side. */
+/** Re-open an ended session. Force-ends any other active session AND any
+ *  active plot first to keep the single-active invariant DB-side (this is
+ *  the safety net; UI's `recordCreate.ts` is the primary gate but the
+ *  session/[id] "繼續編輯" button bypasses it). Stamps `resumed_at` so the
+ *  stale-watcher uses NOW as its baseline rather than the original
+ *  `started_at` (which could be days/weeks old). */
 export function reopenSession(id: number): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL AND id != ?`, [Date.now(), id]);
-  db.executeSync(`UPDATE sessions SET ended_at = NULL WHERE id = ?`, [id]);
+  const now = Date.now();
+  db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL AND id != ?`, [now, id]);
+  db.executeSync(
+    `UPDATE plot_surveys SET status = 'done', stop_ts = COALESCE(stop_ts, ?), updated_at = ? WHERE status = 'active'`,
+    [now, now],
+  );
+  db.executeSync(`UPDATE sessions SET ended_at = NULL, resumed_at = ? WHERE id = ?`, [now, id]);
 }

@@ -6,6 +6,7 @@ import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { listSessions, type SessionWithStats } from '~/db';
 import { exportCsv, exportMarkdown, exportYaml } from '~/lib/exporters';
+import { BackHeaderLeft } from '~/lib/goBack';
 
 type Format = 'yaml' | 'csv' | 'markdown';
 
@@ -49,7 +50,7 @@ export default function ExportScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-      <Stack.Screen options={{ title: '匯出名錄' }} />
+      <Stack.Screen options={{ title: '匯出名錄', headerLeft: BackHeaderLeft }} />
       <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
         <Text className="text-sm text-gray-700 dark:text-gray-300">
           選擇要匯出的記錄：YAML 與桌面版相容、CSV 為 Darwin Core 標準、Markdown 含分類階層 + 統計

@@ -6,20 +6,26 @@ import {
   addPlotSpecies,
   deletePlotSpecies,
   listPlotSpecies,
+  parsePhotoPaths,
   type Layer,
   type PlotSpeciesRecordWithTaxon,
   type PlotSurvey,
   type SearchResult,
   LAYERS,
   LAYER_LABEL,
+  updatePlotSpeciesPhotos,
   updatePlotSpeciesValue,
 } from '~/db';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
 import { ScientificName } from './ScientificName';
 import { SearchBox } from './SearchBox';
 import { SwipeRow } from './SwipeRow';
+import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import { PlotSpeciesValueModal, type PlotValueDraft } from './PlotSpeciesValueModal';
+import { alienBadge } from '~/lib/conservationColors';
 import { parseMultiAttribute, serializeMultiAttribute } from '~/lib/dwcAttributes';
+import { useSettings, type RecordSort, type SortDirection } from '~/stores/settings';
+import { showActionSheet } from './ActionSheet';
 import {
   formatQuantityBadge,
   kindForType,
@@ -51,6 +57,10 @@ export function PlotSpeciesTab({
   // + scalar quantity to the next species). Keyed by Layer.
   const [lastValue, setLastValue] = useState<Partial<Record<Layer, PlotValueDraft>>>({});
 
+  const sortOrder = useSettings((s) => s.last_record_sort);
+  const sortDir = useSettings((s) => s.last_record_sort_dir);
+  const setSetting = useSettings((s) => s.set);
+
   const reload = useCallback(() => {
     setRecords(listPlotSpecies(plot.id));
   }, [plot.id]);
@@ -70,8 +80,58 @@ export function PlotSpeciesTab({
       T: [],
     };
     for (const r of records) out[r.layer as Layer]?.push(r);
+    // Sort within each layer using the shared user preference.
+    const cmp = (a: string, b: string) => a.localeCompare(b);
+    const allLayers: Layer[] = [...LAYERS, 'T'];
+    for (const l of allLayers) {
+      const arr = out[l];
+      arr.sort((a, b) => {
+        switch (sortOrder) {
+          case 'cname':
+            return cmp(a.common_name_c || a.simple_name, b.common_name_c || b.simple_name);
+          case 'name':
+            return cmp(a.simple_name, b.simple_name);
+          case 'family': {
+            const f = cmp(a.family || '', b.family || '');
+            return f !== 0 ? f : cmp(a.simple_name, b.simple_name);
+          }
+          case 'observed':
+          default:
+            return a.observed_at - b.observed_at;
+        }
+      });
+      if (sortDir === 'desc') arr.reverse();
+    }
     return out;
-  }, [records]);
+  }, [records, sortOrder, sortDir]);
+
+  const handlePickSort = async () => {
+    const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
+    const labels: Record<RecordSort, string> = {
+      observed: '加入順序',
+      cname: '俗名',
+      name: '學名',
+      family: '科',
+    };
+    const idx = await showActionSheet({
+      title: '排序方式',
+      options: orders.map((o) => ({
+        label: o === sortOrder ? `${labels[o]}（再點翻轉方向）` : labels[o],
+      })),
+    });
+    if (idx < 0 || idx >= orders.length) return;
+    const picked = orders[idx];
+    if (picked === sortOrder) {
+      setSetting('last_record_sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSetting('last_record_sort', picked);
+      setSetting('last_record_sort_dir', picked === 'observed' ? 'desc' : 'asc');
+    }
+  };
+
+  const handleToggleSortDir = () => {
+    setSetting('last_record_sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
+  };
 
   const handleSelect = async (taxon: SearchResult) => {
     // iOS UIKit refuses to present a Modal while the keyboard / Chinese IME
@@ -125,6 +185,48 @@ export function PlotSpeciesTab({
       });
     }
     setModal(null);
+    reload();
+    onChanged();
+  };
+
+  const handleAddPhotoForModal = async (mode: 'camera' | 'library') => {
+    if (!modal || modal.mode !== 'edit') return;
+    const record = modal.record;
+    try {
+      const { captureAndSavePhoto, pickPhotos, buildContextFromPlotRecord } = await import(
+        '~/lib/photoCapture'
+      );
+      const ctx = buildContextFromPlotRecord(record);
+      let newUris: string[] = [];
+      if (mode === 'camera') {
+        const uri = await captureAndSavePhoto(ctx);
+        if (uri) newUris = [uri];
+      } else {
+        newUris = await pickPhotos();
+      }
+      if (newUris.length === 0) return;
+      const existing = parsePhotoPaths(record.photo_paths);
+      const merged = [...existing, ...newUris];
+      updatePlotSpeciesPhotos(record.id, merged);
+      // Re-seed modal with updated record so PhotoGrid reflects the new entry
+      // without closing the modal.
+      const updated = { ...record, photo_paths: JSON.stringify(merged) };
+      setModal({ mode: 'edit', record: updated });
+      reload();
+      onChanged();
+    } catch (e) {
+      Alert.alert('加照片失敗', e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleRemovePhotoForModal = (uri: string) => {
+    if (!modal || modal.mode !== 'edit') return;
+    const record = modal.record;
+    const existing = parsePhotoPaths(record.photo_paths);
+    const next = existing.filter((u) => u !== uri);
+    updatePlotSpeciesPhotos(record.id, next);
+    const updated = { ...record, photo_paths: next.length > 0 ? JSON.stringify(next) : null };
+    setModal({ mode: 'edit', record: updated });
     reload();
     onChanged();
   };
@@ -187,10 +289,36 @@ export function PlotSpeciesTab({
     };
   })();
 
+  const SORT_LABEL: Record<RecordSort, string> = {
+    observed: '加入順序',
+    cname: '俗名',
+    name: '學名',
+    family: '科',
+  };
+
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
       {/* Layer focus chips (fixed plots only) */}
       <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+        <View className="mb-2 flex-row items-center justify-end">
+          <Pressable
+            onPress={handlePickSort}
+            hitSlop={6}
+            className="flex-row items-center active:opacity-70"
+          >
+            <Ionicons name="swap-vertical" size={16} color="#6b7280" />
+            <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">
+              {SORT_LABEL[sortOrder]}
+            </Text>
+          </Pressable>
+          <Pressable onPress={handleToggleSortDir} hitSlop={6} className="ml-0.5 active:opacity-50">
+            <Ionicons
+              name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'}
+              size={14}
+              color="#6b7280"
+            />
+          </Pressable>
+        </View>
         {isTransect ? (
           <Text className="text-[11px] text-gray-500 dark:text-gray-400">
             穿越線記錄
@@ -292,6 +420,11 @@ export function PlotSpeciesTab({
           kingdom={modalProps.kingdom}
           className={modalProps.className}
           defaultType={modalProps.defaultType}
+          photoUris={
+            modal.mode === 'edit' ? parsePhotoPaths(modal.record.photo_paths) : undefined
+          }
+          onAddPhoto={modal.mode === 'edit' ? handleAddPhotoForModal : undefined}
+          onRemovePhoto={modal.mode === 'edit' ? handleRemovePhotoForModal : undefined}
           onCancel={() => setModal(null)}
           onSave={handleSaveValue}
         />
@@ -309,17 +442,29 @@ function SpeciesRow({
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const ab = alienBadge(record.alien_type, record.kingdom);
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+      className="flex-row items-start border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
     >
       <View className="flex-1">
-        <Text className="text-sm font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
-          {record.common_name_c || '(無中文名)'}
-        </Text>
+        <View className="flex-row items-center" style={{ flexWrap: 'wrap' }}>
+          <Text className="text-sm font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
+            {record.common_name_c || '(無中文名)'}
+          </Text>
+          {record.is_endemic === 'true' ? (
+            <Text className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+          ) : null}
+          {ab ? (
+            <Text className={`ml-1.5 text-[11px] font-medium ${ab.textClass}`}>{ab.shortLabel}</Text>
+          ) : null}
+          {record.is_hybrid === 'true' ? (
+            <Text className="ml-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">雜</Text>
+          ) : null}
+        </View>
         <ScientificName
           name={record.simple_name}
           author={record.name_author}
@@ -327,9 +472,23 @@ function SpeciesRow({
           className="mt-0.5 text-xs text-gray-700 dark:text-gray-300"
           numberOfLines={1}
         />
-        <Text className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400" numberOfLines={1}>
-          {record.family_c} {record.family}
-        </Text>
+        {record.family ? (
+          <View className="mt-1 self-start">
+            <TaxonomyJumpChip
+              rank="family"
+              lineage={{
+                kingdom: record.kingdom,
+                phylum: record.phylum,
+                class: record.class,
+                order: record.order,
+                family: record.family,
+              }}
+              name={record.family}
+              nameC={record.family_c}
+              compact
+            />
+          </View>
+        ) : null}
         {record.notes ? (
           <Text className="mt-0.5 text-[11px] italic text-gray-500 dark:text-gray-400" numberOfLines={1}>
             {record.notes}

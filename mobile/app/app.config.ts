@@ -38,12 +38,16 @@ const config: ExpoConfig = {
   android: {
     package: 'tw.checklister.mobile',
     adaptiveIcon: {
-      backgroundColor: '#E6F4FE',
+      backgroundColor: '#F5EBD9',
       foregroundImage: './assets/images/android-icon-foreground.png',
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
-    edgeToEdgeEnabled: true,
+    // edge-to-edge is now configured via the `react-native-edge-to-edge`
+    // plugin below; the lib's plugin replaces the AppTheme with one whose
+    // status & nav bars are transparent, and the React activity calls
+    // `setDecorFitsSystemWindows(false)` so `useSafeAreaInsets().bottom`
+    // returns the real nav-bar height.
     predictiveBackGestureEnabled: false,
     ...(GOOGLE_MAPS_ANDROID_API_KEY
       ? { config: { googleMaps: { apiKey: GOOGLE_MAPS_ANDROID_API_KEY } } }
@@ -55,15 +59,16 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router',
+    'react-native-edge-to-edge',
     [
       'expo-splash-screen',
       {
         image: './assets/images/splash-icon.png',
         imageWidth: 200,
         resizeMode: 'contain',
-        backgroundColor: '#ffffff',
+        backgroundColor: '#F5EBD9',
         dark: {
-          backgroundColor: '#000000',
+          backgroundColor: '#1F1814',
         },
       },
     ],

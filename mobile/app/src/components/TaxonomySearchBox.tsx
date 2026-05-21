@@ -3,6 +3,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { searchTaxonomy, type TaxonSearchHit } from '~/db';
 import { rankColor } from '~/lib/rankColors';
+import { ScientificName } from './ScientificName';
 
 const PLACEHOLDER = '搜尋分類群（俗名 / 學名 / 科名 ...）';
 const DEBOUNCE_MS = 250;
@@ -91,18 +92,15 @@ export function TaxonomySearchBox({ onPick }: Props) {
   );
 }
 
-const ITALIC_RANKS = new Set(['Genus', 'Subgenus', 'Species', 'Subspecies', 'Variety', 'Form']);
-
 const HitRow = memo(function HitRow({ hit, onPress }: { hit: TaxonSearchHit; onPress: () => void }) {
   const pathPreview = hit.path.map((p) => p.value).join(' › ');
-  const italic = ITALIC_RANKS.has(hit.rank);
   const c = rankColor(hit.rank);
   return (
     <Pressable onPress={onPress} className="border-b border-gray-100 dark:border-gray-800 px-4 py-2.5 active:bg-blue-50 dark:active:bg-blue-900/40">
       <View className="flex-row items-center">
         <Text className="flex-1 text-sm text-gray-900 dark:text-gray-100" numberOfLines={1}>
           {hit.cname ? <Text className="font-medium">{hit.cname} </Text> : null}
-          <Text className={italic ? 'italic' : ''}>{hit.name}</Text>
+          <ScientificName name={hit.name} rank={hit.rank} />
         </Text>
         <View className={`ml-2 rounded px-1.5 py-0.5 ${c.bg}`}>
           <Text className={`text-[10px] font-medium ${c.text}`}>{hit.rank}</Text>

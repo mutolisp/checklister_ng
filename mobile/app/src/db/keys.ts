@@ -25,13 +25,6 @@ export type IdentificationKey = {
    *  family worksheets named at family rank (Davalliaceae ↔ Davallia). */
   aliases: string | null;
   updated_at: number | null;
-  /** Count of children at the rank one level below the key's scope:
-   *  family → in-Taiwan genus count, genus → in-Taiwan accepted species
-   *  count (including infraspecific). null for ranks the count doesn't
-   *  meaningfully apply to (class / order / etc.).
-   *  Joined from `taicol_names` at query time so we always reflect the
-   *  current TaiCOL bundle state. */
-  child_count: number | null;
 };
 
 export type KeyLeadTargetType = 'couplet' | 'taxon' | 'subkey' | 'unresolved';
@@ -96,41 +89,12 @@ export type KeyTaxonInfo = {
   alien_type: string;
 };
 
-/** SQL fragment that joins `child_count` per key. Used by both list & get
- *  so the value stays consistent across views.
- *
- *  Counts only what an identification key author would realistically include:
- *  accepted, species-rank+ taxa in Taiwan, excluding `cultured` (栽培／圈養).
- *  TaiCOL inflates families like Asparagaceae / Cactaceae / Orchidaceae with
- *  ornamental cultivars that the key won't carry, so unfiltered counts give
- *  misleadingly large numbers next to the chip / row.
- *
- *  is_in_taiwan can be a comma-joined `true,true`, so we LIKE-match instead
- *  of equality. */
-const KEY_WITH_CHILD_COUNT_SQL = `
-  SELECT k.*,
-    CASE
-      WHEN k.scope_rank = 'family' THEN (
-        SELECT COUNT(DISTINCT t.genus) FROM taicol_names t
-        WHERE t.family = k.scope_name
-          AND t.is_in_taiwan LIKE '%true%'
-          AND t.usage_status = 'accepted'
-          AND t.rank IN ('Species','Subspecies','Variety','Form','Subform','Race')
-          AND (t.alien_type IS NULL OR t.alien_type != 'cultured')
-          AND t.genus IS NOT NULL AND t.genus != ''
-      )
-      WHEN k.scope_rank = 'genus' THEN (
-        SELECT COUNT(DISTINCT t.taxon_id) FROM taicol_names t
-        WHERE t.genus = k.scope_name
-          AND t.is_in_taiwan LIKE '%true%'
-          AND t.rank IN ('Species','Subspecies','Variety','Form','Subform','Race')
-          AND t.usage_status = 'accepted'
-          AND (t.alien_type IS NULL OR t.alien_type != 'cultured')
-      )
-      ELSE NULL
-    END AS child_count
-  FROM identification_keys k
-`;
+/** Plain key SQL — no child_count subquery. The previous version joined a
+ *  per-key COUNT subquery over 251k taicol_names rows; on real device that
+ *  was measured at 15s for 895 keys (correlated subqueries + LIKE filter on
+ *  is_in_taiwan can't use an index). Since child_count was decorative-only,
+ *  it was dropped rather than precomputed. */
+const KEY_SELECT_SQL = `SELECT k.* FROM identification_keys k`;
 
 export function listIdentificationKeys(): IdentificationKey[] {
   const db = getTaicolDb();
@@ -138,7 +102,7 @@ export function listIdentificationKeys(): IdentificationKey[] {
   // one dichotomous, one multi_access — appear in a consistent order
   // (dichotomous first, then multi_access, then any future 'both' merge).
   const res = db.executeSync(
-    `${KEY_WITH_CHILD_COUNT_SQL} ORDER BY k.scope_rank, k.scope_name,
+    `${KEY_SELECT_SQL} ORDER BY k.scope_rank, k.scope_name,
        CASE k.mode
          WHEN 'dichotomous'  THEN 0
          WHEN 'multi_access' THEN 1
@@ -204,8 +168,10 @@ export function getCachedKeys(): IdentificationKey[] {
 }
 
 /** Force-fill the cache. Called from DBProvider after splash so the first
- *  tap on 檢索表 / KeyPopup / taxonomy 樹的 key icon 是即時，而非首次付
- *  child_count subquery 跑 242k taicol_names 列的 ~1-2s cost。 */
+ *  tap on 檢索表 / KeyPopup / taxonomy 樹的 key icon 是即時。SQL itself is
+ *  now ~5ms (plain `SELECT * FROM identification_keys` after child_count was
+ *  dropped); kept as a marker so future heavy joins re-introduce the same
+ *  prewarm slot. */
 export function prewarmKeys(): void {
   if (CACHED_KEYS === null) {
     CACHED_KEYS = listIdentificationKeys();
@@ -225,7 +191,7 @@ export function getKeysForScope(rank: string, name: string): IdentificationKey[]
 
 export function getIdentificationKey(id: number): IdentificationKey | null {
   const db = getTaicolDb();
-  const res = db.executeSync(`${KEY_WITH_CHILD_COUNT_SQL} WHERE k.id = ?`, [id]);
+  const res = db.executeSync(`${KEY_SELECT_SQL} WHERE k.id = ?`, [id]);
   const rows = (res.rows ?? []) as unknown as IdentificationKey[];
   return rows[0] ?? null;
 }
@@ -403,7 +369,7 @@ export function findSubkeyByScopeName(
   // bound preferredRank into scope_name (`WHERE scope_name='genus'`),
   // so no row ever matched and the subkey button silently never showed.
   const params: any[] = preferredRank ? [t, t, preferredRank] : [t, t];
-  const sql = `${KEY_WITH_CHILD_COUNT_SQL}
+  const sql = `${KEY_SELECT_SQL}
     WHERE k.scope_name = ?
        OR (k.aliases IS NOT NULL AND EXISTS (
             SELECT 1 FROM json_each(k.aliases) WHERE value = ?
@@ -446,7 +412,7 @@ export function findSubkeysByScopeName(
   // Placeholder order: scope_name, alias_value, optional rank for ORDER BY.
   // See findSubkeyByScopeName above — same param-order trap, kept in sync.
   const params: any[] = preferredRank ? [t, t, preferredRank] : [t, t];
-  const sql = `${KEY_WITH_CHILD_COUNT_SQL}
+  const sql = `${KEY_SELECT_SQL}
     WHERE k.scope_name = ?
        OR (k.aliases IS NOT NULL AND EXISTS (
             SELECT 1 FROM json_each(k.aliases) WHERE value = ?

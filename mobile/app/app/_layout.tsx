@@ -1,8 +1,8 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
 import { View } from 'react-native';
+import { SystemBars } from 'react-native-edge-to-edge';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -91,8 +91,11 @@ function ThemedShell() {
         <ActionSheetHost />
       </FontScaleProvider>
       {/* Active record → green ActiveSessionBar covers status bar → need
-          'light' icons. Otherwise follow theme. */}
-      <StatusBar style={hasActive ? 'light' : isDark ? 'light' : 'dark'} />
+          'light' icons. Otherwise follow theme. Edge-to-edge mode makes
+          both status AND nav bars transparent overlays, so we use
+          `<SystemBars>` (from react-native-edge-to-edge) which controls
+          icon colour on BOTH bars at once. */}
+      <SystemBars style={hasActive ? 'light' : isDark ? 'light' : 'dark'} />
     </ThemeProvider>
   );
 }

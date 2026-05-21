@@ -154,18 +154,21 @@ export function KeyListView({ initialQuery, prefillNonce }: Props = {}) {
     return out;
   }, [keys]);
 
-  // ── Shortcuts (≤5): recent first, fill with largest families by child_count
+  // ── Shortcuts (≤5): recent first, fill with families by scope_name asc
   const byId = useMemo(() => {
     const m = new Map<number, IdentificationKey>();
     for (const k of keys) m.set(k.id, k);
     return m;
   }, [keys]);
 
+  // child_count was dropped (the COUNT subquery cost 15s on real device);
+  // fallback chip suggestions now go alphabetical by scope_name. Still bounded
+  // to MAX_CHIPS so the chip strip doesn't overflow.
   const largestFamilies = useMemo(() => {
     return keys
-      .filter((k) => k.scope_rank === 'family' && (k.child_count ?? 0) > 0)
+      .filter((k) => k.scope_rank === 'family')
       .slice()
-      .sort((a, b) => (b.child_count ?? 0) - (a.child_count ?? 0))
+      .sort((a, b) => a.scope_name.localeCompare(b.scope_name))
       .slice(0, MAX_CHIPS);
   }, [keys]);
 
@@ -326,9 +329,6 @@ const KeyRow = memo(function KeyRow({
           {k.scope_cname ? (
             <Text className="ml-2 text-sm text-gray-600 dark:text-gray-400">{k.scope_cname}</Text>
           ) : null}
-          {k.child_count != null && k.child_count > 0 ? (
-            <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">({k.child_count})</Text>
-          ) : null}
           <Text className="ml-2 text-xs text-gray-400 dark:text-gray-500">
             {scopeLabel(k.scope_rank)}
           </Text>
@@ -368,9 +368,6 @@ const ShortcutChip = memo(function ShortcutChip({
       )}
       {k.scope_cname ? (
         <Text className="ml-1.5 text-xs text-gray-600 dark:text-gray-400">{k.scope_cname}</Text>
-      ) : null}
-      {k.child_count != null && k.child_count > 0 ? (
-        <Text className="ml-1 text-xs text-gray-500 dark:text-gray-400">({k.child_count})</Text>
       ) : null}
     </Pressable>
   );

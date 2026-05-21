@@ -237,7 +237,13 @@ const AutocompleteRow = memo(function AutocompleteRow({
       </View>
       {result.matched_as ? (
         <Text className="mt-0.5 text-xs text-orange-700 dark:text-orange-300" numberOfLines={1}>
-          ↳ 你輸入：<Text className="italic">{result.matched_as.name}</Text>（{result.matched_as.status}）
+          ↳ 你輸入：
+          <ScientificName
+            name={result.matched_as.name}
+            kingdom={result.kingdom}
+            nomenclature={result.nomenclature_name}
+          />
+          （{result.matched_as.status}）
         </Text>
       ) : null}
       {result.family_cname || result.family ? (

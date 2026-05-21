@@ -12,15 +12,18 @@
  *  - launchImageLibraryAsync → just return the picked URI
  */
 import {
+  cacheDirectory,
+  copyAsync,
+  deleteAsync,
+  documentDirectory,
+  makeDirectoryAsync,
   readAsStringAsync,
   writeAsStringAsync,
-  deleteAsync,
-  cacheDirectory,
 } from 'expo-file-system/legacy';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import piexif from 'piexifjs';
-import type { RecordWithTaxon } from '~/db';
+import type { PlotSpeciesRecordWithTaxon, RecordWithTaxon } from '~/db';
 
 export type PhotoSpeciesContext = {
   taxon_id: string;
@@ -34,7 +37,10 @@ export type PhotoSpeciesContext = {
   lat?: number | null;
   lng?: number | null;
   observed_at: number;
-  session_id: number;
+  /** Owning record reference. `session_id` for checklist records,
+   *  `plot_survey_id` for plot species. Either may be omitted. */
+  session_id?: number;
+  plot_survey_id?: number;
 };
 
 export function buildContext(record: RecordWithTaxon): PhotoSpeciesContext {
@@ -51,6 +57,26 @@ export function buildContext(record: RecordWithTaxon): PhotoSpeciesContext {
     lng: record.lng,
     observed_at: record.observed_at,
     session_id: record.session_id,
+  };
+}
+
+/** Build a photo context from a plot species record. Plot species don't carry
+ *  per-individual GPS (the plot itself does), so lat/lng are omitted here —
+ *  the camera EXIF will still capture device GPS at capture time. */
+export function buildContextFromPlotRecord(
+  record: PlotSpeciesRecordWithTaxon,
+): PhotoSpeciesContext {
+  return {
+    taxon_id: record.taxon_id,
+    simple_name: record.simple_name,
+    name_author: record.name_author,
+    common_name_c: record.common_name_c,
+    family: record.family,
+    family_c: record.family_c,
+    kingdom: record.kingdom,
+    notes: record.notes,
+    observed_at: record.observed_at,
+    plot_survey_id: record.plot_survey_id,
   };
 }
 
@@ -214,9 +240,22 @@ export async function captureAndSavePhoto(ctx: PhotoSpeciesContext): Promise<str
 }
 
 /**
- * Launch image library picker with multi-selection. Picked assets are referenced
- * as-is (we don't modify originals to keep the user's library untouched).
- * Returns an array of URIs (empty if cancelled).
+ * Launch image library picker with multi-selection. Returns an array of
+ * persistent `file://` URIs (empty if cancelled).
+ *
+ * ⚠️ Why we copy instead of returning `result.assets[].uri` directly:
+ * `ImagePicker.launchImageLibraryAsync` returns a **temporary** file in the
+ * picker's own cache (`file:///.../ImagePicker/<uuid>.jpg`). iOS purges it
+ * within minutes; by the time the user exports the zip, the file is gone →
+ * photo silently missing from the bundle.
+ *
+ * `assetId` would let us reference back to the original PHAsset / MediaStore
+ * entry, but PHPicker only populates it when the app has full read access
+ * (we ask for write-only at capture time), so we can't rely on it either.
+ *
+ * Cheapest robust option: copy each pick into the app's own
+ * `documentDirectory/photos/` with a uuid name. The file is then owned by
+ * the app and only deleted when the user removes the photo from a record.
  */
 export async function pickPhotos(): Promise<string[]> {
   const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -230,5 +269,55 @@ export async function pickPhotos(): Promise<string[]> {
     quality: 1,
   });
   if (result.canceled) return [];
-  return result.assets.map((a) => a.uri).filter((u): u is string => typeof u === 'string');
+
+  const out: string[] = [];
+  for (const a of result.assets) {
+    const persistent = await persistPickedPhoto(a);
+    if (persistent) out.push(persistent);
+  }
+  return out;
+}
+
+/** Persistent dir for picker-imported photos. Created lazily. */
+const APP_PHOTOS_DIR = documentDirectory ? `${documentDirectory}photos/` : null;
+
+async function persistPickedPhoto(asset: ImagePicker.ImagePickerAsset): Promise<string | null> {
+  const src = typeof asset.uri === 'string' ? asset.uri : null;
+  if (!src) return null;
+  if (!APP_PHOTOS_DIR) return src; // can't persist (no documentDirectory) — best-effort
+  try {
+    await makeDirectoryAsync(APP_PHOTOS_DIR, { intermediates: true });
+  } catch {
+    // already exists; ignore
+  }
+  const ext = guessPickerExt(src, asset.mimeType);
+  const target = `${APP_PHOTOS_DIR}${randomUuid()}.${ext}`;
+  try {
+    await copyAsync({ from: src, to: target });
+    return target;
+  } catch (e) {
+    if (__DEV__) console.warn('[photoCapture] copy picker file failed', e);
+    // Even the temp uri is better than nothing for in-session display; the
+    // caller stores it and exports may still pick it up if quickly.
+    return src;
+  }
+}
+
+function guessPickerExt(uri: string, mime: string | null | undefined): string {
+  const m = uri.toLowerCase().match(/\.(jpg|jpeg|png|heic|heif|webp)(?:\?|$)/);
+  if (m) return m[1] === 'jpeg' ? 'jpg' : m[1];
+  if (mime?.includes('heic') || mime?.includes('heif')) return 'heic';
+  if (mime?.includes('png')) return 'png';
+  if (mime?.includes('webp')) return 'webp';
+  return 'jpg';
+}
+
+function randomUuid(): string {
+  // Simple v4-ish; doesn't need to be cryptographic for a filename.
+  const hex = (n: number) =>
+    Math.floor(Math.random() * 0xffffffff)
+      .toString(16)
+      .padStart(8, '0')
+      .slice(0, n);
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(8)}${hex(4)}`;
 }

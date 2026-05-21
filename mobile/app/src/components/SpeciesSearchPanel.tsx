@@ -11,7 +11,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
 import { Keyboard, Text, View } from 'react-native';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
 import {
@@ -21,7 +20,9 @@ import {
   type SearchResult,
 } from '~/db';
 import { useActiveSession } from '~/stores/activeSession';
+import { useSpeciesSearchPanel } from '~/stores/speciesSearchPanel';
 import { useToast } from '~/stores/toast';
+import { taxonSpeciesToSearchResult } from '~/lib/taxonSpecies';
 import { SearchBox } from './SearchBox';
 import { SpeciesDetailPanel } from './SpeciesDetailPanel';
 
@@ -39,7 +40,13 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
   // this it floats `tabBarHeight` above the keyboard — see same fix in
   // taxonomy.tsx tree segment + KeyListView).
   const tabBarHeight = useBottomTabBarHeight();
-  const [active, setActive] = useState<SearchResult | null>(null);
+  // `active` lives in a module-level store so it survives segment switches
+  // inside the 物種 tab. Without persistence, tapping a rank chip on the
+  // inline detail forces the segment to 'tree' (cross-screen jump), which
+  // unmounts this panel and wipes the local detail state — coming back to
+  // 'search' shows an empty panel. The store keeps the prior detail visible.
+  const active = useSpeciesSearchPanel((s) => s.active);
+  const setActive = useSpeciesSearchPanel((s) => s.setActive);
 
   const handleSelect = (result: SearchResult) => {
     addSearchHistory(result.cname || result.name);
@@ -79,6 +86,7 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
             result={active}
             onAddToSession={handleAddToSession}
             onClose={() => setActive(null)}
+            onPickSubordinate={(sp) => setActive(taxonSpeciesToSearchResult(sp))}
           />
         ) : (
           <View className="flex-1 items-center justify-center px-8">

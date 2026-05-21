@@ -9,6 +9,9 @@ export type ChecklistRecord = {
   photo_paths: string | null;
   lat: number | null;
   lng: number | null;
+  /** GPS horizontal accuracy in metres, from `Location.getCurrentPositionAsync`.
+   *  Maps to DwC `coordinateUncertaintyInMeters` on export. */
+  accuracy: number | null;
   // DwC species attributes (v8). Persisted as enum strings; UI maps to 中文.
   sex: string | null;
   life_stage: string | null;
@@ -38,6 +41,12 @@ export type RecordWithTaxon = ChecklistRecord & {
   phylum: string;
   class: string;
   order: string;
+  genus: string;
+  is_terrestrial: string;
+  is_freshwater: string;
+  is_brackish: string;
+  is_marine: string;
+  is_fossil: string;
 };
 
 export type CreateRecordInput = {
@@ -97,9 +106,13 @@ export function updateRecordLocation(
   id: number,
   lat: number | null,
   lng: number | null,
+  accuracy: number | null = null,
 ): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE checklist_records SET lat = ?, lng = ? WHERE id = ?`, [lat, lng, id]);
+  db.executeSync(
+    `UPDATE checklist_records SET lat = ?, lng = ?, accuracy = ? WHERE id = ?`,
+    [lat, lng, accuracy, id],
+  );
 }
 
 export type RecordAttributePatch = Partial<{
@@ -147,7 +160,7 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   const taicolDb = getTaicolDb();
 
   const recordsRes = userDb.executeSync(
-    `SELECT id, session_id, taxon_id, observed_at, notes, photo_paths, lat, lng,
+    `SELECT id, session_id, taxon_id, observed_at, notes, photo_paths, lat, lng, accuracy,
             sex, life_stage, reproductive_condition, leaf_phenology,
             organism_quantity, organism_quantity_type
      FROM checklist_records WHERE session_id = ? ORDER BY observed_at ASC`,
@@ -162,7 +175,8 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
     `SELECT taxon_id, simple_name, name_author, common_name_c, alternative_name_c,
             family, family_c, rank,
             is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
-            kingdom, phylum, class, "order"
+            kingdom, phylum, class, "order", genus,
+            is_terrestrial, is_freshwater, is_brackish, is_marine, is_fossil
      FROM taicol_names
      WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
     taxonIds,
@@ -194,8 +208,27 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
       phylum: (t.phylum as string) ?? '',
       class: (t.class as string) ?? '',
       order: (t.order as string) ?? '',
+      genus: (t.genus as string) ?? '',
+      is_terrestrial: (t.is_terrestrial as string) ?? '',
+      is_freshwater: (t.is_freshwater as string) ?? '',
+      is_brackish: (t.is_brackish as string) ?? '',
+      is_marine: (t.is_marine as string) ?? '',
+      is_fossil: (t.is_fossil as string) ?? '',
     };
   });
+}
+
+/** Most recent `observed_at` (Date.now() millis) of any record in the
+ *  session, or null if the session has no records. Used by
+ *  `StaleSessionWatcher` to compute the activity baseline. */
+export function latestSessionActivityAt(sessionId: number): number | null {
+  const db = getUserDb();
+  const res = db.executeSync(
+    `SELECT MAX(observed_at) AS ts FROM checklist_records WHERE session_id = ?`,
+    [sessionId],
+  );
+  const row = (res.rows ?? [])[0] as { ts: number | null } | undefined;
+  return row?.ts ?? null;
 }
 
 export function isTaxonInSession(sessionId: number, taxonId: string): boolean {

@@ -3,6 +3,7 @@ import { File, Paths } from 'expo-file-system';
 import { open, type DB } from '@op-engineering/op-sqlite';
 import { runUserMigrations } from './migrations';
 import { enforceSingleActiveOnStartup } from './cleanup';
+import { perf } from '~/lib/perf';
 
 let taicolDb: DB | null = null;
 let userDb: DB | null = null;
@@ -39,7 +40,10 @@ async function ensureTaicolDb(onProgress?: (step: string) => void): Promise<void
     : '偵測到新版資料庫';
   onProgress?.(`解壓縮物種資料庫（${reason}）...`);
 
-  await asset.downloadAsync();
+  // First-install path is the dominant cold-start cost (118MB asset copy).
+  // Time each phase so we can see in perf log whether asset extraction or
+  // file copy dominates, and whether either is worth optimizing.
+  await perf.timeAsync('db:asset-download', () => asset.downloadAsync());
   if (!asset.localUri) throw new Error('TaiCOL asset localUri unavailable after download');
 
   // Replace existing copy if any (schema may have new tables).
@@ -51,7 +55,7 @@ async function ensureTaicolDb(onProgress?: (step: string) => void): Promise<void
     }
   }
   const src = new File(asset.localUri);
-  src.copy(dest);
+  perf.time('db:asset-copy', () => src.copy(dest));
 
   // Record the hash so we skip the copy on subsequent cold starts.
   try {

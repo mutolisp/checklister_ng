@@ -93,8 +93,49 @@ PDF Fabaceae Desmanthus subkey couplet 2B 為 Desmanthus pernambucanus 合歡草
 ### Desmodium 屬大規模 TaiCOL 重新分類 (Grona/Sohmaea/Polhillides 等 9 個新屬)
 TaiCOL 把 Desmodium 屬大幅拆分。worksheet 名仍用 Desmodium、bare epithet 仍走 synonym fallback：mobile UI 會顯示新屬名 (Grona heterocarpa 假地豆、Pleurolobus gangeticus 大葉山螞蝗 等)。功能 OK，視覺差異而已。
 
+## 2026-04-24 TaiCOL 更新後手動修正清單
+
+備份：`backend/twnamelist.db.preimport-20260424`、`backend/twnamelist.db.bak.20260517202603`
+
+### A. 需手動改 Google Sheet 的 4 條 raw sciname fallback
+
+TaiCOL 沒有對應 accepted name，import 後保留為 raw sciname。需依下面建議值修 sheet → 重 import 該 worksheet → `make mobile-db`。
+
+| # | Sheet | Worksheet | Couplet | 目前學名 | TaiCOL 狀態 | 建議修法 |
+|---|-------|----------|---------|---------|------------|---------|
+| 1 | `18Nk9ZJbCzdV4c_I4TaIoVTJcMdL3MA9rcWctgFqc7VM` | Ainsliaea | **2A** | `Ainsliaea apiculata var. acerifolia` | TaiCOL 完全無 `Ainsliaea apiculata` (含 nominal 與 var.) | 確認 PDF 原文是否實為他屬；或留 PDF 字串標 dead-end |
+| 2 | 同上 | Ainsliaea | **6A** | `Ainsliaea latifolia var. taiwanensis` | nominal `Ainsliaea latifolia` accepted (t0060886)；var. taiwanensis 不存在 | 改成 `Ainsliaea latifolia`（drop var.） |
+| 3 | 同上 | Ainsliaea | **8B** | `Ainsliaea henryi var. subalpina` | `Ainsliaea henryi` 已併入 `Ainsliaea latifolia subsp. henryi` (t0033661)；var. subalpina 不存在 | 改成 `Ainsliaea latifolia subsp. henryi` 或留 dead-end |
+| 4 | 同上 | Blumea | **12B** | `Blumea chishanensis` | **拼字錯誤**：TaiCOL accepted 是 `Blumea chishangensis`（chishan**g**ensis 多一個 g）t0099236 | 改成 `Blumea chishangensis` |
+
+### B. 4 個變動屬（只需 re-import sheet 即可自動 resolve，不需改 sheet 內容）
+
+TaiCOL 把屬合併 / 升降級 / tid 換號，但 sheet 原文 sciname 還能透過 synonym 反查連到新 tid。以下這 4 個 sheet 跑一次 re-import 就會用新 sciname 連到正確 tid。
+
+| # | Worksheet | Couplet | 變動內容 | 操作 |
+|---|----------|---------|---------|------|
+| 1 | Urticaceae | **16B** | `Pellionia` 整屬併入 `Elatostema` 樓梯草屬 (t0023758)。Re-import 後 16A/16B 都會指向同一個 t0023758 → dichotomy degenerate | 重 import 後檢視 16 是否要重設 / 刪除，或把 Pellionia 的種拆成 Elatostema 種級下層 |
+| 2 | Paris | **3B** | `Paris taitungensis` (now not-accepted) → 對到 t0058696 高山七葉一枝花 (= `Paris polyphylla var. stenophylla` / `Paris lanceolata`) | sheet 原 sciname 改寫成 `Paris lanceolata` 或保留 taitungensis，re-import 自動 resolve |
+| 3 | Angelica | **5B** | `Angelica nanhutashanensis` (var. now not-accepted) → 對到 t0086617，建議 promote 到 nominal `Angelica morrisonicola` (t0060968 玉山當歸) | sheet 改成 `Angelica morrisonicola` |
+| 4 | Cirsium | **12A** | `Cirsium japonicum var. australe` 南國小薊 sciname 不變，但 tid 由 t0087363 → t0053017 | sciname 不需改，re-import sheet 自動拿新 tid |
+
+### 操作步驟（每組改完跑一次）
+
+```bash
+# 1. 在 Google Sheet 對應 row 改學名
+# 2. Re-import 該 spreadsheet
+backend/venv/bin/python -m backend.services.key_sheet_import <SPREADSHEET_ID>
+
+# 3. 同步 mobile bundle DB
+make mobile-db
+
+# 4. 驗證 stale check 不再列出該 lead
+backend/venv/bin/python -c "from backend.services.taicol_import import _check_stale_key_taxon_ids; import json; print(json.dumps(_check_stale_key_taxon_ids(), ensure_ascii=False, indent=2))"
+```
+
 ## 後續維護建議
 
 1. 若 PDF 修訂版 (2025+) 出現，可重新 parse 補完 master key。
 2. 若 TaiCOL 重新分類 (Calanthe / Phaius / Cephalantheropsis 等)，重 audit 時需檢查 worksheet → taxon_id → genus 欄一致性。
 3. Mobile findSubkeyForTaxon 若改用 scope_name 直查，原本不可達的 worksheet（Phaius/Paraphaius/Cephalantheropsis）會自動恢復可達。
+4. 每次 TaiCOL 大更新後，跑 `_check_stale_key_taxon_ids()` + 比對 `raw_sciname_fallback` 數量變化，新增的就是要手動處理的清單（區分 A. raw sciname 需改 sheet vs B. tid 換號只需 re-import）。
