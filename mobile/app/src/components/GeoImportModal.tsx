@@ -158,7 +158,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
                   {format ? `（${FORMAT_LABEL[format]}）` : ''}
                 </Text>
                 <Text className="mt-1 text-xs text-blue-800">
-                  共 {imported.length} 個幾何，將建立 {imported.length} 個樣區
+                  共 {imported.length} 個幾何，將建立 {imported.length} 個地理樣區
                 </Text>
               </View>
 

@@ -219,7 +219,7 @@ export default function MapScreen() {
   const handlePickDrawMode = async () => {
     setToolsOpen(false);
     const idx = await showActionSheet({
-      title: '繪製樣區',
+      title: '繪製地理樣區',
       options: [{ label: '點位' }, { label: '路線' }, { label: '範圍' }],
     });
     if (idx === 0) startDraw('Point');
@@ -306,10 +306,10 @@ export default function MapScreen() {
       // Bind site to the originating session and bounce back.
       updateSession(handoff, { site_id: newSiteId });
       handoffSessionId.current = null;
-      toast(`已綁定樣區到記錄`);
+      toast(`已綁定地理樣區到記錄`);
       router.replace(`/session/${handoff}`);
     } else {
-      toast(`已儲存樣區：${data.name}`);
+      toast(`已儲存地理樣區：${data.name}`);
     }
   };
 
@@ -320,7 +320,7 @@ export default function MapScreen() {
       [
         { text: '關閉', style: 'cancel' },
         {
-          text: '跳到此樣區',
+          text: '跳到此地理樣區',
           onPress: () => {
             const region = geometryBounds(parseGeometry(site));
             mapRef.current?.animateToRegion(region, 400);
@@ -330,7 +330,7 @@ export default function MapScreen() {
           text: '刪除',
           style: 'destructive',
           onPress: () => {
-            Alert.alert('刪除樣區？', `「${site.name}」會被移除`, [
+            Alert.alert('刪除地理樣區？', `「${site.name}」會被移除`, [
               { text: '取消', style: 'cancel' },
               {
                 text: '刪除',
@@ -614,7 +614,7 @@ export default function MapScreen() {
                 onPress={handleOpenLayers}
                 accent={!!sinicaLayer}
               />
-              <FabRow icon="create-outline" label="繪製樣區" onPress={handlePickDrawMode} />
+              <FabRow icon="create-outline" label="繪製地理樣區" onPress={handlePickDrawMode} />
               <FabRow
                 icon="cloud-upload-outline"
                 label="匯入"
@@ -652,7 +652,7 @@ export default function MapScreen() {
           {handoffSessionId.current !== null ? (
             <View className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 shadow-md">
               <Text className="text-center text-xs font-medium text-white">
-                為記錄 #{handoffSessionId.current} 建立樣區，完成後自動指派
+                為記錄 #{handoffSessionId.current} 建立地理樣區，完成後自動指派
               </Text>
             </View>
           ) : null}
@@ -686,7 +686,7 @@ export default function MapScreen() {
         onClose={() => setImportOpen(false)}
         onCommitted={(n) => {
           reloadSites();
-          if (n > 0) toast(`已匯入 ${n} 個樣區`);
+          if (n > 0) toast(`已匯入 ${n} 個地理樣區`);
         }}
       />
     </View>

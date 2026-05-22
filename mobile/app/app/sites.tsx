@@ -72,7 +72,7 @@ export default function SitesScreen() {
   useFocusEffect(useCallback(() => reload(), [reload]));
 
   const handleDelete = (s: SiteWithProject) => {
-    Alert.alert('刪除樣區？', `「${s.name}」會被移除`, [
+    Alert.alert('刪除地理樣區？', `「${s.name}」會被移除`, [
       { text: '取消', style: 'cancel' },
       {
         text: '刪除',
@@ -94,7 +94,7 @@ export default function SitesScreen() {
 
   const exportSites = async (subset: SiteWithProject[], format: ExportFormat, baseName: string) => {
     if (subset.length === 0) {
-      toast('沒有可匯出的樣區');
+      toast('沒有可匯出的地理樣區');
       return;
     }
     try {
@@ -129,7 +129,7 @@ export default function SitesScreen() {
   const askExportFormat = async (subset: SiteWithProject[], baseName: string) => {
     const formats: ExportFormat[] = ['geojson', 'kml', 'gpx', 'wkt'];
     const idx = await showActionSheet({
-      title: `匯出 ${subset.length} 個樣區`,
+      title: `匯出 ${subset.length} 個地理樣區`,
       options: formats.map((f) => ({ label: EXPORT_LABELS[f].label })),
     });
     if (idx >= 0 && idx < formats.length) exportSites(subset, formats[idx], baseName);
@@ -148,7 +148,7 @@ export default function SitesScreen() {
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
-          title: '樣區管理',
+          title: '地理樣區管理',
           headerBackTitle: '返回',
           headerLeft: BackHeaderLeft,
           headerRight: () =>
@@ -163,9 +163,9 @@ export default function SitesScreen() {
       {sites.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
           <Ionicons name="map-outline" size={64} color="#9ca3af" />
-          <Text className="mt-4 text-lg font-medium text-gray-700 dark:text-gray-300">還沒有任何樣區</Text>
+          <Text className="mt-4 text-lg font-medium text-gray-700 dark:text-gray-300">還沒有任何地理樣區</Text>
           <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-            到「地圖」tab → 工具 ⋮ → 繪製樣區 開始建立
+            到「地圖」tab → 工具 ⋮ → 繪製地理樣區 開始建立
           </Text>
           <Pressable
             onPress={() => router.push('/(tabs)/map')}
@@ -182,7 +182,7 @@ export default function SitesScreen() {
             <View>
               <View className="flex-row items-center justify-between bg-gray-100 dark:bg-gray-800 px-4 py-2">
                 <Text className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
-                  {projectName} · {list.length} 個樣區
+                  {projectName} · {list.length} 個地理樣區
                 </Text>
                 <Pressable onPress={() => askExportFormat(list, projectName)} hitSlop={6}>
                   <Ionicons name="share-outline" size={16} color="#2563eb" />

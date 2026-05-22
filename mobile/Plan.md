@@ -296,9 +296,11 @@
 - [ ] Plot ↔ Site 自動連結（capture GPS → 自動建 Point site）
 - [ ] Active plot bar（與 ActiveSessionBar 合併為 ActiveRecordBar 已完成）
 - [ ] Recorder / protocol / size 偏好記憶（profileStore）
-- [ ] 匯出：DwC CSV + plot summary YAML / Markdown（含 organism_quantity_type + sex / lifeStage / reproductiveCondition / leafPhenology）
+- [x] **匯出 DwC 屬性欄位**（2026-05-22）：YAML / CSV / plot species CSV 補齊 sex / lifeStage / reproductiveCondition / leafPhenology；多值欄用 DwC `|`-separated 慣例。詳見 Update_log.md
+- [x] **樣區分層通用化 v12**（2026-05-22）：plot_survey_layers 正規化新表 + layer_count 1-6 stepper + Label 改 E1-E6（苔蘚 / 草本 / 灌木 / 亞喬木 / 主林冠 / 突出）+ EnvTab 併入分層 + env photos grid + 匯出檔案 rename。詳見 Update_log.md
 - [ ] 樣區內多重複數調查支援（重複測量 / paired-sample）
 - [ ] 名錄端 abundance UI（schema v9 已 ready；目前 deferred，未來真要做時直接接 `<AbundancePickerSheet />` 即可，不需 migration）
+- [ ] **v13 drop legacy `plot_surveys.e0_*..e3_*`**（queue，v12 上線 2 週後）
 
 ### Phase 3.5（決策完成，2026-05-12）：主導覽列整合 + 檢索表系統
 

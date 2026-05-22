@@ -79,7 +79,7 @@ export function SiteAssignSheet({
           className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
           <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指定樣區</Text>
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指定地理樣區</Text>
             <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               點 / 線 / 範圍均可。為當次調查所在地，選填
             </Text>
@@ -88,7 +88,7 @@ export function SiteAssignSheet({
           <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40">
             <View className="px-4 pb-2 pt-3">
               <Text className="text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
-                新建樣區（繪製完自動指派）
+                新建地理樣區（繪製完自動指派）
               </Text>
             </View>
             <View className="flex-row gap-2 px-4 pb-3">
@@ -112,7 +112,7 @@ export function SiteAssignSheet({
             {sortedSites.length === 0 ? (
               <View className="px-4 py-6">
                 <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
-                  尚無樣區。點上方「新建樣區」開始繪製。
+                  尚無地理樣區。點上方「新建地理樣區」開始繪製。
                 </Text>
               </View>
             ) : (

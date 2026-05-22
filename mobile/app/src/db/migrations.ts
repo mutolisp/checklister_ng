@@ -359,6 +359,118 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN resumed_at INTEGER;`);
     },
   },
+  {
+    // v12: normalise per-layer environmental data into `plot_survey_layers`
+    // (1..6 rows per plot) and expand the vegetation profile from 4 fixed
+    // layers (E0-E3) to a user-configurable 1-6 layers with fixed semantic
+    // labels. Adds env_photos_json for plot-wide environment context photos.
+    //
+    // Label shift (preserves ecological meaning):
+    //   old E0 苔蘚 → new E1 (layer_index 1)
+    //   old E1 草本 → new E2 (layer_index 2)
+    //   old E2 灌木 → new E3 (layer_index 3)
+    //   old E3 喬木 → new E4 (layer_index 4)
+    //   (new) E5 主林冠層 (layer_index 5)
+    //   (new) E6 突出層   (layer_index 6)
+    //
+    // plot_surveys.e0_*..e3_* columns are KEPT in this migration to allow
+    // emergency rollback by reading the legacy columns. v13 will drop them
+    // after production stability is verified.
+    version: 12,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE plot_survey_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plot_survey_id INTEGER NOT NULL,
+          layer_index INTEGER NOT NULL CHECK (layer_index BETWEEN 1 AND 6),
+          cover_pct REAL,
+          height_cm REAL,
+          method TEXT NOT NULL DEFAULT 'BB' CHECK (method IN ('BB','percent','DBH')),
+          FOREIGN KEY (plot_survey_id) REFERENCES plot_surveys(id) ON DELETE CASCADE,
+          UNIQUE(plot_survey_id, layer_index)
+        );
+      `);
+      db.executeSync(
+        `CREATE INDEX idx_plot_survey_layers_plot ON plot_survey_layers(plot_survey_id);`,
+      );
+
+      // layer_count default 4 = existing plots keep 4 layers (E1-E4). User can
+      // bump to 6 via the env tab; lowered count just hides the trailing
+      // layers in UI, the data stays for safety.
+      db.executeSync(
+        `ALTER TABLE plot_surveys ADD COLUMN layer_count INTEGER NOT NULL DEFAULT 4 CHECK (layer_count BETWEEN 1 AND 6);`,
+      );
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN env_photos_json TEXT;`);
+
+      // Backfill: every existing FIXED plot gets 4 layer rows from its
+      // e0_*..e3_* columns (transect plots have no layer concept).
+      for (let i = 0; i < 4; i++) {
+        const col = `e${i}`;
+        const newIndex = i + 1;
+        db.executeSync(
+          `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, cover_pct, height_cm, method)
+           SELECT id, ?, ${col}_cover_pct, ${col}_height_cm, ${col}_method
+           FROM plot_surveys
+           WHERE plot_type = 'fixed';`,
+          [newIndex],
+        );
+      }
+
+      // plot_species_records: rebuild table to:
+      //   (a) update CHECK from ('E0'..'E3','T') → ('E1'..'E6','T')
+      //   (b) shift existing layer values E0..E3 → E1..E4 (transect 'T' unchanged)
+      // Must preserve every column that subsequent migrations added (v8 attrs,
+      // v9 organism_quantity pair).
+      db.executeSync(`ALTER TABLE plot_species_records RENAME TO plot_species_records_old_v11;`);
+      db.executeSync(`
+        CREATE TABLE plot_species_records (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plot_survey_id INTEGER NOT NULL,
+          taxon_id TEXT NOT NULL,
+          layer TEXT NOT NULL CHECK (layer IN ('E1','E2','E3','E4','E5','E6','T')),
+          bb_value TEXT,
+          percent REAL,
+          dbh_values_json TEXT,
+          notes TEXT,
+          photo_paths TEXT,
+          observed_at INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          sex TEXT,
+          life_stage TEXT,
+          reproductive_condition TEXT,
+          leaf_phenology TEXT,
+          organism_quantity TEXT,
+          organism_quantity_type TEXT,
+          FOREIGN KEY (plot_survey_id) REFERENCES plot_surveys(id) ON DELETE CASCADE
+        );
+      `);
+      db.executeSync(`
+        INSERT INTO plot_species_records
+          (id, plot_survey_id, taxon_id, layer, bb_value, percent, dbh_values_json,
+           notes, photo_paths, observed_at, created_at,
+           sex, life_stage, reproductive_condition, leaf_phenology,
+           organism_quantity, organism_quantity_type)
+        SELECT id, plot_survey_id, taxon_id,
+          CASE layer
+            WHEN 'E0' THEN 'E1'
+            WHEN 'E1' THEN 'E2'
+            WHEN 'E2' THEN 'E3'
+            WHEN 'E3' THEN 'E4'
+            ELSE layer
+          END,
+          bb_value, percent, dbh_values_json, notes, photo_paths, observed_at, created_at,
+          sex, life_stage, reproductive_condition, leaf_phenology,
+          organism_quantity, organism_quantity_type
+        FROM plot_species_records_old_v11;
+      `);
+      db.executeSync(`DROP TABLE plot_species_records_old_v11;`);
+      db.executeSync(`CREATE INDEX idx_plot_records_plot ON plot_species_records(plot_survey_id);`);
+      db.executeSync(`CREATE INDEX idx_plot_records_taxon ON plot_species_records(taxon_id);`);
+      db.executeSync(
+        `CREATE INDEX idx_plot_records_layer ON plot_species_records(plot_survey_id, layer);`,
+      );
+    },
+  },
 ];
 
 export async function runUserMigrations(db: DB): Promise<void> {

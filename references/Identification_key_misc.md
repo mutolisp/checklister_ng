@@ -97,16 +97,18 @@ TaiCOL 把 Desmodium 屬大幅拆分。worksheet 名仍用 Desmodium、bare epit
 
 備份：`backend/twnamelist.db.preimport-20260424`、`backend/twnamelist.db.bak.20260517202603`
 
-### A. 需手動改 Google Sheet 的 4 條 raw sciname fallback
+### A. 需手動改 Google Sheet 的 4 條 raw sciname fallback ✅ 2026-05-22 完成
 
-TaiCOL 沒有對應 accepted name，import 後保留為 raw sciname。需依下面建議值修 sheet → 重 import 該 worksheet → `make mobile-db`。
+TaiCOL 沒有對應 accepted name，import 後保留為 raw sciname。已透過 Sheets API 修 sheet → 重 import → `make mobile-db`。Sheet：`18Nk9ZJbCzdV4c_I4TaIoVTJcMdL3MA9rcWctgFqc7VM`（IdentKey::Asterales）。
 
-| # | Sheet | Worksheet | Couplet | 目前學名 | TaiCOL 狀態 | 建議修法 |
-|---|-------|----------|---------|---------|------------|---------|
-| 1 | `18Nk9ZJbCzdV4c_I4TaIoVTJcMdL3MA9rcWctgFqc7VM` | Ainsliaea | **2A** | `Ainsliaea apiculata var. acerifolia` | TaiCOL 完全無 `Ainsliaea apiculata` (含 nominal 與 var.) | 確認 PDF 原文是否實為他屬；或留 PDF 字串標 dead-end |
-| 2 | 同上 | Ainsliaea | **6A** | `Ainsliaea latifolia var. taiwanensis` | nominal `Ainsliaea latifolia` accepted (t0060886)；var. taiwanensis 不存在 | 改成 `Ainsliaea latifolia`（drop var.） |
-| 3 | 同上 | Ainsliaea | **8B** | `Ainsliaea henryi var. subalpina` | `Ainsliaea henryi` 已併入 `Ainsliaea latifolia subsp. henryi` (t0033661)；var. subalpina 不存在 | 改成 `Ainsliaea latifolia subsp. henryi` 或留 dead-end |
-| 4 | 同上 | Blumea | **12B** | `Blumea chishanensis` | **拼字錯誤**：TaiCOL accepted 是 `Blumea chishangensis`（chishan**g**ensis 多一個 g）t0099236 | 改成 `Blumea chishangensis` |
+| # | Worksheet!Cell | 修前 | 修後 | TaiCOL 對應 |
+|---|---|---|---|---|
+| 1 | Ainsliaea!C4 (2A) | `apiculata var. acerifolia 中原氏鬼督郵` | `secundiflora 中原氏鬼督郵` | t0052546 Ainsliaea secundiflora |
+| 2 | Ainsliaea!C12 (6A) | `Ainsliaea latifolia var. taiwanensis 臺寬葉兔兒風` | `latifolia 臺灣鬼督郵` | t0060886 Ainsliaea latifolia |
+| 3 | Ainsliaea!C17 (8B) | `henryi var. subalpina 玉山鬼督郵` | `latifolia subsp. henryi 臺灣鬼督郵` | t0033661 Ainsliaea latifolia subsp. henryi（與 8A var. henryi 合併為 degenerate dichotomy；TaiCOL 已合併無法區分） |
+| 4 | Blumea!C25 (12B) | `chishanensis 池上艾納香` | `chishangensis 池上艾納香` | t0099236 Blumea chishangensis（PDF 純拼字錯） |
+
+驗證：`_check_stale_key_taxon_ids()` 從 19→15 條，A 組 4 條全部清除。
 
 ### B. 4 個變動屬（只需 re-import sheet 即可自動 resolve，不需改 sheet 內容）
 

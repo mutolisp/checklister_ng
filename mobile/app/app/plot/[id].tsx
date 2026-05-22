@@ -15,25 +15,38 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   endPlotSurvey,
+  getActiveLayers,
+  getPlotLayers,
   getPlotSurvey,
   getProject,
+  layerIndexOf,
+  layerKeyForIndex,
   listPlotSpecies,
+  parseEnvPhotos,
   plotCanAcceptSpecies,
   reopenPlotSurvey,
+  setPlotLayerCount,
+  updatePlotEnvPhotos,
+  updatePlotLayer,
   updatePlotSurvey,
   type AbundanceMethod,
+  type FixedLayer,
+  type PlotLayer,
   type PlotSurvey,
   type Project,
-  LAYERS,
   LAYER_LABEL,
+  MAX_LAYER_COUNT,
 } from '~/db';
+import { PhotoGrid, PhotoViewerModal } from '~/components/PhotoGrid';
 import { PlotSpeciesTab } from '~/components/PlotSpeciesTab';
 import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { TransectTrackControl } from '~/components/TransectTrackControl';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
+import { captureEnvPhoto, pickPhotos } from '~/lib/photoCapture';
+import { showActionSheet } from '~/components/ActionSheet';
 
-type Tab = 'env' | 'species' | 'layers';
+type Tab = 'env' | 'species';
 
 export default function PlotDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -113,20 +126,13 @@ export default function PlotDetailScreen() {
           onPress={() => setTab('species')}
           disabled={!ready}
         />
-        {plot.plot_type === 'transect' ? null : (
-          <TabBtn label="分層" active={tab === 'layers'} onPress={() => setTab('layers')} />
-        )}
       </View>
 
       <View className="flex-1">
-        {/* EnvTab / LayersTab each wrap their content in a
-            `KeyboardAwareScrollView` (from `react-native-keyboard-controller`)
-            which auto-scrolls the focused TextInput above the keyboard. The
-            plain `ScrollView + keyboardShouldPersistTaps` we used before does
-            NOT do that — it only controls tap-dismiss behaviour, leaving the
-            focused input hidden when the user typed values in E3 etc.
-            PlotSpeciesTab wraps its SearchBox in KeyboardStickyView so the
-            search row follows the kbd top across accessory-bar changes. */}
+        {/* EnvTab wraps its content in a `KeyboardAwareScrollView` (from
+            `react-native-keyboard-controller`) which auto-scrolls the focused
+            TextInput above the keyboard. PlotSpeciesTab wraps its SearchBox
+            in KeyboardStickyView so the search row follows the kbd top. */}
         {tab === 'env' ? <EnvTab plot={plot} onUpdated={reload} /> : null}
         {tab === 'species' ? (
           ready ? (
@@ -135,7 +141,6 @@ export default function PlotDetailScreen() {
             <SpeciesGateScreen />
           )
         ) : null}
-        {tab === 'layers' ? <LayersTab plot={plot} onUpdated={reload} /> : null}
       </View>
     </SafeAreaView>
   );
@@ -328,6 +333,12 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         />
       </Section>
 
+      {plot.plot_type === 'fixed' ? (
+        <LayerSection plot={plot} onUpdated={onUpdated} />
+      ) : null}
+
+      <EnvPhotoSection plot={plot} onUpdated={onUpdated} />
+
       <Pressable
         onPress={() => setShowAdvanced((v) => !v)}
         className="mt-2 flex-row items-center justify-between bg-gray-100 dark:bg-gray-800 px-4 py-3"
@@ -514,97 +525,124 @@ function SpeciesGateScreen() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Layers Tab
+// Layer section (rendered inside EnvTab for fixed plots)
 // ─────────────────────────────────────────────────────────────────────
 
-function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
-  const patch = (p: Parameters<typeof updatePlotSurvey>[1]) => {
-    updatePlotSurvey(plot.id, p);
+function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const [layers, setLayers] = useState<PlotLayer[]>([]);
+  useEffect(() => {
+    setLayers(getPlotLayers(plot.id));
+  }, [plot.id, plot.layer_count]);
+
+  const activeLayers = getActiveLayers(plot.layer_count);
+
+  const patchLayer = (
+    layerIdx: number,
+    fields: { cover_pct?: number | null; height_cm?: number | null; method?: AbundanceMethod },
+  ) => {
+    updatePlotLayer(plot.id, layerIdx, fields);
+    setLayers(getPlotLayers(plot.id));
     onUpdated();
   };
 
-  const layerData: Record<
-    'E0' | 'E1' | 'E2' | 'E3',
-    {
-      cover: number | null;
-      height: number | null;
-      method: AbundanceMethod;
-      setCover: (n: number | null) => void;
-      setHeight: (n: number | null) => void;
-      setMethod: (m: AbundanceMethod) => void;
-    }
-  > = {
-    E0: {
-      cover: plot.e0_cover_pct,
-      height: plot.e0_height_cm,
-      method: plot.e0_method,
-      setCover: (n) => patch({ e0_cover_pct: n }),
-      setHeight: (n) => patch({ e0_height_cm: n }),
-      setMethod: (m) => patch({ e0_method: m }),
-    },
-    E1: {
-      cover: plot.e1_cover_pct,
-      height: plot.e1_height_cm,
-      method: plot.e1_method,
-      setCover: (n) => patch({ e1_cover_pct: n }),
-      setHeight: (n) => patch({ e1_height_cm: n }),
-      setMethod: (m) => patch({ e1_method: m }),
-    },
-    E2: {
-      cover: plot.e2_cover_pct,
-      height: plot.e2_height_cm,
-      method: plot.e2_method,
-      setCover: (n) => patch({ e2_cover_pct: n }),
-      setHeight: (n) => patch({ e2_height_cm: n }),
-      setMethod: (m) => patch({ e2_method: m }),
-    },
-    E3: {
-      cover: plot.e3_cover_pct,
-      height: plot.e3_height_cm,
-      method: plot.e3_method,
-      setCover: (n) => patch({ e3_cover_pct: n }),
-      setHeight: (n) => patch({ e3_height_cm: n }),
-      setMethod: (m) => patch({ e3_method: m }),
-    },
+  const decrement = () => {
+    if (plot.layer_count <= 1) return;
+    setPlotLayerCount(plot.id, plot.layer_count - 1);
+    onUpdated();
+  };
+  const increment = () => {
+    if (plot.layer_count >= MAX_LAYER_COUNT) return;
+    setPlotLayerCount(plot.id, plot.layer_count + 1);
+    onUpdated();
   };
 
   return (
-    <KeyboardAwareScrollView className="flex-1" keyboardShouldPersistTaps="handled" bottomOffset={24}>
-      <View className="px-4 py-3">
-        <Text className="text-xs text-gray-500 dark:text-gray-400">
-          各分層獨立設定 cover% / height(cm) / 預設豐度單位。物種輸入時開啟 modal
-          會預選此處的單位，但仍可即時切換。
+    <View className="px-4 py-3">
+      <View className="mb-2 flex-row items-center">
+        <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          分層
         </Text>
       </View>
-      {LAYERS.map((layer) => {
-        const d = layerData[layer];
+      <View className="mb-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3">
+        <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">分層數量</Text>
+        <View className="mt-2 flex-row items-center">
+          <Pressable
+            onPress={decrement}
+            disabled={plot.layer_count <= 1}
+            className={`h-9 w-9 items-center justify-center rounded-full ${plot.layer_count <= 1 ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600'}`}
+          >
+            <Ionicons
+              name="remove"
+              size={18}
+              color={plot.layer_count <= 1 ? '#9ca3af' : '#374151'}
+            />
+          </Pressable>
+          <Text className="mx-4 min-w-[24px] text-center text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {plot.layer_count}
+          </Text>
+          <Pressable
+            onPress={increment}
+            disabled={plot.layer_count >= MAX_LAYER_COUNT}
+            className={`h-9 w-9 items-center justify-center rounded-full ${plot.layer_count >= MAX_LAYER_COUNT ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600'}`}
+          >
+            <Ionicons
+              name="add"
+              size={18}
+              color={plot.layer_count >= MAX_LAYER_COUNT ? '#9ca3af' : '#374151'}
+            />
+          </Pressable>
+          <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">
+            1-{MAX_LAYER_COUNT} 層；E1 苔蘚 / E2 草本 / E3 灌木 / E4 亞喬木 / E5 主林冠 / E6 突出
+          </Text>
+        </View>
+      </View>
+      <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
+        每層獨立 cover% / height(cm) / 預設豐度單位。物種輸入時 modal 會預選此處單位、可即時切換。
+      </Text>
+      {activeLayers.map((layerKey) => {
+        const idx = layerIndexOf(layerKey as FixedLayer);
+        const row = layers.find((l) => l.layer_index === idx) ?? null;
         return (
-          <View key={layer} className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{LAYER_LABEL[layer]}</Text>
+          <View
+            key={layerKey}
+            className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3"
+          >
+            <Text className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              {LAYER_LABEL[layerKey]}
+            </Text>
             <View className="mt-2 flex-row gap-3">
               <View className="flex-1">
                 <NumField
                   label="Cover"
                   suffix="%"
-                  value={d.cover}
-                  onSave={d.setCover}
+                  value={row?.cover_pct ?? null}
+                  onSave={(n) => patchLayer(idx, { cover_pct: n })}
                 />
               </View>
               <View className="flex-1">
-                <NumField label="Height" suffix="cm" value={d.height} onSave={d.setHeight} />
+                <NumField
+                  label="Height"
+                  suffix="cm"
+                  value={row?.height_cm ?? null}
+                  onSave={(n) => patchLayer(idx, { height_cm: n })}
+                />
               </View>
             </View>
-            <Text className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-400">預設豐度單位</Text>
+            <Text className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+              預設豐度單位
+            </Text>
             <View className="mt-1 flex-row gap-2">
               {(['BB', 'percent', 'DBH'] as AbundanceMethod[]).map((m) => {
-                const on = d.method === m;
+                const on = row?.method === m;
                 return (
                   <Pressable
                     key={m}
-                    onPress={() => d.setMethod(m)}
+                    onPress={() => patchLayer(idx, { method: m })}
                     className={`rounded-full px-3 py-1.5 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
                   >
-                    <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <Text
+                      className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                    >
                       {m === 'BB' ? 'Braun-Blanquet' : m === 'percent' ? '百分比 %' : 'DBH'}
                     </Text>
                   </Pressable>
@@ -614,7 +652,79 @@ function LayersTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => voi
           </View>
         );
       })}
-      <View className="h-12" />
-    </KeyboardAwareScrollView>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Env photo section
+// ─────────────────────────────────────────────────────────────────────
+
+function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const photos = parseEnvPhotos(plot.env_photos_json);
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+
+  const append = (uris: string[]) => {
+    if (uris.length === 0) return;
+    updatePlotEnvPhotos(plot.id, [...photos, ...uris]);
+    onUpdated();
+  };
+  const remove = (uri: string) => {
+    updatePlotEnvPhotos(
+      plot.id,
+      photos.filter((u) => u !== uri),
+    );
+    onUpdated();
+  };
+
+  const handleAdd = async () => {
+    const choice = await showActionSheet({
+      title: '加入環境照片',
+      options: [{ label: '拍照' }, { label: '從相簿選擇' }],
+    });
+    if (choice === 0) {
+      try {
+        const uri = await captureEnvPhoto();
+        if (uri) append([uri]);
+      } catch (e) {
+        Alert.alert('拍照失敗', e instanceof Error ? e.message : String(e));
+      }
+    } else if (choice === 1) {
+      try {
+        const uris = await pickPhotos();
+        append(uris);
+      } catch (e) {
+        Alert.alert('選擇照片失敗', e instanceof Error ? e.message : String(e));
+      }
+    }
+  };
+
+  return (
+    <View className="px-4 py-3">
+      <View className="mb-2 flex-row items-center">
+        <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          環境照片
+        </Text>
+        {photos.length > 0 ? (
+          <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+            ({photos.length})
+          </Text>
+        ) : null}
+      </View>
+      <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
+        匯出時自動命名為 {plot.plotid || '<plotid>'}_YYYYMMDD_env-N.jpg
+      </Text>
+      <PhotoGrid
+        photos={photos}
+        onAdd={handleAdd}
+        onView={(idx) => setViewerIndex(idx)}
+        onRemove={remove}
+      />
+      <PhotoViewerModal
+        photos={photos}
+        index={viewerIndex}
+        onClose={() => setViewerIndex(null)}
+      />
+    </View>
   );
 }

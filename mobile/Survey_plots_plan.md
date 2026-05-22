@@ -37,6 +37,15 @@
       b. percentage (0-100%)
       c. DBH (diameter at breast height). unit is commonly cm
 
+## Methods
+
+1. 定點計數法
+   1. 樣區編號(plotid, DwC: eventID)
+   2. 開始時間、結束時間
+   3. 座標
+   4. 半徑
+
+
 ## input flow
 
 1. Users has to input the environmental data first, input a plot id, then get GPS coordinates and errors. The other environmental data

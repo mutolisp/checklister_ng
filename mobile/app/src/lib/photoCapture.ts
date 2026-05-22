@@ -180,6 +180,31 @@ function embedMetadata(jpegBase64: string, existingExif: piexif.ExifDict, ctx: P
 }
 
 /**
+ * Capture an environmental context photo for a plot (no species metadata
+ * embedded — just preserves the camera's native EXIF including GPS + capture
+ * timestamp). Saves to Photos.app and returns the asset URI. Caller stores
+ * the URI in `plot_surveys.env_photos_json`.
+ */
+export async function captureEnvPhoto(): Promise<string | null> {
+  const camPerm = await ImagePicker.requestCameraPermissionsAsync();
+  if (camPerm.status !== 'granted') throw new Error('需要相機權限');
+  const libPerm = await MediaLibrary.requestPermissionsAsync(true);
+  if (libPerm.status !== 'granted') throw new Error('需要照片庫寫入權限');
+  const result = await ImagePicker.launchCameraAsync({
+    mediaTypes: ['images'],
+    quality: 0.9,
+    exif: true,
+    base64: false,
+    allowsEditing: false,
+  });
+  if (result.canceled) return null;
+  const asset = result.assets[0];
+  if (!asset?.uri) return null;
+  const saved = await MediaLibrary.createAssetAsync(asset.uri);
+  return saved.uri;
+}
+
+/**
  * Launch system camera, force JPEG, embed metadata, save to Photos.app.
  * Returns the asset URI (ph://...) on success, or null if cancelled.
  */

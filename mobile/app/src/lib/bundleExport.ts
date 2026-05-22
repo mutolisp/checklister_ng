@@ -14,12 +14,17 @@ import * as MediaLibrary from 'expo-media-library';
 import yaml from 'js-yaml';
 import { strToU8, zipSync, type Zippable } from 'fflate';
 import {
+  getActiveLayers,
+  getPlotLayers,
   getProject,
   getSession,
   getSite,
   getPlotSurvey,
+  layerIndexOf,
   listSessionRecords,
   listPlotSpecies,
+  parseEnvPhotos,
+  type FixedLayer,
   type RecordWithTaxon,
   type PlotSpeciesRecordWithTaxon,
 } from '~/db';
@@ -202,19 +207,20 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
   push('gravelCoverPct', plot.gravel_cover_pct);
   push('barelandCoverPct', plot.bareland_cover_pct);
 
-  // Per-layer vegetation cover / height / abundance method
-  push('e0CoverPct', plot.e0_cover_pct);
-  push('e0HeightCm', plot.e0_height_cm);
-  push('e0Method', plot.e0_method);
-  push('e1CoverPct', plot.e1_cover_pct);
-  push('e1HeightCm', plot.e1_height_cm);
-  push('e1Method', plot.e1_method);
-  push('e2CoverPct', plot.e2_cover_pct);
-  push('e2HeightCm', plot.e2_height_cm);
-  push('e2Method', plot.e2_method);
-  push('e3CoverPct', plot.e3_cover_pct);
-  push('e3HeightCm', plot.e3_height_cm);
-  push('e3Method', plot.e3_method);
+  // Per-layer vegetation cover / height / abundance method (fixed plots only;
+  // transect plots have no layer concept and the active layer list is empty).
+  if (plot.plot_type === 'fixed') {
+    const layers = getPlotLayers(plot.id);
+    const activeLayers = getActiveLayers(plot.layer_count);
+    for (const layerKey of activeLayers) {
+      const idx = layerIndexOf(layerKey as FixedLayer);
+      const row = layers.find((l) => l.layer_index === idx);
+      if (!row) continue;
+      push(`${layerKey.toLowerCase()}CoverPct`, row.cover_pct);
+      push(`${layerKey.toLowerCase()}HeightCm`, row.height_cm);
+      push(`${layerKey.toLowerCase()}Method`, row.method);
+    }
+  }
 
   return rows;
 }
@@ -505,6 +511,21 @@ async function buildPlotEntries(
   if (opts.includePhotos) {
     const photoEntries = await collectPhotosPlot(species, base, progressCtx);
     entries.push(...photoEntries);
+    // Plot environment context photos. Filename: plotid_YYYYMMDD_env-N.jpg
+    // where YYYYMMDD is the plot start date (fallback today). Sequence is the
+    // order user added the photos (already stable in env_photos_json).
+    const envUris = parseEnvPhotos(plot.env_photos_json);
+    if (envUris.length > 0) {
+      const dateStr = ymdString(plot.start_ts ?? Date.now());
+      const envPhotoEntries = await collectEnvPhotos(
+        envUris,
+        base,
+        plot.plotid,
+        dateStr,
+        progressCtx,
+      );
+      entries.push(...envPhotoEntries);
+    }
   }
 
   // Manifest
@@ -515,7 +536,8 @@ async function buildPlotEntries(
     project_name: project?.name ?? '',
     record_count: species.length,
     photo_count: opts.includePhotos
-      ? species.reduce((n, r) => n + parsePhotoUris(r.photo_paths).length, 0)
+      ? species.reduce((n, r) => n + parsePhotoUris(r.photo_paths).length, 0) +
+        parseEnvPhotos(plot.env_photos_json).length
       : 0,
     geoFormats: opts.geoFormats,
   });
@@ -666,6 +688,51 @@ async function collectPhotos(
   return out;
 }
 
+/** Pack environment context photos into the zip with the user-requested
+ *  naming convention `${plotid}_${YYYYMMDD}_env-${N}.jpg`. Index is 1-based
+ *  and reflects the order the user added them (preserved in
+ *  `env_photos_json`). Extension is detected from the source URI; the user's
+ *  example used `.jpg` but HEIC / PNG are also passed through unchanged. */
+async function collectEnvPhotos(
+  uris: string[],
+  folder: string,
+  plotid: string,
+  dateStr: string,
+  ctx: { done: number; total: number; onProgress?: (d: number, t: number) => void },
+): Promise<BuiltZipEntry[]> {
+  await ensurePhotosReadAccess();
+  const out: BuiltZipEntry[] = [];
+  const safePlotid = sanitizeFilename(plotid || 'plot');
+  for (let i = 0; i < uris.length; i++) {
+    const uri = uris[i];
+    const fileUri = await resolveAssetUri(uri);
+    ctx.done += 1;
+    ctx.onProgress?.(ctx.done, ctx.total);
+    if (!fileUri) continue;
+    try {
+      const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
+      const bytes = base64ToBytes(b64);
+      const ext = guessExt(fileUri);
+      out.push({
+        name: `${folder}/photos/${safePlotid}_${dateStr}_env-${i + 1}.${ext}`,
+        bytes,
+      });
+    } catch {
+      // skip unreadable
+    }
+  }
+  return out;
+}
+
+/** Format a millisecond timestamp as YYYYMMDD using the device timezone. */
+function ymdString(ts: number): string {
+  const d = new Date(ts);
+  const y = d.getFullYear().toString().padStart(4, '0');
+  const m = (d.getMonth() + 1).toString().padStart(2, '0');
+  const day = d.getDate().toString().padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
 async function collectPhotosPlot(
   species: PlotSpeciesRecordWithTaxon[],
   folder: string,
@@ -747,6 +814,13 @@ function countPhotosPlot(records: PlotSpeciesRecordWithTaxon[]): number {
   return n;
 }
 
+/** Total photo count for a plot including env photos. Used for progress bar. */
+function countPhotosPlotWithEnv(plotId: number): number {
+  const species = listPlotSpecies(plotId);
+  const plot = getPlotSurvey(plotId);
+  return countPhotosPlot(species) + (plot ? parseEnvPhotos(plot.env_photos_json).length : 0);
+}
+
 export async function bundleSession(
   sessionId: number,
   opts: BundleOptions,
@@ -763,8 +837,7 @@ export async function bundlePlot(
   plotId: number,
   opts: BundleOptions,
 ): Promise<ExportFile> {
-  const species = listPlotSpecies(plotId);
-  const total = opts.includePhotos ? countPhotosPlot(species) : 0;
+  const total = opts.includePhotos ? countPhotosPlotWithEnv(plotId) : 0;
   const ctx = { done: 0, total, onProgress: opts.onProgress };
   if (total > 0) opts.onProgress?.(0, total);
   const { entries, folderName } = await buildPlotEntries(plotId, opts, ctx);
@@ -780,7 +853,7 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
   if (opts.includePhotos) {
     for (const it of items) {
       if (it.kind === 'session') totalPhotos += countPhotosSession(listSessionRecords(it.id));
-      else totalPhotos += countPhotosPlot(listPlotSpecies(it.id));
+      else totalPhotos += countPhotosPlotWithEnv(it.id);
     }
   }
   const ctx = { done: 0, total: totalPhotos, onProgress: opts.onProgress };

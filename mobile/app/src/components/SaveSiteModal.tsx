@@ -39,7 +39,7 @@ export function SaveSiteModal({
   defaultNotes = '',
   geometryType,
   vertexCount,
-  title = '儲存樣區',
+  title = '儲存地理樣區',
   onCancel,
   onConfirm,
 }: Props) {
@@ -124,7 +124,7 @@ export function SaveSiteModal({
                 onChangeText={setName}
                 autoFocus
                 className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
-                placeholder="例：A 樣區"
+                placeholder="例：A 地理樣區"
                 placeholderTextColor="#9ca3af"
               />
             </Field>

@@ -1,17 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Keyboard, Platform, Pressable, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, FlatList, Keyboard, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addPlotSpecies,
   deletePlotSpecies,
+  getActiveLayers,
+  getPlotLayers,
+  layerIndexOf,
+  layerKeyForIndex,
   listPlotSpecies,
   parsePhotoPaths,
+  type FixedLayer,
   type Layer,
+  type PlotLayer,
   type PlotSpeciesRecordWithTaxon,
   type PlotSurvey,
   type SearchResult,
-  LAYERS,
   LAYER_LABEL,
   updatePlotSpeciesPhotos,
   updatePlotSpeciesValue,
@@ -49,10 +54,38 @@ export function PlotSpeciesTab({
   // so KSV's natural bottom sits `insets.bottom` above the screen bottom.
   // Without compensation, the search box floats that gap above the keyboard.
   const insets = useSafeAreaInsets();
-  // Transect plots have no layer concept — every record is stored under 'T'.
-  const [layer, setLayer] = useState<Layer>(isTransect ? 'T' : 'E1');
+  // Active layers (E1..E{layer_count}) for this plot. Recomputed when the user
+  // changes layer_count from the env tab. Transect plots: empty (single 'T').
+  const activeLayers = useMemo<FixedLayer[]>(
+    () => (isTransect ? [] : getActiveLayers(plot.layer_count)),
+    [isTransect, plot.layer_count],
+  );
+  // Default layer: prefer E2 (草本層) for vegetation surveys — that's the
+  // most commonly entered layer. If layer_count < 2, fall back to E1.
+  const defaultLayer: Layer = isTransect
+    ? 'T'
+    : (activeLayers.includes('E2' as FixedLayer) ? 'E2' : activeLayers[0]) ?? 'E1';
+  const [layer, setLayer] = useState<Layer>(defaultLayer);
+  // Sync layer state with activeLayers: if the user lowers layer_count in the
+  // env tab below the currently-selected layer (e.g. selected 'E5' then drops
+  // count to 3), state would otherwise hold a layer that no chip can switch
+  // to. Snap back to the first active layer so the entry path is unambiguous.
+  useEffect(() => {
+    if (isTransect) return;
+    if (activeLayers.length === 0) return;
+    if (!activeLayers.includes(layer as FixedLayer)) {
+      setLayer(activeLayers[0]);
+    }
+  }, [activeLayers, layer, isTransect]);
   const [records, setRecords] = useState<PlotSpeciesRecordWithTaxon[]>([]);
   const [modal, setModal] = useState<ValueModalState | null>(null);
+  // Per-layer method config from plot_survey_layers (used for default
+  // abundance unit when opening the modal). Lazy-loaded; refreshed on plot.id.
+  const [plotLayers, setPlotLayers] = useState<PlotLayer[]>([]);
+  useMemo(() => {
+    setPlotLayers(isTransect ? [] : getPlotLayers(plot.id));
+    return null;
+  }, [plot.id, plot.layer_count, isTransect]);
   // Remember last entered value per layer for fast batch entry (carries unit
   // + scalar quantity to the next species). Keyed by Layer.
   const [lastValue, setLastValue] = useState<Partial<Record<Layer, PlotValueDraft>>>({});
@@ -73,16 +106,18 @@ export function PlotSpeciesTab({
 
   const grouped = useMemo(() => {
     const out: Record<Layer, PlotSpeciesRecordWithTaxon[]> = {
-      E0: [],
       E1: [],
       E2: [],
       E3: [],
+      E4: [],
+      E5: [],
+      E6: [],
       T: [],
     };
     for (const r of records) out[r.layer as Layer]?.push(r);
     // Sort within each layer using the shared user preference.
     const cmp = (a: string, b: string) => a.localeCompare(b);
-    const allLayers: Layer[] = [...LAYERS, 'T'];
+    const allLayers: Layer[] = isTransect ? ['T'] : [...activeLayers, 'T'];
     for (const l of allLayers) {
       const arr = out[l];
       arr.sort((a, b) => {
@@ -103,7 +138,7 @@ export function PlotSpeciesTab({
       if (sortDir === 'desc') arr.reverse();
     }
     return out;
-  }, [records, sortOrder, sortDir]);
+  }, [records, sortOrder, sortDir, activeLayers, isTransect]);
 
   const handlePickSort = async () => {
     const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
@@ -249,9 +284,9 @@ export function PlotSpeciesTab({
 
   const layerMethodHint = (l: Layer): string | null => {
     if (l === 'T') return null;
-    return legacyMethodToType(
-      l === 'E0' ? plot.e0_method : l === 'E1' ? plot.e1_method : l === 'E2' ? plot.e2_method : plot.e3_method,
-    );
+    const idx = layerIndexOf(l as FixedLayer);
+    const row = plotLayers.find((pl) => pl.layer_index === idx);
+    return row ? legacyMethodToType(row.method) : null;
   };
 
   const modalProps = (() => {
@@ -327,14 +362,22 @@ export function PlotSpeciesTab({
         ) : (
           <>
             <Text className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">輸入分層</Text>
-            <View className="flex-row gap-2">
-              {LAYERS.map((l) => {
+            {/* Horizontal scrollable chips — supports up to 6 layers (E1-E6)
+                without cramping on narrow phones. Each chip is fixed-width so
+                ≤4 layers fill the row, 5-6 layers gain horizontal scroll. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+            >
+              {activeLayers.map((l) => {
                 const on = layer === l;
                 return (
                   <Pressable
                     key={l}
                     onPress={() => setLayer(l)}
-                    className={`flex-1 items-center rounded-lg py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
+                    className={`items-center justify-center rounded-lg px-4 py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
+                    style={{ minWidth: 56 }}
                   >
                     <Text className={`text-sm font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                       {l}
@@ -342,7 +385,7 @@ export function PlotSpeciesTab({
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
             <Text className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
               {LAYER_LABEL[layer]}
               {grouped[layer].length > 0 ? ` · 已記 ${grouped[layer].length} 筆` : ''}
@@ -353,7 +396,7 @@ export function PlotSpeciesTab({
 
       {/* Records grouped by layer */}
       <FlatList
-        data={(isTransect ? (['T'] as const) : LAYERS).flatMap<
+        data={(isTransect ? (['T'] as Layer[]) : activeLayers).flatMap<
           { kind: 'header'; layer: Layer } | { kind: 'row'; record: PlotSpeciesRecordWithTaxon }
         >((l) => {
           const list = grouped[l];

@@ -1,20 +1,37 @@
 import { getUserDb, getTaicolDb } from './init';
 
-/** Fixed-plot vertical layers (Braun-Blanquet vegetation profile). */
-export type FixedLayer = 'E0' | 'E1' | 'E2' | 'E3';
+/** Fixed-plot vertical layers (vegetation profile, semantic labels). */
+export type FixedLayer = 'E1' | 'E2' | 'E3' | 'E4' | 'E5' | 'E6';
 /** Any layer that may appear in `plot_species_records.layer`. */
 export type Layer = FixedLayer | 'T';
 export type AbundanceMethod = 'BB' | 'percent' | 'DBH';
-/** Layers used by fixed plots; transect plots always store records under 'T'. */
-export const LAYERS: FixedLayer[] = ['E0', 'E1', 'E2', 'E3'];
+/** All possible fixed-plot layers. Which subset is *active* for a given plot
+ *  is determined by `plot.layer_count` (1..6); see `getActiveLayers`. */
+export const LAYERS: FixedLayer[] = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6'];
+export const MAX_LAYER_COUNT = 6;
+export const DEFAULT_LAYER_COUNT = 4;
 export const TRANSECT_LAYER: Layer = 'T';
 export const LAYER_LABEL: Record<Layer, string> = {
-  E0: 'E0 苔蘚/地衣層',
-  E1: 'E1 草本層',
-  E2: 'E2 灌木層',
-  E3: 'E3 喬木層',
+  E1: 'E1 苔蘚層',
+  E2: 'E2 草本層',
+  E3: 'E3 灌木層',
+  E4: 'E4 亞喬木層',
+  E5: 'E5 主林冠層',
+  E6: 'E6 突出層',
   T: 'Transect 穿越線',
 };
+
+/** Convert layer_index (1..6) ↔ string layer key. */
+export function layerKeyForIndex(idx: number): FixedLayer {
+  return `E${idx}` as FixedLayer;
+}
+export function layerIndexOf(key: FixedLayer): number {
+  return Number(key.slice(1));
+}
+/** First N active layers for a plot of given layer_count. */
+export function getActiveLayers(layerCount: number): FixedLayer[] {
+  return LAYERS.slice(0, Math.max(1, Math.min(MAX_LAYER_COUNT, layerCount)));
+}
 
 export type PlotStatus = 'active' | 'done';
 export type PlotType = 'fixed' | 'transect';
@@ -54,6 +71,14 @@ export type PlotSurvey = {
   rock_cover_pct: number | null;
   gravel_cover_pct: number | null;
   bareland_cover_pct: number | null;
+  /** Active vegetation layer count for this plot (1..6, default 4). */
+  layer_count: number;
+  /** JSON array of env photo URIs ({uri, sequence?, caption?}). */
+  env_photos_json: string | null;
+  // Legacy per-layer columns (v5 schema). Kept in DB for rollback safety until
+  // v13; new code reads/writes via `plot_survey_layers` instead. Keep the
+  // fields here so type-checking against legacy callsites still works during
+  // the transition. Will be removed when the v13 drop migration ships.
   e0_cover_pct: number | null;
   e0_height_cm: number | null;
   e1_cover_pct: number | null;
@@ -68,6 +93,16 @@ export type PlotSurvey = {
   e3_method: AbundanceMethod;
   created_at: number;
   updated_at: number;
+};
+
+/** Normalized per-layer environmental data (v12 schema). */
+export type PlotLayer = {
+  id: number;
+  plot_survey_id: number;
+  layer_index: number;
+  cover_pct: number | null;
+  height_cm: number | null;
+  method: AbundanceMethod;
 };
 
 export type PlotSpeciesRecord = {
@@ -176,7 +211,137 @@ export function createPlotSurvey(input: CreatePlotInput): number {
       now,
     ],
   );
-  return res.insertId ?? 0;
+  const plotId = res.insertId ?? 0;
+  // Pre-seed `plot_survey_layers` with rows for the default layer count (4 =
+  // E1-E4). Transect plots get no layer rows. Keeping the layer rows in lockstep
+  // with `plot_surveys.layer_count` is enforced by setPlotLayerCount() below.
+  if ((input.plot_type ?? 'fixed') === 'fixed' && plotId > 0) {
+    for (let i = 1; i <= DEFAULT_LAYER_COUNT; i++) {
+      // E4 (亞喬木層) historically used DBH method; preserve that default so
+      // existing user expectations carry across schemas.
+      const defaultMethod: AbundanceMethod = i === 4 ? 'DBH' : 'BB';
+      db.executeSync(
+        `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, method) VALUES (?, ?, ?)`,
+        [plotId, i, defaultMethod],
+      );
+    }
+  }
+  return plotId;
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Per-layer environmental data (v12: normalized into plot_survey_layers)
+// ─────────────────────────────────────────────────────────────────────
+
+/** Get all layer rows for a plot, ordered by layer_index ascending. Always
+ *  returns at most plot.layer_count rows for fixed plots; empty for transect. */
+export function getPlotLayers(plotId: number): PlotLayer[] {
+  const db = getUserDb();
+  const res = db.executeSync(
+    `SELECT * FROM plot_survey_layers WHERE plot_survey_id = ? ORDER BY layer_index ASC`,
+    [plotId],
+  );
+  return (res.rows ?? []) as unknown as PlotLayer[];
+}
+
+/** Get a single layer (creates an empty row on-demand if missing — handy for
+ *  the UI which renders one cell per layer_index regardless of whether the
+ *  user has typed anything yet). */
+export function getOrCreatePlotLayer(plotId: number, layerIndex: number): PlotLayer {
+  const db = getUserDb();
+  const existing = db.executeSync(
+    `SELECT * FROM plot_survey_layers WHERE plot_survey_id = ? AND layer_index = ? LIMIT 1`,
+    [plotId, layerIndex],
+  );
+  const row = existing.rows?.[0] as unknown as PlotLayer | undefined;
+  if (row) return row;
+  db.executeSync(
+    `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, method) VALUES (?, ?, 'BB')`,
+    [plotId, layerIndex],
+  );
+  const reread = db.executeSync(
+    `SELECT * FROM plot_survey_layers WHERE plot_survey_id = ? AND layer_index = ? LIMIT 1`,
+    [plotId, layerIndex],
+  );
+  return reread.rows![0] as unknown as PlotLayer;
+}
+
+export type UpdatePlotLayerPatch = Partial<Pick<PlotLayer, 'cover_pct' | 'height_cm' | 'method'>>;
+
+export function updatePlotLayer(
+  plotId: number,
+  layerIndex: number,
+  patch: UpdatePlotLayerPatch,
+): void {
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+  if ('cover_pct' in patch) {
+    sets.push('cover_pct = ?');
+    args.push(patch.cover_pct ?? null);
+  }
+  if ('height_cm' in patch) {
+    sets.push('height_cm = ?');
+    args.push(patch.height_cm ?? null);
+  }
+  if ('method' in patch && patch.method) {
+    sets.push('method = ?');
+    args.push(patch.method);
+  }
+  if (sets.length === 0) return;
+  // Ensure the row exists before updating (avoids silent no-op when the user
+  // edits a layer that hasn't been touched yet).
+  getOrCreatePlotLayer(plotId, layerIndex);
+  args.push(plotId, layerIndex);
+  const db = getUserDb();
+  db.executeSync(
+    `UPDATE plot_survey_layers SET ${sets.join(', ')} WHERE plot_survey_id = ? AND layer_index = ?`,
+    args,
+  );
+  db.executeSync(`UPDATE plot_surveys SET updated_at = ? WHERE id = ?`, [Date.now(), plotId]);
+}
+
+/** Parse the JSON-array `env_photos_json` cell into a list of URIs. Returns
+ *  empty array for null / invalid input. Same shape as
+ *  `plot_species_records.photo_paths` so the existing PhotoGrid component
+ *  works against env photos without modification. */
+export function parseEnvPhotos(json: string | null | undefined): string[] {
+  if (!json) return [];
+  try {
+    const arr = JSON.parse(json);
+    if (Array.isArray(arr)) return arr.filter((s): s is string => typeof s === 'string');
+  } catch {
+    /* ignore */
+  }
+  return [];
+}
+
+/** Write a fresh env-photo URI list back to the plot. Pass an empty array to
+ *  clear all env photos. */
+export function updatePlotEnvPhotos(plotId: number, uris: string[]): void {
+  const db = getUserDb();
+  const value = uris.length === 0 ? null : JSON.stringify(uris);
+  db.executeSync(`UPDATE plot_surveys SET env_photos_json = ?, updated_at = ? WHERE id = ?`, [
+    value,
+    Date.now(),
+    plotId,
+  ]);
+}
+
+/** Adjust the active layer count. Increasing adds default rows; decreasing
+ *  KEEPS the data in higher-index rows (don't delete — user might bump count
+ *  back up). UI just hides them via getActiveLayers(plot.layer_count). */
+export function setPlotLayerCount(plotId: number, count: number): void {
+  const clamped = Math.max(1, Math.min(MAX_LAYER_COUNT, count));
+  const db = getUserDb();
+  // Ensure all layer rows up to `clamped` exist.
+  for (let i = 1; i <= clamped; i++) {
+    getOrCreatePlotLayer(plotId, i);
+  }
+  db.executeSync(`UPDATE plot_surveys SET layer_count = ?, updated_at = ? WHERE id = ?`, [
+    clamped,
+    Date.now(),
+    plotId,
+  ]);
 }
 
 export function listPlotSurveys(): PlotSurvey[] {
@@ -229,6 +394,11 @@ const PLOT_UPDATABLE_KEYS: (keyof UpdatePlotPatch)[] = [
   'rock_cover_pct',
   'gravel_cover_pct',
   'bareland_cover_pct',
+  'layer_count',
+  'env_photos_json',
+  // Legacy per-layer columns. Still listed so any in-flight writer from older
+  // code paths doesn't error out, but new UI must go through updatePlotLayer
+  // against `plot_survey_layers`. Will be removed in v13.
   'e0_cover_pct',
   'e0_height_cm',
   'e1_cover_pct',
@@ -396,22 +566,14 @@ export function plotCanAcceptSpecies(plot: PlotSurvey): boolean {
   );
 }
 
+/** Look up the abundance method configured for a given layer of this plot.
+ *  Reads from plot_survey_layers (v12 schema). Transect plots have no per-layer
+ *  config — caller falls back to BB. */
 export function plotMethodForLayer(plot: PlotSurvey, layer: Layer): AbundanceMethod {
-  switch (layer) {
-    case 'E0':
-      return plot.e0_method;
-    case 'E1':
-      return plot.e1_method;
-    case 'E2':
-      return plot.e2_method;
-    case 'E3':
-      return plot.e3_method;
-    case 'T':
-      // Transect plots do not have per-layer methods. Default to BB; the UI
-      // can let the user override per record once we add transect-specific
-      // value entry.
-      return 'BB';
-  }
+  if (layer === 'T') return 'BB';
+  const idx = layerIndexOf(layer);
+  const layers = getPlotLayers(plot.id);
+  return layers.find((l) => l.layer_index === idx)?.method ?? 'BB';
 }
 
 // ---------- species records ----------
