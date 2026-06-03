@@ -17,7 +17,7 @@ export type MapViewState = {
   latitudeDelta: number;
   longitudeDelta: number;
   basemap: MapBasemap;
-  /** Selected 中研院 WMTS layer id, '' for none */
+  /** Selected Academia Sinica (Taiwan)'s WMTS layer id, '' for none */
   sinica_layer: string;
   /** WMTS overlay opacity 0..1 */
   sinica_opacity: number;

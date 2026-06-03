@@ -25,7 +25,7 @@ const GOOGLE_MAPS_ANDROID_API_KEY = process.env.GOOGLE_MAPS_ANDROID_API_KEY;
 const config: ExpoConfig = {
   name: 'Checklister',
   slug: 'checklister-mobile',
-  version: 'm0.3.1',
+  version: '0.4.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'checklister',
@@ -33,7 +33,7 @@ const config: ExpoConfig = {
   newArchEnabled: true,
   ios: {
     supportsTablet: true,
-    bundleIdentifier: 'tw.checklister.mobile',
+    bundleIdentifier: 'tw.edu.ntu.checklister',
   },
   android: {
     package: 'tw.checklister.mobile',
@@ -43,11 +43,6 @@ const config: ExpoConfig = {
       backgroundImage: './assets/images/android-icon-background.png',
       monochromeImage: './assets/images/android-icon-monochrome.png',
     },
-    // edge-to-edge is now configured via the `react-native-edge-to-edge`
-    // plugin below; the lib's plugin replaces the AppTheme with one whose
-    // status & nav bars are transparent, and the React activity calls
-    // `setDecorFitsSystemWindows(false)` so `useSafeAreaInsets().bottom`
-    // returns the real nav-bar height.
     predictiveBackGestureEnabled: false,
     ...(GOOGLE_MAPS_ANDROID_API_KEY
       ? { config: { googleMaps: { apiKey: GOOGLE_MAPS_ANDROID_API_KEY } } }

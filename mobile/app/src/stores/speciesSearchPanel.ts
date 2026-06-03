@@ -1,5 +1,5 @@
 /**
- * Persisted state for the 物種 tab's 「搜尋」 segment, so the inline detail
+ * Persisted state for the species (物種) tab's "search" segment, so the inline detail
  * survives segment switches (e.g. user picks a result, taps a rank chip on
  * the detail panel which forces the segment to 'tree', then comes back to
  * 'search' — the previously-shown detail should still be there).
