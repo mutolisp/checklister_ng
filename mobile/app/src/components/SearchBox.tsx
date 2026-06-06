@@ -60,18 +60,18 @@ function cacheSet(key: string, value: SearchResult[]): void {
 }
 
 export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afterSelect = 'refocus' }: Props) {
-  const lastGroup = useSettings((s) => s.last_search_group);
+  const lastGroups = useSettings((s) => s.last_search_groups);
   const setSetting = useSettings((s) => s.set);
 
   const [query, setQuery] = useState('');
-  const [group, setGroupLocal] = useState<TaxonGroup | ''>(lastGroup);
+  const [groups, setGroupsLocal] = useState<TaxonGroup[]>(lastGroups);
   const [results, setResults] = useState<SearchResult[]>([]);
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setGroupLocal(lastGroup);
-  }, [lastGroup]);
+    setGroupsLocal(lastGroups);
+  }, [lastGroups]);
 
   // Pre-warm the 62k fuzzy cname index off the critical path so the first
   // user query doesn't pay the ~200-500ms cold-load cost. setTimeout(0)
@@ -98,7 +98,7 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
     // Cache hit fires synchronously — no debounce wait. Lets the user
     // erase a char and instantly see the prior result without re-running
     // the SQL.
-    const cacheKey = `${trimmed}|${group || ''}`;
+    const cacheKey = `${trimmed}|${groups.join(',')}`;
     const cached = cacheGet(cacheKey);
     if (cached) {
       setResults(cached.slice(0, 20));
@@ -106,7 +106,7 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
     }
     debounceRef.current = setTimeout(() => {
       try {
-        const r = searchWithFuzzyFallback({ q: trimmed, group: group || undefined });
+        const r = searchWithFuzzyFallback({ q: trimmed, groups: groups.length ? groups : undefined });
         cacheSet(cacheKey, r);
         setResults(r.slice(0, 20));
       } catch (e) {
@@ -122,11 +122,11 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, group]);
+  }, [query, groups]);
 
-  const handleGroupChange = (next: TaxonGroup | '') => {
-    setGroupLocal(next);
-    setSetting('last_search_group', next);
+  const handleGroupChange = (next: TaxonGroup[]) => {
+    setGroupsLocal(next);
+    setSetting('last_search_groups', next);
   };
 
   const handleSelect = (result: SearchResult) => {
@@ -164,7 +164,7 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
         </View>
       ) : null}
       <View className="flex-row items-center justify-start gap-2 border-b border-gray-100 dark:border-gray-800 px-3 py-2">
-        <TaxonGroupPicker value={group} onChange={handleGroupChange} />
+        <TaxonGroupPicker value={groups} onChange={handleGroupChange} />
       </View>
       <View className="flex-row items-center px-2 py-2">
         <View className="flex-1 flex-row items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-2">

@@ -4,6 +4,8 @@
  * (defer to iteration after first taxonomy ship).
  */
 import { getTaicolDb } from './init';
+import { searchWithFuzzyFallback } from './fuzzy';
+import type { SearchResult } from './types';
 
 export const RANK_ORDER = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'] as const;
 export type Rank = (typeof RANK_ORDER)[number];
@@ -358,7 +360,43 @@ export type TaxonSearchHit = {
   rank: string;
   author: string;
   path: Array<{ rank: Rank; value: string }>;
+  /** Set when the user's query matched a synonym that resolved to this
+   *  accepted name (mirrors SearchResult.matched_as in the main search). */
+  matched_as?: { name: string; fullname: string; status: string };
+  /** Set when this hit came from the fuzzy (Levenshtein) fallback. */
+  fuzzy_match?: { query: string; matched: string; score: number };
 };
+
+/** Map a species-level `SearchResult` (from the main search pipeline, which
+ *  already does synonym resolution + fuzzy fallback) onto a `TaxonSearchHit`
+ *  so the taxonomy tree can expand to it. The ancestor `path` is built from
+ *  the accepted row's hierarchy columns. */
+function resultToTaxonHit(r: SearchResult): TaxonSearchHit {
+  const levelVals: Record<Rank, string> = {
+    kingdom: r.kingdom,
+    phylum: r.phylum,
+    class: r.class_name,
+    order: r.order,
+    family: r.family,
+    genus: r.genus,
+  };
+  const path: Array<{ rank: Rank; value: string }> = [];
+  for (const level of RANK_ORDER) {
+    const val = levelVals[level];
+    if (val) path.push({ rank: level, value: val });
+  }
+  const display = r.cname ? `${r.cname} (${r.name})` : r.name;
+  return {
+    display,
+    name: r.name,
+    cname: r.cname,
+    rank: r.rank,
+    author: r.fullname.replace(r.name, '').trim(),
+    path,
+    matched_as: r.matched_as,
+    fuzzy_match: r.fuzzy_match,
+  };
+}
 
 function escapeLike(s: string): string {
   return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
@@ -439,6 +477,24 @@ export function searchTaxonomy(q: string): TaxonSearchHit[] {
       path,
     };
   });
+
+  // Augment with synonym + fuzzy species matches by reusing the main search
+  // pipeline (searchWithFuzzyFallback already resolves synonyms to accepted
+  // names and falls back to the Levenshtein cname index). The accepted row's
+  // hierarchy gives us the ancestor path for tree expansion. Dedupe against
+  // the LIKE hits above by rank:name so direct matches aren't doubled.
+  const seen = new Set(hits.map((h) => `${h.rank}:${h.name}`));
+  try {
+    for (const r of searchWithFuzzyFallback({ q: trimmed })) {
+      const key = `${r.rank}:${r.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      hits.push(resultToTaxonHit(r));
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[searchTaxonomy] synonym/fuzzy augment failed:', e);
+  }
 
   hits.sort((a, b) => {
     const pa = RANK_PRIORITY[a.rank] ?? 9;

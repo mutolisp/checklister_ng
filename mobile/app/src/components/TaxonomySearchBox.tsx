@@ -95,10 +95,14 @@ export function TaxonomySearchBox({ onPick }: Props) {
 const HitRow = memo(function HitRow({ hit, onPress }: { hit: TaxonSearchHit; onPress: () => void }) {
   const pathPreview = hit.path.map((p) => p.value).join(' › ');
   const c = rankColor(hit.rank);
+  const isSynonym = !!hit.matched_as;
+  const isFuzzy = !!hit.fuzzy_match;
   return (
     <Pressable onPress={onPress} className="border-b border-gray-100 dark:border-gray-800 px-4 py-2.5 active:bg-blue-50 dark:active:bg-blue-900/40">
       <View className="flex-row items-center">
         <Text className="flex-1 text-sm text-gray-900 dark:text-gray-100" numberOfLines={1}>
+          {isSynonym ? <Text className="text-orange-600">≡ </Text> : null}
+          {isFuzzy ? <Text className="text-purple-600">~ </Text> : null}
           {hit.cname ? <Text className="font-medium">{hit.cname} </Text> : null}
           <ScientificName name={hit.name} rank={hit.rank} />
         </Text>
@@ -106,6 +110,13 @@ const HitRow = memo(function HitRow({ hit, onPress }: { hit: TaxonSearchHit; onP
           <Text className={`text-[10px] font-medium ${c.text}`}>{hit.rank}</Text>
         </View>
       </View>
+      {hit.matched_as ? (
+        <Text className="mt-0.5 text-[11px] text-orange-700 dark:text-orange-300" numberOfLines={1}>
+          ↳ 你輸入：
+          <ScientificName name={hit.matched_as.name} rank={hit.rank} />
+          （{hit.matched_as.status}）
+        </Text>
+      ) : null}
       {pathPreview ? (
         <Text className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400" numberOfLines={1}>
           {pathPreview}

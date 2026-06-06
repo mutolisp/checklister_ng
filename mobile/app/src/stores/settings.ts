@@ -58,7 +58,7 @@ type SettingsValues = {
   theme: Theme;
   undo_duration: number;
   card_density: CardDensity;
-  last_search_group: TaxonGroup | '';
+  last_search_groups: TaxonGroup[];
   last_record_sort: RecordSort;
   /** Direction for `last_record_sort`. Observed defaults to 'desc' (latest
    *  on top); other sorts default to 'asc'. Tapping the same sort option a
@@ -89,7 +89,7 @@ const DEFAULTS: SettingsValues = {
   theme: 'auto',
   undo_duration: 5,
   card_density: 'comfortable',
-  last_search_group: '',
+  last_search_groups: [],
   last_record_sort: 'observed',
   last_record_sort_dir: 'desc',
   taxonomy_expanded: [],
@@ -160,7 +160,7 @@ function readAll(): SettingsValues {
     theme: (map.get('theme') as Theme) ?? DEFAULTS.theme,
     undo_duration: parseInt(map.get('undo_duration') ?? String(DEFAULTS.undo_duration), 10),
     card_density: (map.get('card_density') as CardDensity) ?? DEFAULTS.card_density,
-    last_search_group: (map.get('last_search_group') as TaxonGroup | '') ?? DEFAULTS.last_search_group,
+    last_search_groups: parseSearchGroups(map.get('last_search_groups')),
     last_record_sort: (map.get('last_record_sort') as RecordSort) ?? DEFAULTS.last_record_sort,
     last_record_sort_dir:
       (map.get('last_record_sort_dir') as SortDirection) ?? DEFAULTS.last_record_sort_dir,
@@ -181,6 +181,17 @@ function readAll(): SettingsValues {
         ? DEFAULTS.export_include_photos
         : map.get('export_include_photos') === 'true',
   };
+}
+
+function parseSearchGroups(raw: string | undefined): TaxonGroup[] {
+  if (!raw) return DEFAULTS.last_search_groups;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((v): v is TaxonGroup => typeof v === 'string');
+  } catch {
+    // ignore corrupt setting
+  }
+  return DEFAULTS.last_search_groups;
 }
 
 function parseGeoFormats(raw: string | undefined): Array<'geojson' | 'gpx' | 'kml'> {

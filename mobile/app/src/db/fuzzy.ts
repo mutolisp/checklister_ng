@@ -1,11 +1,11 @@
 import { distance } from 'fastest-levenshtein';
 import { getTaicolDb } from './init';
-import { SEARCH_COLUMNS, searchSpecies, TAXON_GROUP_FILTERS } from './search';
+import { SEARCH_COLUMNS, searchSpecies, groupFilterClause } from './search';
 import type { SearchResult, TaxonGroup } from './types';
 
 type FuzzyOptions = {
   q: string;
-  group?: TaxonGroup;
+  groups?: TaxonGroup[];
   excludeIds?: Set<number>;
   limit?: number;
 };
@@ -46,7 +46,7 @@ function loadCnameIndex(): Array<{ cname: string; nameIds: number[] }> | null {
   }
 }
 
-export function fuzzySearch({ q, group, excludeIds, limit = 10 }: FuzzyOptions): SearchResult[] {
+export function fuzzySearch({ q, groups, excludeIds, limit = 10 }: FuzzyOptions): SearchResult[] {
   if (!q || q.length < 2) return [];
 
   const index = loadCnameIndex();
@@ -90,12 +90,7 @@ export function fuzzySearch({ q, group, excludeIds, limit = 10 }: FuzzyOptions):
   // "維管束植物" had no effect on fuzzy results (only exact-search was filtered).
   let sql = `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE name_id IN (${placeholders})`;
   const params: (string | number)[] = [...matchedNameIds];
-  if (group && TAXON_GROUP_FILTERS[group]) {
-    for (const [field, value] of Object.entries(TAXON_GROUP_FILTERS[group])) {
-      sql += ` AND "${field}" = ?`;
-      params.push(value);
-    }
-  }
+  sql += groupFilterClause(groups, params);
   const res = db.executeSync(sql, params);
 
   const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
@@ -161,11 +156,11 @@ export function fuzzySearch({ q, group, excludeIds, limit = 10 }: FuzzyOptions):
  */
 export function searchWithFuzzyFallback(opts: {
   q: string;
-  group?: TaxonGroup;
+  groups?: TaxonGroup[];
 }): SearchResult[] {
   let exact: SearchResult[] = [];
   try {
-    exact = searchSpecies({ q: opts.q, group: opts.group, limit: 30 });
+    exact = searchSpecies({ q: opts.q, groups: opts.groups, limit: 30 });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[search] exact search failed:', e);
@@ -175,7 +170,7 @@ export function searchWithFuzzyFallback(opts: {
 
   try {
     const excludeIds = new Set(exact.map((r) => r.id));
-    const fuzzy = fuzzySearch({ q: opts.q, group: opts.group, excludeIds });
+    const fuzzy = fuzzySearch({ q: opts.q, groups: opts.groups, excludeIds });
     return [...exact, ...fuzzy];
   } catch (e) {
     // eslint-disable-next-line no-console

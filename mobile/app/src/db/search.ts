@@ -17,6 +17,33 @@ export const TAXON_GROUP_FILTERS: Record<TaxonGroup, Partial<Record<'kingdom' | 
   Animalia: { kingdom: 'Animalia' },
 };
 
+/**
+ * Build an OR-combined taxon-group filter clause for `groups`. Within one
+ * group the column conditions (kingdom/phylum/class) are AND-ed; the groups
+ * themselves are OR-ed, so picking 「鳥類」+「哺乳類」 returns the union, not
+ * the (empty) intersection. Bound values are pushed onto `params`. Returns
+ * '' when there are no valid groups (i.e. 全部類群). Shared by `searchSpecies`
+ * and the fuzzy fallback so both honour the same multi-select filter.
+ */
+export function groupFilterClause(
+  groups: TaxonGroup[] | undefined,
+  params: (string | number)[],
+): string {
+  if (!groups || groups.length === 0) return '';
+  const ors: string[] = [];
+  for (const g of groups) {
+    const filter = TAXON_GROUP_FILTERS[g];
+    if (!filter) continue;
+    const ands: string[] = [];
+    for (const [field, value] of Object.entries(filter)) {
+      ands.push(`"${field}" = ?`);
+      params.push(value);
+    }
+    if (ands.length > 0) ors.push(ands.length > 1 ? `(${ands.join(' AND ')})` : ands[0]);
+  }
+  return ors.length > 0 ? ` AND (${ors.join(' OR ')})` : '';
+}
+
 const ALIEN_TYPE_MAP: Record<string, string> = {
   native: '原生',
   naturalized: '歸化',
@@ -136,7 +163,9 @@ function markSensuLato(results: SearchResult[]): SearchResult[] {
 
 export type SearchOptions = {
   q: string;
-  group?: TaxonGroup;
+  /** One or more taxon groups to restrict the search to (OR-combined). Empty
+   *  / undefined = 全部類群 (no restriction). */
+  groups?: TaxonGroup[];
   advanced?: AdvancedFilters;
   limit?: number;
 };
@@ -204,7 +233,7 @@ export const SEARCH_COLUMNS = [
   'rank',
 ].join(', ');
 
-export function searchSpecies({ q, group, advanced = {}, limit = 30 }: SearchOptions): SearchResult[] {
+export function searchSpecies({ q, groups, advanced = {}, limit = 30 }: SearchOptions): SearchResult[] {
   const trimmed = q.trim();
   if (!trimmed) return [];
 
@@ -228,12 +257,7 @@ export function searchSpecies({ q, group, advanced = {}, limit = 30 }: SearchOpt
 
   let sql = `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE (${likePatterns.join(' OR ')}) AND is_in_taiwan LIKE '%true%'`;
 
-  if (group && TAXON_GROUP_FILTERS[group]) {
-    for (const [field, value] of Object.entries(TAXON_GROUP_FILTERS[group])) {
-      sql += ` AND "${field}" = ?`;
-      params.push(value);
-    }
-  }
+  sql += groupFilterClause(groups, params);
 
   if (advanced.rank) {
     if (advanced.rank === 'infraspecies') {

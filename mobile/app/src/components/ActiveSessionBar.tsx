@@ -6,7 +6,7 @@
  * active simultaneously.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, type Href } from 'expo-router';
+import { usePathname, useRouter, type Href } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useActivePlot } from '~/stores/activePlot';
@@ -14,6 +14,7 @@ import { useActiveSession } from '~/stores/activeSession';
 
 export function ActiveSessionBar() {
   const router = useRouter();
+  const pathname = usePathname();
   const session = useActiveSession((s) => s.session);
   const plot = useActivePlot((s) => s.plot);
   const insets = useSafeAreaInsets();
@@ -27,11 +28,20 @@ export function ActiveSessionBar() {
   const showPlot = plot && plotTs >= sessionTs;
 
   const label = showPlot ? `樣區記錄中：${plot!.plotid}` : `記錄中：${session!.name}`;
-  const href: Href = showPlot ? (`/plot/${plot!.id}` as Href) : (`/session/${session!.id}` as Href);
+  // This bar is persistent chrome rendered above the stack on EVERY screen,
+  // including the record's own detail page. Tapping it must not push a second
+  // copy of a screen already on the stack (that turned exiting into many
+  // back-presses). Guard the no-op case, then use `navigate` (pops back to an
+  // existing instance) instead of `push` (always adds a new one).
+  const targetPath = showPlot ? `/plot/${plot!.id}` : `/session/${session!.id}`;
+  const href: Href = targetPath as Href;
 
   return (
     <Pressable
-      onPress={() => router.push(href)}
+      onPress={() => {
+        if (pathname === targetPath) return;
+        router.navigate(href);
+      }}
       className="bg-emerald-600 active:bg-emerald-700"
       style={{ paddingTop: insets.top }}
     >
