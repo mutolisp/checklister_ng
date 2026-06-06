@@ -48,6 +48,7 @@ import { rankColor } from '~/lib/rankColors';
 import { taxonSpeciesToSearchResult } from '~/lib/taxonSpecies';
 import { useAddToActiveRecord } from '~/lib/useAddToActiveRecord';
 import { useActiveSession } from '~/stores/activeSession';
+import { useFavorites } from '~/stores/favorites';
 import { useSettings } from '~/stores/settings';
 import { useTaxonomyJump } from '~/stores/taxonomyJump';
 import { useToast } from '~/stores/toast';
@@ -740,18 +741,29 @@ export default function TaxonomyScreen() {
                       onPress={() => setActiveSpecies(taxonSpeciesToSearchResult(item.species))}
                       onLongPress={async () => {
                         const title = item.species.common_name_c || item.species.simple_name;
+                        const sr = taxonSpeciesToSearchResult(item.species);
+                        const fav = useFavorites.getState().ids.has(sr.taxon_id);
                         const idx = await showActionSheet({
                           title,
                           options: [
                             { label: '加入當前記錄' },
+                            { label: fav ? '移除常用名錄' : '加入常用名錄' },
                             { label: '看詳細資訊' },
                             { label: '複製...' },
                           ],
                         });
                         if (idx === 0) handleQuickAdd(item.species);
-                        else if (idx === 1)
+                        else if (idx === 1) {
+                          if (fav) {
+                            useFavorites.getState().remove(sr.taxon_id);
+                            toast('已從常用名錄移除');
+                          } else {
+                            useFavorites.getState().add(sr);
+                            toast('已加入常用名錄');
+                          }
+                        } else if (idx === 2)
                           setActiveSpecies(taxonSpeciesToSearchResult(item.species));
-                        else if (idx === 2) {
+                        else if (idx === 3) {
                           const actions = speciesCopyActions(item.species);
                           const sub = await showActionSheet({
                             title,

@@ -32,6 +32,8 @@ import { PlotSpeciesValueModal, type PlotValueDraft } from './PlotSpeciesValueMo
 import { alienBadge } from '~/lib/conservationColors';
 import { parseMultiAttribute, serializeMultiAttribute } from '~/lib/dwcAttributes';
 import { useSettings, type RecordSort, type SortDirection } from '~/stores/settings';
+import { useFavorites } from '~/stores/favorites';
+import { useToast } from '~/stores/toast';
 import { showActionSheet } from './ActionSheet';
 import {
   formatQuantityBadge,
@@ -302,20 +304,30 @@ export function PlotSpeciesTab({
     onChanged();
   };
 
-  const handleLongPressRecord = (r: PlotSpeciesRecordWithTaxon) => {
-    Alert.alert(r.common_name_c || r.simple_name, undefined, [
-      { text: '取消', style: 'cancel' },
-      { text: '編輯', onPress: () => setModal({ mode: 'edit', record: r }) },
-      {
-        text: '刪除',
-        style: 'destructive',
-        onPress: () => {
-          deletePlotSpecies(r.id);
-          reload();
-          onChanged();
-        },
-      },
-    ]);
+  const handleLongPressRecord = async (r: PlotSpeciesRecordWithTaxon) => {
+    const fav = useFavorites.getState().ids.has(r.taxon_id);
+    const idx = await showActionSheet({
+      title: r.common_name_c || r.simple_name,
+      options: [
+        { label: '編輯' },
+        { label: fav ? '移除常用名錄' : '加入常用名錄' },
+        { label: '刪除', destructive: true },
+      ],
+    });
+    if (idx === 0) setModal({ mode: 'edit', record: r });
+    else if (idx === 1) {
+      const t = useToast.getState().show;
+      if (fav) {
+        useFavorites.getState().remove(r.taxon_id);
+        t('已從常用名錄移除');
+      } else {
+        t(useFavorites.getState().addById(r.taxon_id) ? '已加入常用名錄' : '無法加入常用名錄');
+      }
+    } else if (idx === 2) {
+      deletePlotSpecies(r.id);
+      reload();
+      onChanged();
+    }
   };
 
   const layerMethodHint = (l: Layer): string | null => {

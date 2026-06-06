@@ -60,7 +60,7 @@ export type BundleItem =
   | { kind: 'session'; id: number }
   | { kind: 'plot'; id: number };
 
-function sanitizeFilename(name: string): string {
+export function sanitizeFilename(name: string): string {
   // Allow Unicode letters (incl. CJK), digits, underscore, hyphen, dot. Without
   // \p{L}/\p{N} a Chinese name like 「樹木學」 becomes 「___」 because \w only
   // matches ASCII. Drop separators (space, slash, etc.) → underscore.
@@ -69,7 +69,7 @@ function sanitizeFilename(name: string): string {
   return cleaned.replace(/^[._]+|[._]+$/g, '').slice(0, 80) || 'export';
 }
 
-function parsePhotoUris(json: string | null): string[] {
+export function parsePhotoUris(json: string | null): string[] {
   if (!json) return [];
   try {
     const arr = JSON.parse(json);
@@ -346,7 +346,7 @@ function buildPlotPoints(records: PlotSpeciesRecordWithTaxon[]): { type: 'Featur
 
 // ---- Public API -----------------------------------------------------------
 
-type BuiltZipEntry = { name: string; bytes: Uint8Array };
+export type BuiltZipEntry = { name: string; bytes: Uint8Array };
 
 async function buildSessionEntries(
   sessionId: number,
@@ -635,7 +635,7 @@ function addGeoEntries(
   }
 }
 
-async function resolveAssetUri(uri: string): Promise<string | null> {
+export async function resolveAssetUri(uri: string): Promise<string | null> {
   if (uri.startsWith('file://')) return uri;
 
   // PHAsset (iOS) and Android MediaStore URIs both need an extra hop to get
@@ -704,7 +704,7 @@ function photoEntryName(
  * `getAssetInfoAsync` will continue to return null and we'll just skip
  * photos (the rest of the bundle still ships). */
 let photosFullAccessAttempted = false;
-async function ensurePhotosReadAccess(): Promise<void> {
+export async function ensurePhotosReadAccess(): Promise<void> {
   if (photosFullAccessAttempted) return;
   photosFullAccessAttempted = true;
   try {
@@ -827,12 +827,12 @@ async function collectPhotosPlot(
   return out;
 }
 
-function guessExt(uri: string): string {
+export function guessExt(uri: string): string {
   const m = uri.toLowerCase().match(/\.(jpg|jpeg|png|heic|webp)(?:\?|$)/);
   return m ? m[1] : 'jpg';
 }
 
-function base64ToBytes(b64: string): Uint8Array {
+export function base64ToBytes(b64: string): Uint8Array {
   // Hermes doesn't have atob in older builds; expo's runtime has it but to be
   // safe we decode manually. Strip data: prefix if present.
   const data = b64.includes(',') ? b64.split(',')[1] : b64;
@@ -966,7 +966,7 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
   return finalizeZip(allEntries, `checklister_bundle_${ts}`);
 }
 
-function finalizeZip(entries: BuiltZipEntry[], folderName: string): ExportFile {
+export function finalizeZip(entries: BuiltZipEntry[], folderName: string): ExportFile {
   const zippable: Zippable = {};
   for (const e of entries) zippable[e.name] = e.bytes;
   const zipped = zipSync(zippable, { level: 6 });

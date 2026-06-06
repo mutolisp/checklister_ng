@@ -415,6 +415,14 @@ export default function RecordsListScreen() {
             <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">記錄</Text>
             <View className="flex-row items-center gap-2">
               <Pressable
+                onPress={() => router.push('/favorites')}
+                hitSlop={8}
+                className="flex-row items-center rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+              >
+                <Ionicons name="star" size={14} color="#d97706" />
+                <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">常用名錄</Text>
+              </Pressable>
+              <Pressable
                 onPress={() => setPrefOpen(true)}
                 hitSlop={8}
                 className="rounded-full bg-gray-100 dark:bg-gray-800 p-1.5 active:bg-gray-200 dark:active:bg-gray-700"

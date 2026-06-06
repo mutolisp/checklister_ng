@@ -13,7 +13,7 @@ type MenuItem = {
 const ITEMS: MenuItem[] = [
   { icon: 'folder-outline', label: '專案管理', description: '專案及其下的名錄 / 樣區', href: '/projects' },
   { icon: 'pin-outline', label: '地理樣區', description: '地圖上的點位 / 路線 / 範圍', href: '/sites' },
-  { icon: 'download-outline', label: '匯出', description: 'YAML / CSV', href: '/export' },
+  { icon: 'archive-outline', label: '備份', description: '資料 / 照片備份與回復', href: '/backup' },
   { icon: 'settings-outline', label: '偏好設定', href: '/settings' },
   { icon: 'cloud-download-outline', label: '資料更新', description: 'Phase 2', disabled: true },
   { icon: 'information-circle-outline', label: '關於', href: '/about' },

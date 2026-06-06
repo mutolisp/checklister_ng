@@ -498,7 +498,34 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN point_radius_m REAL;`);
     },
   },
+  {
+    // v14: 常用名錄 (favorite taxa). User-curated shortlist of frequently used
+    // taxa for fast field entry. Denormalised display/sort columns are copied
+    // from the matched TaiCOL row at add-time so the list renders offline
+    // without a per-row join against twnamelist.db. taxon_id PK dedupes.
+    version: 14,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS favorite_taxa (
+          taxon_id TEXT PRIMARY KEY,
+          simple_name TEXT,
+          common_name_c TEXT,
+          family TEXT,
+          family_c TEXT,
+          rank TEXT,
+          kingdom TEXT,
+          added_at INTEGER NOT NULL
+        );
+      `);
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_added ON favorite_taxa(added_at DESC);`);
+    },
+  },
 ];
+
+/** Highest schema version this build knows how to produce. Backup/restore uses
+ *  it to refuse a backup made by a newer app (whose schema this build can't
+ *  satisfy). */
+export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
 export async function runUserMigrations(db: DB): Promise<void> {
   db.executeSync(`CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY);`);

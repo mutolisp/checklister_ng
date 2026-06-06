@@ -55,6 +55,7 @@ import { useSettings, type RecordSort, type SortDirection } from '~/stores/setti
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 import { useActivePlot } from '~/stores/activePlot';
+import { useFavorites } from '~/stores/favorites';
 
 const SORT_LABEL: Record<RecordSort, string> = {
   observed: '加入順序',
@@ -566,17 +567,26 @@ export default function SessionDetailScreen() {
   };
 
   const handleLongPressRecord = async (record: RecordWithTaxon) => {
+    const fav = useFavorites.getState().ids.has(record.taxon_id);
     const idx = await showActionSheet({
       title: record.common_name_c || record.simple_name,
       options: [
         { label: '編輯備註' },
+        { label: fav ? '移除常用名錄' : '加入常用名錄' },
         { label: '看詳細資訊' },
         { label: '從名錄移除', destructive: true },
       ],
     });
     if (idx === 0) setNotesEditing(record);
-    else if (idx === 1) setActiveRecord(record);
-    else if (idx === 2) handleSwipeRemove(record);
+    else if (idx === 1) {
+      if (fav) {
+        useFavorites.getState().remove(record.taxon_id);
+        toast('已從常用名錄移除');
+      } else {
+        toast(useFavorites.getState().addById(record.taxon_id) ? '已加入常用名錄' : '無法加入常用名錄');
+      }
+    } else if (idx === 2) setActiveRecord(record);
+    else if (idx === 3) handleSwipeRemove(record);
   };
 
   if (!session) {

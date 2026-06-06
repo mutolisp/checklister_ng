@@ -83,7 +83,8 @@ function ThemedShell() {
             <Stack.Screen name="sites" options={{ title: '樣區管理', headerBackTitle: '返回' }} />
             <Stack.Screen name="settings" options={{ title: '偏好設定', headerBackTitle: '返回' }} />
             <Stack.Screen name="about" options={{ title: '關於', headerBackTitle: '返回' }} />
-            <Stack.Screen name="export" options={{ title: '匯出', headerBackTitle: '返回' }} />
+            <Stack.Screen name="favorites" options={{ title: '常用名錄', headerBackTitle: '返回' }} />
+            <Stack.Screen name="backup" options={{ title: '備份', headerBackTitle: '返回' }} />
           </Stack>
         </View>
         <ToastHost />

@@ -21,6 +21,7 @@ import {
 import { buildSpeciesCopyText, copyToClipboard, speciesCopyActions } from '~/lib/clipboard';
 import { alienBadge } from '~/lib/conservationColors';
 import { rankColor } from '~/lib/rankColors';
+import { useFavorites } from '~/stores/favorites';
 import { useTaxonomyJump, type JumpPath } from '~/stores/taxonomyJump';
 import { showActionSheet } from './ActionSheet';
 import { CollapsibleSection, SynonymStatusBadge } from './CollapsibleSection';
@@ -70,6 +71,9 @@ export function SpeciesDetailPanel({
   const [synonyms, setSynonyms] = useState<Synonym[]>([]);
   const [infraspecies, setInfraspecies] = useState<TaxonSpecies[]>([]);
   const scrollRef = useRef<ScrollView>(null);
+  const favorited = useFavorites((s) => s.ids.has(result.taxon_id));
+  const addFav = useFavorites((s) => s.add);
+  const removeFav = useFavorites((s) => s.remove);
 
   useEffect(() => {
     if (result.taxon_id) setSynonyms(getSynonyms(result.taxon_id));
@@ -131,6 +135,22 @@ export function SpeciesDetailPanel({
             className="text-sm text-gray-700 dark:text-gray-300"
             selectable
           />
+          {result.taxon_id ? (
+            <Pressable
+              onPress={() => (favorited ? removeFav(result.taxon_id) : addFav(result))}
+              hitSlop={6}
+              className="mt-2 flex-row items-center self-start rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+            >
+              <Ionicons
+                name={favorited ? 'star' : 'star-outline'}
+                size={14}
+                color="#d97706"
+              />
+              <Text className="ml-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {favorited ? '已在常用名錄' : '加入常用名錄'}
+              </Text>
+            </Pressable>
+          ) : null}
         </View>
         <Pressable
           onPress={async () => {

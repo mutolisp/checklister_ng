@@ -12,3 +12,4 @@ export * from './sites';
 export * from './plots';
 export * from './records_list';
 export * from './keys';
+export * from './favorites';
