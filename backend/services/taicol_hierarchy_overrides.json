@@ -1,0 +1,35 @@
+{
+  "_description": "Override / backfill genus → full hierarchy for TaiCOL taxa where the CSV omits kingdom/phylum/class/order/family. Triggered as Stage 3 of taicol_import.py after the taxon CSV backfill. Applied via SQL: UPDATE rows WHERE genus = key AND target_column IS NULL OR ''. Keys are genus Latin names; values follow taicol_names schema. Add new entries as you encounter missing-hierarchy taxa.",
+  "_format": "genus_name → {kingdom, kingdom_c, phylum, phylum_c, class, class_c, order, order_c, family, family_c}",
+  "_added": {
+    "2026-05-17": "initial seed for 4 vascular plant genera missing hierarchy after TaiCOL 20260424 import: Amydrium / Kallstroemia / Japanobotrychum (鈍裂雷公連 / 大番蒺藜 / etc.)"
+  },
+  "Amydrium": {
+    "kingdom": "Plantae", "kingdom_c": "植物界",
+    "phylum": "Tracheophyta", "phylum_c": "維管束植物門",
+    "class": "Magnoliopsida", "class_c": "木蘭植物綱",
+    "order": "Alismatales", "order_c": "澤瀉目",
+    "family": "Araceae", "family_c": "天南星科"
+  },
+  "Kallstroemia": {
+    "kingdom": "Plantae", "kingdom_c": "植物界",
+    "phylum": "Tracheophyta", "phylum_c": "維管束植物門",
+    "class": "Magnoliopsida", "class_c": "木蘭植物綱",
+    "order": "Zygophyllales", "order_c": "蒺藜目",
+    "family": "Zygophyllaceae", "family_c": "蒺藜科"
+  },
+  "Japanobotrychum": {
+    "kingdom": "Plantae", "kingdom_c": "植物界",
+    "phylum": "Tracheophyta", "phylum_c": "維管束植物門",
+    "class": "Polypodiopsida", "class_c": "水龍骨綱",
+    "order": "Ophioglossales", "order_c": "瓶爾小草目",
+    "family": "Ophioglossaceae", "family_c": "瓶爾小草科"
+  },
+  "Hystrix": {
+    "kingdom": "Animalia", "kingdom_c": "動物界",
+    "phylum": "Chordata", "phylum_c": "脊索動物門",
+    "class": "Mammalia", "class_c": "哺乳綱",
+    "order": "Rodentia", "order_c": "囓齒目",
+    "family": "Hystricidae", "family_c": "豪豬科"
+  }
+}

@@ -34,6 +34,11 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'tw.edu.ntu.checklister',
+    infoPlist: {
+      // App uses only standard HTTPS encryption (exempt). Declaring this
+      // skips the export-compliance prompt on every App Store Connect upload.
+      ITSAppUsesNonExemptEncryption: false,
+    },
   },
   android: {
     package: 'tw.checklister.mobile',
