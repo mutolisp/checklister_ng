@@ -1,53 +1,57 @@
-# Vegetation survey plan
+# 樣區調查設計與現況（Vegetation / fauna survey）
 
+> 本檔原為實作前設計稿，現已更新為「實際實作現況」。Schema 版本與 UI 行為以程式碼為準；
+> sprint 細節見 `Plan.md`、踩坑記錄見 `Update_log.md`。
 
-## Survey methods
+## 調查法（三種，皆已實作）
 
-1. boundary-based plot survey
-2. bounaryless point count
-3. line transect
+| 類型 `plot_type` | 中文 | 特性 | GPS / 解鎖物種輸入 |
+|---|---|---|---|
+| `fixed` | 固定樣區 | 分植群層 E1-E6（1-6 層可調），每層 cover%/height/method | 靜態 GPS（lat/lng/uncertainty 三欄非 null） |
+| `transect` | 穿越線 | 錄製軌跡（MultiLineString），不分層，單一 'T' 桶 | 軌跡啟用即 stamp `start_ts` 解鎖 |
+| `point_count` | 定點計數法 | 半徑 `point_radius_m` + 起迄時間 + 不分層；鳥/動物常用，隻數 individuals | 靜態 GPS（同 fixed） |
 
-## data models
+非分層類型（transect / point_count）在物種頁不顯示分層 chips/header，記錄一律歸 `'T'` 桶，靠 `plot_type` 區分語意。分支判斷統一走 `isStratified` / `usesTrack` / `requiresStaticGps`（`src/db/plots.ts`）。
 
-1. Environmental data
-   1. Including 
-      plotid (mandatory, hereafter [M] in prefix)
-      [M] coordinates (decimalLongitude, decimalLatitude), 
-      [M] eventTimeStamp (including startTimestamp, stopTimestamp),
-      [M] coordinateUncertaintyInMeters (GNSS errors),
-      [M] sampleSizeValue (e.g. 5 [plot size or length of transect]),
-      [M] sampleSizeUnit (e.g. square meters)
-      [M] samplingProtocol (e.g. 方形樣區調查法, 穿越線調查法)
-      elevation, slope, aspect, terrain position (ridge, upper slope, mid slope, lower slope, valley, plain),
-      ratio of rock cover (岩石地比例, %), ratio of gravel cover (碎石比例, %), ratio of bareland cover (裸露地比例, %)
-      [M] totalCoverInPercentage (total vegetation cover in %),
-      [M] recordedBy (investigator, e.g. Cheng-Tao Lin. Multiple surverys are allowed)
-      locality (e.g. 臺大校園總圖書館旁)
-      fieldNote (i.e. comments)
-   2. In the database schema, a uuid is required for each plot (point or polygon)/transect lines
+## 資料模型（DB schema 沿革）
 
-2. Species data
-   1. Species (with common name + scientific name for axillary data), but the taicol id should be automatically recorded
-      When input a species, it should be matched with the taicol's db
-   2. Vertical layer: E0 (moss/lichen layer), E1 (herbacious layer), E2 (shrub layer), E3 (tree layer) [EUNIS system]
-      a. Coverage of each layer (i.e. E0, E1, E2, E3, unit: %)
-      b. Height of each layer (unit: cm)
-   3. Abundance data
-      a. BraunBlanquet method: +, r, 1, 2, 3, 4, 5
-      b. percentage (0-100%)
-      c. DBH (diameter at breast height). unit is commonly cm
+### 環境（`plot_surveys`）
+- 身份 / 事件：`uuid`、`plotid`(eventID)、`plot_type`、`project_id`、`site_id`、`status`、`start_ts`/`stop_ts`/`resumed_at`
+- DwC 定位：`decimal_latitude`/`decimal_longitude`/`coord_uncertainty_m`、`elevation_m`
+- 調查協定：`sampling_protocol`、`sample_size_value`/`sample_size_unit`、`point_radius_m`（v13，定點計數半徑）、`total_cover_pct`、`recorded_by`、`locality`、`field_note`
+- 地形 / 地表：`slope_deg`/`aspect_deg`/`terrain_position`/`rock_cover_pct`/`gravel_cover_pct`/`bareland_cover_pct`
+- 分層數 `layer_count`(1-6, v12)、環境照片 `env_photos_json`(v12)
+- 軌跡：`track_geojson`/`track_finalized`（transect）
 
-## Methods
+### 分層（`plot_survey_layers`，v12 正規化表，僅 fixed）
+- 一 plot 多 row：`layer_index`(1-6) + `cover_pct` + `height_cm` + `method`(BB/percent/DBH)
+- Label 寫死 EUNIS：E1 苔蘚 / E2 草本 / E3 灌木 / E4 亞喬木 / E5 主林冠 / E6 突出
+  （注意：舊稿的 E0-E3 已於 v12 整體上移 +1，生態語意不變）
 
-1. 定點計數法
-   1. 樣區編號(plotid, DwC: eventID)
-   2. 開始時間、結束時間
-   3. 座標
-   4. 半徑
+### 物種（`plot_species_records`）
+- `taxon_id`（自動對到 TaiCOL）、`layer`('E1'..'E6' | 'T')
+- 豐度（v9 通用化）：`organism_quantity` + `organism_quantity_type`
+  （內建 Braun-Blanquet / % cover / individuals / DBH(cm) + 自定義；舊 `bb_value`/`percent`/`dbh_values_json` 已遷移、deprecated）
+- DwC 屬性（v8）：`sex` / `life_stage`（依 class 動態）/ `reproductive_condition` / `leaf_phenology`（後兩者多值，JSON array）
+- **偵測方式 `detection_type`（v13）**：`seen` 看到 / `heard` 聽到 / `flying` 飛過，UI 在定點計數或動物記錄顯示
+- **per-record 座標 `lat`/`lng`/`accuracy`（v13）**：三種樣區皆可逐筆記錄（穿越線最常用）
+- `notes`、`photo_paths`、`observed_at`
 
+## 輸入流程
 
-## input flow
+1. 建立：FAB → 選樣區類型（固定 / 穿越線 / 定點計數）→ 輸入 plotid → 進環境頁
+2. 環境頁先填必填：plotid、專案、GPS（或穿越線軌跡）；point_count 另填半徑 + 起迄時間
+3. 物種頁加入物種：搜尋 → 輸入豐度（型別自選）+ 屬性 + 偵測方式（動物/點計數）+ per-record GPS（編輯時）
 
-1. Users has to input the environmental data first, input a plot id, then get GPS coordinates and errors. The other environmental data
-   also need to be filled
-2. User input species data
+## 匯出（樣區 + 快速名錄，使用者填的資料皆會匯出）
+
+- 樣區 zip：`{plotid}_env.csv`（環境，含 point_count 半徑）、`{plotid}_sp.csv`（物種，含 sex/lifeStage/reproductiveCondition/leafPhenology/**detectionType**/**decimalLatitude/Longitude/coordinateUncertaintyInMeters**/eventRemarks；point_count 的 verbatimVegetationLayer 留空）、`{base}.yml`（同欄位對稱）、`points.geojson|gpx|kml`（per-record 座標）、`track.*`（穿越線）、`site.*`、`photos/`
+- 名錄 session：YAML/CSV/Markdown + env.csv/sp.csv + points/site + photos。YAML 與 CSV 現已補回 `notes` + 四屬性（先前 bundle YAML / 名錄 exporter 會漏）
+- DwC 對應（`dwcMapper.ts`）：新增 `notes→occurrenceRemarks`、`rank→taxonRank`、`detection_type→detectionType`（自訂 term，DwC 無標準）
+- 多值欄位以 `|` 分隔（沿用 `multiToPipe`/`multiToDwc`）；Markdown 為可讀清單，行尾附「（豐度；備註）」
+
+## 已知取捨
+
+- `point_count` 沿用 `'T'` 桶（避免 layer CHECK rebuild），凡涉 layer 語意處一律配 `plot_type` 判別；匯出時 point_count 的 `verbatimVegetationLayer` 留空。
+- `detection_type` 目前僅 `plot_species_records`（名錄 `checklist_records` 未加，需要時再開）。
+- 偵測方式 / 屬性的英文 enum 為匯出真相源，UI 顯示中文 label。

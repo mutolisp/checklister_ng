@@ -25,6 +25,7 @@ import {
   listPlotSpecies,
   parseEnvPhotos,
   type FixedLayer,
+  type PlotType,
   type RecordWithTaxon,
   type PlotSpeciesRecordWithTaxon,
 } from '~/db';
@@ -116,6 +117,15 @@ function recordToYamlItem(r: RecordWithTaxon): Record<string, unknown> {
   if (r.accuracy !== null) item.accuracy = r.accuracy;
   if (r.organism_quantity !== null) item.organism_quantity = r.organism_quantity;
   if (r.organism_quantity_type !== null) item.organism_quantity_type = r.organism_quantity_type;
+  // DwC species attributes + notes (these were previously dropped from the
+  // bundle YAML, so user-entered values silently vanished on export).
+  if (r.notes) item.notes = r.notes;
+  if (r.sex) item.sex = r.sex;
+  if (r.life_stage) item.life_stage = r.life_stage;
+  const repro = multiToPipe(r.reproductive_condition);
+  if (repro) item.reproductive_condition = repro;
+  const leaf = multiToPipe(r.leaf_phenology);
+  if (leaf) item.leaf_phenology = leaf;
   return item;
 }
 
@@ -149,6 +159,7 @@ function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMar
     protected: r.protected,
     is_hybrid: r.is_hybrid,
     nomenclature_name: '',
+    notes: r.notes,
   };
 }
 
@@ -178,7 +189,7 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
 
   // Event / location identity
   push('eventID', plot.plotid);
-  push('eventType', plot.plot_type); // fixed | transect
+  push('eventType', plot.plot_type); // fixed | transect | point_count
   if (projectName) push('datasetName', projectName);
   if (plot.start_ts !== null) {
     const startIso = new Date(plot.start_ts).toISOString();
@@ -188,6 +199,7 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
   push('samplingProtocol', plot.sampling_protocol);
   push('sampleSizeValue', plot.sample_size_value);
   push('sampleSizeUnit', plot.sample_size_unit);
+  push('pointRadiusM', plot.point_radius_m); // 定點計數法 count circle radius (m)
   push('recordedBy', plot.recorded_by);
   push('locality', plot.locality);
   push('eventRemarks', plot.field_note);
@@ -228,7 +240,11 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
 /** Build the species CSV body for a plot. Columns are DwC terms — only
  *  `verbatimVegetationLayer` is non-standard because there's no DwC term for
  *  a within-event vegetation stratum. */
-function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[]): string {
+function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[], plotType: PlotType): string {
+  // Point count records reuse the 'T' bucket but have no vegetation stratum, so
+  // emit an empty verbatimVegetationLayer for them (transect keeps 'T', which
+  // genuinely means "transect, unstratified").
+  const blankLayer = plotType === 'point_count';
   const headers = [
     'taxonID',
     'scientificName',
@@ -242,6 +258,10 @@ function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[]): string {
     'lifeStage',
     'reproductiveCondition',
     'leafPhenology',
+    'detectionType',
+    'decimalLatitude',
+    'decimalLongitude',
+    'coordinateUncertaintyInMeters',
     'eventDate',
     'eventRemarks',
   ];
@@ -254,13 +274,17 @@ function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[]): string {
         csvEscape(r.name_author),
         csvEscape(r.common_name_c),
         csvEscape(r.family),
-        csvEscape(r.layer),
+        csvEscape(blankLayer ? '' : r.layer),
         csvEscape(r.organism_quantity ?? ''),
         csvEscape(r.organism_quantity_type ?? ''),
         csvEscape(r.sex ?? ''),
         csvEscape(r.life_stage ?? ''),
         csvEscape(multiToPipe(r.reproductive_condition)),
         csvEscape(multiToPipe(r.leaf_phenology)),
+        csvEscape(r.detection_type ?? ''),
+        csvEscape(r.lat ?? ''),
+        csvEscape(r.lng ?? ''),
+        csvEscape(r.accuracy ?? ''),
         csvEscape(r.observed_at ? new Date(r.observed_at).toISOString() : ''),
         csvEscape(r.notes ?? ''),
       ].join(','),
@@ -297,10 +321,27 @@ function buildSessionPoints(records: RecordWithTaxon[]): { type: 'FeatureCollect
 }
 
 function buildPlotPoints(records: PlotSpeciesRecordWithTaxon[]): { type: 'FeatureCollection'; features: PointFeature[] } | null {
-  // Plot species records don't carry per-individual GPS in this app, so this
-  // is currently always empty. Stub for parity with session points.
-  void records;
-  return null;
+  // Per-record GPS (v13): a species observation may carry its own coordinate
+  // (most common for transect / point count). Emit a Point per such record.
+  const features: PointFeature[] = [];
+  for (const r of records) {
+    if (r.lat === null || r.lng === null) continue;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [r.lng, r.lat] },
+      properties: {
+        name: r.common_name_c || r.simple_name,
+        description: r.simple_name + (r.name_author ? ` ${r.name_author}` : ''),
+        taxon_id: r.taxon_id,
+        organismQuantity: r.organism_quantity ?? '',
+        organismQuantityType: r.organism_quantity_type ?? '',
+        detectionType: r.detection_type ?? '',
+        observed_at: new Date(r.observed_at).toISOString(),
+      },
+    });
+  }
+  if (features.length === 0) return null;
+  return { type: 'FeatureCollection', features };
 }
 
 // ---- Public API -----------------------------------------------------------
@@ -446,16 +487,33 @@ async function buildPlotEntries(
   const base = sanitizeFilename(`${plot.plotid}_${project?.name ?? 'plot'}`);
   const entries: BuiltZipEntry[] = [];
 
-  // YAML — minimal shape similar to session but per plot
-  const yamlItems = species.map((r) => ({
-    taxon_id: r.taxon_id,
-    name: r.simple_name,
-    cname: r.common_name_c,
-    family: r.family,
-    layer: r.layer,
-    organism_quantity: r.organism_quantity,
-    organism_quantity_type: r.organism_quantity_type,
-  }));
+  // YAML — per-plot shape. Carries the full set of user-entered fields (notes,
+  // DwC attributes, detection method, per-record GPS) so the YAML is symmetric
+  // with the sp.csv. Raw snake_case keys (not run through convertToDwc), matching
+  // the existing organism_quantity convention here.
+  const yamlItems = species.map((r) => {
+    const item: Record<string, unknown> = {
+      taxon_id: r.taxon_id,
+      name: r.simple_name,
+      cname: r.common_name_c,
+      family: r.family,
+      layer: plot.plot_type === 'point_count' ? null : r.layer,
+      organism_quantity: r.organism_quantity,
+      organism_quantity_type: r.organism_quantity_type,
+    };
+    if (r.notes) item.notes = r.notes;
+    if (r.sex) item.sex = r.sex;
+    if (r.life_stage) item.life_stage = r.life_stage;
+    const repro = multiToPipe(r.reproductive_condition);
+    if (repro) item.reproductive_condition = repro;
+    const leaf = multiToPipe(r.leaf_phenology);
+    if (leaf) item.leaf_phenology = leaf;
+    if (r.detection_type) item.detection_type = r.detection_type;
+    if (r.lat !== null) item.lat = r.lat;
+    if (r.lng !== null) item.lng = r.lng;
+    if (r.accuracy !== null) item.accuracy = r.accuracy;
+    return item;
+  });
   const yamlData: Record<string, unknown> = {
     plot: { plotid: plot.plotid, type: plot.plot_type, project: project?.name ?? '' },
     species: yamlItems,
@@ -477,8 +535,13 @@ async function buildPlotEntries(
   // vernacularName, organismQuantity, organismQuantityType, family, taxonID).
   // Layer kept as a non-standard column since there is no DwC term for a
   // vegetation stratum within an event.
-  const spCsv = buildPlotSpeciesCsv(species);
+  const spCsv = buildPlotSpeciesCsv(species, plot.plot_type);
   entries.push({ name: `${base}/${plot.plotid}_sp.csv`, bytes: strToU8(spCsv) });
+
+  // Geo: per-record species points (v13 — present when observations carry
+  // their own GPS; most common for transect / point count).
+  const points = buildPlotPoints(species);
+  if (points) addGeoEntries(entries, base, 'points', points, opts.geoFormats);
 
   // Geo: track (transect)
   if (plot.track_geojson) {

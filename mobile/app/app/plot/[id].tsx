@@ -177,6 +177,11 @@ function TabBtn({
 // Env Tab
 // ─────────────────────────────────────────────────────────────────────
 
+/** HH:MM clock for the point-count start/end time buttons. */
+function fmtClock(ts: number): string {
+  return new Date(ts).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+}
+
 function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
@@ -276,22 +281,66 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           </View>
         )}
 
-        <Field
-          label="樣區大小 (sampleSizeValue)"
-          value={plot.sample_size_value !== null ? String(plot.sample_size_value) : ''}
-          placeholder="例: 25 或 100"
-          keyboardType="decimal-pad"
-          onSave={(v) => {
-            const n = v.trim() === '' ? null : Number(v);
-            patch({ sample_size_value: Number.isFinite(n as number) ? (n as number) : null });
-          }}
-        />
-        <Field
-          label="樣區單位 (sampleSizeUnit)"
-          value={plot.sample_size_unit ?? ''}
-          placeholder="例: square meters / meters"
-          onSave={(v) => patch({ sample_size_unit: v || null })}
-        />
+        {plot.plot_type === 'point_count' ? (
+          <>
+            <Field
+              label="計數半徑 (radius)"
+              value={plot.point_radius_m !== null ? String(plot.point_radius_m) : ''}
+              placeholder="例: 25"
+              keyboardType="decimal-pad"
+              suffix="m"
+              onSave={(v) => {
+                const n = v.trim() === '' ? null : Number(v);
+                patch({ point_radius_m: Number.isFinite(n as number) ? (n as number) : null });
+              }}
+            />
+            <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
+              <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">計數時間</Text>
+              <View className="mt-2 flex-row gap-2">
+                <Pressable
+                  onPress={() => patch({ start_ts: Date.now() })}
+                  className="flex-1 flex-row items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-2 active:opacity-70"
+                >
+                  <Ionicons name="play" size={14} color="#16a34a" />
+                  <Text className="ml-1 text-xs text-gray-700 dark:text-gray-300">
+                    開始 {plot.start_ts ? fmtClock(plot.start_ts) : '—'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => patch({ stop_ts: Date.now() })}
+                  className="flex-1 flex-row items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-2 active:opacity-70"
+                >
+                  <Ionicons name="stop" size={14} color="#dc2626" />
+                  <Text className="ml-1 text-xs text-gray-700 dark:text-gray-300">
+                    結束 {plot.stop_ts ? fmtClock(plot.stop_ts) : '—'}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </>
+        ) : null}
+
+        {/* 穿越線不需要樣區大小 / 單位（其尺度由軌跡長度表示）。 */}
+        {plot.plot_type !== 'transect' ? (
+          <>
+            <Field
+              label="樣區大小 (sampleSizeValue)"
+              value={plot.sample_size_value !== null ? String(plot.sample_size_value) : ''}
+              placeholder="例: 25 或 100"
+              keyboardType="decimal-pad"
+              onSave={(v) => {
+                const n = v.trim() === '' ? null : Number(v);
+                patch({ sample_size_value: Number.isFinite(n as number) ? (n as number) : null });
+              }}
+            />
+            <Field
+              label="樣區單位 (sampleSizeUnit)"
+              value={plot.sample_size_unit ?? ''}
+              placeholder="例: square meters / meters"
+              onSave={(v) => patch({ sample_size_unit: v || null })}
+            />
+          </>
+        ) : null}
         <Field
           label="調查法 (samplingProtocol)"
           value={plot.sampling_protocol ?? ''}

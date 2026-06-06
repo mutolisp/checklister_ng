@@ -1,4 +1,5 @@
 import { distance } from 'fastest-levenshtein';
+import { pinyin } from 'pinyin-pro';
 import { getTaicolDb } from './init';
 import { SEARCH_COLUMNS, searchSpecies, groupFilterClause } from './search';
 import type { SearchResult, TaxonGroup } from './types';
@@ -8,12 +9,51 @@ type FuzzyOptions = {
   groups?: TaxonGroup[];
   excludeIds?: Set<number>;
   limit?: number;
+  /** Enable toneless-pinyin (phonetic) fallback for homophone garbles, e.g.
+   *  voice dictation. Off by default so per-keystroke SearchBox queries never
+   *  pay the extra pinyin sweep. */
+  phonetic?: boolean;
 };
 
-let cnameIndex: Array<{ cname: string; nameIds: number[] }> | null = null;
+type CnameEntry = { cname: string; nameIds: number[]; pinyin: string };
+
+let cnameIndex: CnameEntry[] | null = null;
 let cnameIndexMissing = false;
 
-function loadCnameIndex(): Array<{ cname: string; nameIds: number[] }> | null {
+/** Convert a query string to a list of toneless pinyin syllables. Non-Han
+ *  output (latin letters from scientific names, punctuation) is dropped so it
+ *  never spuriously matches Chinese candidate syllables. Mirrors the build-time
+ *  conversion in `scripts/build_pinyin_index.mjs` (same lib, same options). */
+function toPinyinSyllables(s: string): string[] {
+  try {
+    return (pinyin(s, { toneType: 'none', type: 'array' }) as string[]).filter((x) =>
+      /^[a-z]+$/.test(x),
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Levenshtein distance over two syllable sequences (one edit = one syllable). */
+function seqDistance(a: string[], b: string[]): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let cur = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+
+function loadCnameIndex(): CnameEntry[] | null {
   if (cnameIndex) return cnameIndex;
   if (cnameIndexMissing) return null;
   const db = getTaicolDb();
@@ -32,10 +72,23 @@ function loadCnameIndex(): Array<{ cname: string; nameIds: number[] }> | null {
       console.warn('[fuzzy] cname_fuzzy_index missing — fuzzy fallback disabled');
       return null;
     }
-    const res = db.executeSync(`SELECT cname, name_ids FROM cname_fuzzy_index`);
+    // `pinyin` is filled by `scripts/build_pinyin_index.mjs` after the python
+    // index build. Older bundles may lack the column — degrade to hanzi-only
+    // fuzzy (pinyin = '') instead of throwing, which would disable fuzzy
+    // entirely.
+    const cols = db.executeSync(`PRAGMA table_info(cname_fuzzy_index)`);
+    const hasPinyin = ((cols.rows ?? []) as Array<Record<string, unknown>>).some(
+      (c) => c.name === 'pinyin',
+    );
+    const res = db.executeSync(
+      hasPinyin
+        ? `SELECT cname, name_ids, pinyin FROM cname_fuzzy_index`
+        : `SELECT cname, name_ids FROM cname_fuzzy_index`,
+    );
     cnameIndex = ((res.rows ?? []) as Array<Record<string, unknown>>).map((row) => ({
       cname: row.cname as string,
       nameIds: (row.name_ids as string).split(',').map((s) => parseInt(s, 10)),
+      pinyin: (row.pinyin as string) ?? '',
     }));
     return cnameIndex;
   } catch (e) {
@@ -46,7 +99,13 @@ function loadCnameIndex(): Array<{ cname: string; nameIds: number[] }> | null {
   }
 }
 
-export function fuzzySearch({ q, groups, excludeIds, limit = 10 }: FuzzyOptions): SearchResult[] {
+export function fuzzySearch({
+  q,
+  groups,
+  excludeIds,
+  limit = 10,
+  phonetic = false,
+}: FuzzyOptions): SearchResult[] {
   if (!q || q.length < 2) return [];
 
   const index = loadCnameIndex();
@@ -60,6 +119,26 @@ export function fuzzySearch({ q, groups, excludeIds, limit = 10 }: FuzzyOptions)
     matches = index
       .map((entry) => ({ entry, dist: distance(q, entry.cname) }))
       .filter((m) => m.dist <= 2);
+  }
+
+  // Phonetic (toneless pinyin) fallback for homophone garbles from voice
+  // dictation, e.g. 台灣時力 / 臺灣實例 → 臺灣石櫟 (all "tai wan shi li").
+  // Only when the caller opts in AND hanzi matching is sparse: keeps the
+  // default SearchBox path (phonetic=false) free of the extra pinyin sweep,
+  // and avoids drowning a good hanzi hit in homophone noise.
+  if (phonetic && matches.length < 3) {
+    const qSyl = toPinyinSyllables(q);
+    if (qSyl.length > 0) {
+      const seen = new Set(matches.map((m) => m.entry.cname));
+      const maxDist = qSyl.length >= 3 ? 1 : 0;
+      const phon = index
+        .filter((e) => e.pinyin && !seen.has(e.cname))
+        .map((e) => ({ entry: e, dist: seqDistance(qSyl, e.pinyin.split(' ')) }))
+        .filter((m) => m.dist <= maxDist)
+        .sort((a, b) => a.dist - b.dist)
+        .slice(0, 20);
+      matches = matches.concat(phon);
+    }
   }
 
   if (matches.length === 0) return [];
@@ -157,6 +236,9 @@ export function fuzzySearch({ q, groups, excludeIds, limit = 10 }: FuzzyOptions)
 export function searchWithFuzzyFallback(opts: {
   q: string;
   groups?: TaxonGroup[];
+  /** Forwarded to `fuzzySearch` — enable toneless-pinyin homophone matching
+   *  (voice / batch import). Off for the live SearchBox path. */
+  phonetic?: boolean;
 }): SearchResult[] {
   let exact: SearchResult[] = [];
   try {
@@ -170,7 +252,7 @@ export function searchWithFuzzyFallback(opts: {
 
   try {
     const excludeIds = new Set(exact.map((r) => r.id));
-    const fuzzy = fuzzySearch({ q: opts.q, groups: opts.groups, excludeIds });
+    const fuzzy = fuzzySearch({ q: opts.q, groups: opts.groups, excludeIds, phonetic: opts.phonetic });
     return [...exact, ...fuzzy];
   } catch (e) {
     // eslint-disable-next-line no-console

@@ -80,7 +80,8 @@ function maybeWarn(
   lastPromptKeyRef.current = promptKey;
 
   const minutes = Math.round(idleMs / (60 * 1000));
-  const noun = plot.plot_type === 'transect' ? '穿越線' : '樣區';
+  const noun =
+    plot.plot_type === 'transect' ? '穿越線' : plot.plot_type === 'point_count' ? '定點計數' : '樣區';
   Alert.alert(
     `${noun}已閒置 ${minutes} 分鐘`,
     `「${plot.plotid}」最近一筆記錄已是 ${minutes} 分鐘前。需要結束嗎？`,

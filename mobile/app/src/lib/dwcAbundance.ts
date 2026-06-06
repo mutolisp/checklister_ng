@@ -28,9 +28,8 @@ export type QuantityTypeOption = {
 export const QUANTITY_TYPES: QuantityTypeOption[] = [
   {
     value: 'individuals',
-    label: '隻數 (individuals)',
+    label: '個體數 (individuals)',
     kind: 'count',
-    suffix: '隻',
   },
   {
     value: '% cover',
@@ -116,7 +115,7 @@ export function legacyMethodToType(method: string | null | undefined): string | 
 
 /**
  * Returns a short, human-readable badge for the record summary line.
- *   '5 隻'      ← count
+ *   '5'         ← count (個體數, no unit suffix)
  *   '25%'       ← percent
  *   'BB: 3'     ← Braun-Blanquet
  *   '2 分枝'    ← DBH

@@ -34,7 +34,25 @@ export function getActiveLayers(layerCount: number): FixedLayer[] {
 }
 
 export type PlotStatus = 'active' | 'done';
-export type PlotType = 'fixed' | 'transect';
+/** Survey method.
+ *  - fixed: 方形/固定樣區，分植群層 (E1..E6)，靜態 GPS。
+ *  - transect: 穿越線，錄製軌跡，不分層。
+ *  - point_count: 定點計數法，靜態 GPS + 半徑，不分層（reuses 'T' bucket）。 */
+export type PlotType = 'fixed' | 'transect' | 'point_count';
+
+/** Only fixed plots have vegetation strata (E1..E6) + plot_survey_layers rows. */
+export function isStratified(plot: Pick<PlotSurvey, 'plot_type'>): boolean {
+  return plot.plot_type === 'fixed';
+}
+/** Only transect plots record a GPS track. */
+export function usesTrack(plot: Pick<PlotSurvey, 'plot_type'>): boolean {
+  return plot.plot_type === 'transect';
+}
+/** Fixed + point_count need a static GPS fix before accepting species;
+ *  transect unlocks via the track recorder stamping start_ts instead. */
+export function requiresStaticGps(plot: Pick<PlotSurvey, 'plot_type'>): boolean {
+  return plot.plot_type !== 'transect';
+}
 
 export type PlotSurvey = {
   id: number;
@@ -57,6 +75,8 @@ export type PlotSurvey = {
   decimal_longitude: number | null;
   decimal_latitude: number | null;
   coord_uncertainty_m: number | null;
+  /** Point-count circle radius in metres (point_count survey only, v13). */
+  point_radius_m: number | null;
   sample_size_value: number | null;
   sample_size_unit: string | null;
   sampling_protocol: string | null;
@@ -126,6 +146,14 @@ export type PlotSpeciesRecord = {
   // percent / dbh_values_json are deprecated for new records.
   organism_quantity: string | null;
   organism_quantity_type: string | null;
+  // Per-record GPS (v13). Available for all plot types; most useful for
+  // transect (each observation along the line has its own location).
+  lat: number | null;
+  lng: number | null;
+  accuracy: number | null;
+  // Detection method (v13): 'seen' | 'heard' | 'flying'. Point count / animal
+  // records; null for plant/unspecified.
+  detection_type: string | null;
 };
 
 export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & {
@@ -380,6 +408,7 @@ const PLOT_UPDATABLE_KEYS: (keyof UpdatePlotPatch)[] = [
   'decimal_longitude',
   'decimal_latitude',
   'coord_uncertainty_m',
+  'point_radius_m',
   'sample_size_value',
   'sample_size_unit',
   'sampling_protocol',
@@ -549,14 +578,14 @@ export function deletePlotSurvey(id: number): void {
 
 /** True iff plot has the hard-required fields filled.
  *
- *  - fixed plot: plotid + static GPS (lat/lng/uncertainty)
+ *  - fixed / point_count plot: plotid + static GPS (lat/lng/uncertainty)
  *  - transect plot: plotid + track has been activated at least once
  *                   (signalled by start_ts being set; trackRecorder.startRecording
  *                   stamps this immediately on ▶, without waiting for a GPS fix).
  */
 export function plotCanAcceptSpecies(plot: PlotSurvey): boolean {
   if (!plot.plotid) return false;
-  if (plot.plot_type === 'transect') {
+  if (!requiresStaticGps(plot)) {
     return plot.start_ts != null;
   }
   return (
@@ -590,6 +619,12 @@ export type AddPlotSpeciesInput = {
   life_stage?: string | null;
   reproductive_condition?: string | null;
   leaf_phenology?: string | null;
+  /** Per-record GPS (v13). */
+  lat?: number | null;
+  lng?: number | null;
+  accuracy?: number | null;
+  /** Detection method (v13): 'seen' | 'heard' | 'flying'. */
+  detection_type?: string | null;
 };
 
 export function addPlotSpecies(input: AddPlotSpeciesInput): number {
@@ -600,8 +635,9 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
        (plot_survey_id, taxon_id, layer,
         organism_quantity, organism_quantity_type,
         notes, sex, life_stage, reproductive_condition, leaf_phenology,
+        lat, lng, accuracy, detection_type,
         observed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.plot_survey_id,
       input.taxon_id,
@@ -613,6 +649,10 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
       input.life_stage ?? null,
       input.reproductive_condition ?? null,
       input.leaf_phenology ?? null,
+      input.lat ?? null,
+      input.lng ?? null,
+      input.accuracy ?? null,
+      input.detection_type ?? null,
       now,
       now,
     ],
@@ -641,6 +681,7 @@ export type PlotSpeciesAttributePatch = Partial<{
   life_stage: string | null;
   reproductive_condition: string | null;
   leaf_phenology: string | null;
+  detection_type: string | null;
 }>;
 
 export function updatePlotSpeciesValue(
@@ -666,7 +707,13 @@ export function updatePlotSpeciesValue(
     sets.push(`notes = ?`);
     args.push(patch.notes ?? null);
   }
-  for (const col of ['sex', 'life_stage', 'reproductive_condition', 'leaf_phenology'] as const) {
+  for (const col of [
+    'sex',
+    'life_stage',
+    'reproductive_condition',
+    'leaf_phenology',
+    'detection_type',
+  ] as const) {
     if (col in patch) {
       sets.push(`${col} = ?`);
       args.push(patch[col] ?? null);
@@ -675,6 +722,23 @@ export function updatePlotSpeciesValue(
   if (sets.length === 0) return;
   args.push(id);
   db.executeSync(`UPDATE plot_species_records SET ${sets.join(', ')} WHERE id = ?`, args);
+}
+
+/** Persist per-record GPS for a plot species record. Mirrors
+ *  `records.ts::updateRecordLocation`. Pass nulls to clear. */
+export function updatePlotSpeciesLocation(
+  id: number,
+  lat: number | null,
+  lng: number | null,
+  accuracy: number | null = null,
+): void {
+  const db = getUserDb();
+  db.executeSync(`UPDATE plot_species_records SET lat = ?, lng = ?, accuracy = ? WHERE id = ?`, [
+    lat,
+    lng,
+    accuracy,
+    id,
+  ]);
 }
 
 /** Persist the list of photo URIs (`ph://` or `file://`) for a plot species

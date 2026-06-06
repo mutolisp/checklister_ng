@@ -10,18 +10,11 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
-import { useRouter } from 'expo-router';
 import { Keyboard, Text, View } from 'react-native';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
-import {
-  addRecord,
-  addSearchHistory,
-  isTaxonInSession,
-  type SearchResult,
-} from '~/db';
-import { useActiveSession } from '~/stores/activeSession';
+import { addSearchHistory, type SearchResult } from '~/db';
 import { useSpeciesSearchPanel } from '~/stores/speciesSearchPanel';
-import { useToast } from '~/stores/toast';
+import { useAddToActiveRecord } from '~/lib/useAddToActiveRecord';
 import { taxonSpeciesToSearchResult } from '~/lib/taxonSpecies';
 import { SearchBox } from './SearchBox';
 import { SpeciesDetailPanel } from './SpeciesDetailPanel';
@@ -31,11 +24,7 @@ type Props = {
 };
 
 export function SpeciesSearchPanel({ autoFocus = false }: Props) {
-  const router = useRouter();
-  const session = useActiveSession((s) => s.session);
-  const start = useActiveSession((s) => s.start);
-  const refreshActive = useActiveSession((s) => s.refresh);
-  const toast = useToast((s) => s.show);
+  const { addSpecies, modal, targetLabel } = useAddToActiveRecord();
   // KSV opened-offset so SearchBox sits flush against the keyboard top (without
   // this it floats `tabBarHeight` above the keyboard — see same fix in
   // taxonomy.tsx tree segment + KeyListView).
@@ -59,21 +48,10 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
     setActive(result);
   };
 
-  const handleAddToSession = () => {
-    if (!active?.taxon_id) {
-      toast('此物種無 taxon_id');
-      return;
-    }
-    const target = session ?? start();
-    if (isTaxonInSession(target.id, active.taxon_id)) {
-      toast(`已存在於當前記錄：${active.cname || active.name}`);
-      return;
-    }
-    addRecord({ session_id: target.id, taxon_id: active.taxon_id });
-    refreshActive();
-    toast(`已加入：${active.cname || active.name}`, {
-      action: { label: '前往', onPress: () => router.push(`/session/${target.id}`) },
-    });
+  const handleAdd = () => {
+    if (!active) return;
+    // Smart-routes to active plot (opens abundance modal) or session.
+    addSpecies(active);
     // Clear the inline detail so the next search is one tap away.
     setActive(null);
   };
@@ -84,7 +62,8 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
         {active ? (
           <SpeciesDetailPanel
             result={active}
-            onAddToSession={handleAddToSession}
+            onAddToSession={handleAdd}
+            addButtonLabel={targetLabel}
             onClose={() => setActive(null)}
             onPickSubordinate={(sp) => setActive(taxonSpeciesToSearchResult(sp))}
           />
@@ -105,6 +84,7 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
           afterSelect="dismiss"
         />
       </KeyboardStickyView>
+      {modal}
     </View>
   );
 }

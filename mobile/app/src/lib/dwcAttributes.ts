@@ -18,6 +18,23 @@ export function sexLabel(v: string | null | undefined): string {
   return SEX_OPTIONS.find((o) => o.value === v)?.label ?? '';
 }
 
+// ────────── detectionType (point count / animal records) ──────────
+
+/** How the organism was detected. Single-value. Bird point counts commonly
+ *  distinguish seen / heard / flying-over. Stored as the enum value; exported
+ *  to the custom DwC-style term `detectionType`. */
+export type DetectionType = 'seen' | 'heard' | 'flying';
+
+export const DETECTION_OPTIONS: Array<{ value: DetectionType; label: string }> = [
+  { value: 'seen', label: '看到' },
+  { value: 'heard', label: '聽到' },
+  { value: 'flying', label: '飛過' },
+];
+
+export function detectionLabel(v: string | null | undefined): string {
+  return DETECTION_OPTIONS.find((o) => o.value === v)?.label ?? '';
+}
+
 // ────────── lifeStage (per class) ──────────
 
 export type LifeStage =

@@ -4,7 +4,7 @@ import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AboutScreen() {
-  const version = Constants.expoConfig?.version ?? 'm0.3.0';
+  const version = Constants.expoConfig?.version ?? '0.4.1';
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">

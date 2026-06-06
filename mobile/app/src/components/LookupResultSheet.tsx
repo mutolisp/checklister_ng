@@ -20,9 +20,11 @@ type Props = {
   result: SearchResult | null;
   onClose: () => void;
   onAddToSession: () => void;
+  /** Override the add-button label (e.g. 「加入目前樣區」 when a plot is active). */
+  addButtonLabel?: string;
 };
 
-export function LookupResultSheet({ result, onClose, onAddToSession }: Props) {
+export function LookupResultSheet({ result, onClose, onAddToSession, addButtonLabel }: Props) {
   const [currentResult, setCurrentResult] = useState<SearchResult | null>(result);
 
   // Re-seed local state whenever the parent passes a different taxon (or null
@@ -55,6 +57,7 @@ export function LookupResultSheet({ result, onClose, onAddToSession }: Props) {
                 onAddToSession();
                 onClose();
               }}
+              addButtonLabel={addButtonLabel}
               onClose={onClose}
               onPickSubordinate={(sp) => setCurrentResult(taxonSpeciesToSearchResult(sp))}
             />

@@ -128,13 +128,21 @@ export async function startSessionAndOpen(): Promise<void> {
   router.push(`/session/${target.id}` as Href);
 }
 
+const PLOT_TYPE_META: Record<
+  PlotType,
+  { title: string; example: string; protocol: string | null }
+> = {
+  fixed: { title: '新植群樣區', example: 'PLOT_2026_001', protocol: null },
+  transect: { title: '新穿越線', example: 'TRANSECT_2026_001', protocol: '穿越線調查法' },
+  point_count: { title: '新定點計數', example: 'POINT_2026_001', protocol: '定點計數法' },
+};
+
 async function promptPlotid(plotType: PlotType): Promise<void> {
-  const title = plotType === 'transect' ? '新穿越線' : '新植群樣區';
-  const example = plotType === 'transect' ? 'TRANSECT_2026_001' : 'PLOT_2026_001';
+  const meta = PLOT_TYPE_META[plotType];
   const raw = await promptText({
-    title,
-    message: `輸入 plotid（例：${example}）`,
-    placeholder: example,
+    title: meta.title,
+    message: `輸入 plotid（例：${meta.example}）`,
+    placeholder: meta.example,
     autoCapitalize: 'none',
   });
   const plotid = raw?.trim();
@@ -142,15 +150,15 @@ async function promptPlotid(plotType: PlotType): Promise<void> {
   const id = createPlotSurvey({
     plotid,
     plot_type: plotType,
-    sampling_protocol: plotType === 'transect' ? '穿越線調查法' : null,
+    sampling_protocol: meta.protocol,
   });
   useActivePlot.getState().refresh();
   router.push(`/plot/${id}` as Href);
 }
 
 /**
- * Show a type chooser (固定樣區 / 穿越線), then prompt for plotid and create.
- * Guards against a conflicting active record first.
+ * Show a type chooser (固定樣區 / 穿越線 / 定點計數法), then prompt for plotid
+ * and create. Guards against a conflicting active record first.
  */
 export async function createPlotPromptAndOpen(): Promise<void> {
   const ok = await ensureNoConflictingActive('plot');
@@ -158,10 +166,12 @@ export async function createPlotPromptAndOpen(): Promise<void> {
   const idx = await showActionSheet({
     title: '樣區類型',
     options: [
-      { label: '固定樣區（4 層植群）' },
-      { label: '穿越線（單層、含軌跡）' },
+      { label: '固定樣區(分層植群)' },
+      { label: '穿越線(單層、含軌跡)' },
+      { label: '定點計數法(鳥類/動物，含半徑)' },
     ],
   });
   if (idx === 0) promptPlotid('fixed');
   else if (idx === 1) promptPlotid('transect');
+  else if (idx === 2) promptPlotid('point_count');
 }

@@ -16,6 +16,7 @@ import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { addRecord, isTaxonInSession, type SearchResult } from '~/db';
 import { parseInput, resolveBatch, type CategorizedImport } from '~/lib/batchImport';
+import { splitVoiceInput } from '~/lib/voiceSplit';
 import { ScientificName } from './ScientificName';
 
 type Props = {
@@ -26,10 +27,12 @@ type Props = {
 };
 
 type Step = 'input' | 'preview';
+type InputMode = 'paste' | 'voice';
 
 export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: Props) {
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('input');
+  const [inputMode, setInputMode] = useState<InputMode>('paste');
   const [text, setText] = useState('');
   const [resolved, setResolved] = useState<CategorizedImport | null>(null);
   // For exact entries: track which to skip (default: all selected)
@@ -39,6 +42,7 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
 
   const reset = () => {
     setStep('input');
+    setInputMode('paste');
     setText('');
     setResolved(null);
     setSkipExact(new Set());
@@ -68,12 +72,18 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
   };
 
   const handlePreview = () => {
-    const names = parseInput(text);
+    const voice = inputMode === 'voice';
+    const names = voice ? splitVoiceInput(text) : parseInput(text);
     if (names.length === 0) {
-      Alert.alert('沒有可匯入的名稱', '請輸入或貼上每行一個名稱');
+      Alert.alert(
+        '沒有可匯入的名稱',
+        voice ? '請用語音唸出物種名，以句號分隔' : '請輸入或貼上每行一個名稱',
+      );
       return;
     }
-    const r = resolveBatch(names);
+    // Voice dictation garbles uncommon names into homophones; enable the
+    // toneless-pinyin fallback so they still resolve.
+    const r = resolveBatch(names, { phonetic: voice });
     setResolved(r);
     setSkipExact(new Set());
     const picks = new Map<number, SearchResult | null>();
@@ -151,17 +161,39 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
 
         {step === 'input' ? (
           <KeyboardAvoidingView className="flex-1" behavior="padding">
+            <View className="flex-row border-b border-gray-200 dark:border-gray-700">
+              <ModeTab
+                label="貼上"
+                icon="clipboard-outline"
+                active={inputMode === 'paste'}
+                onPress={() => setInputMode('paste')}
+              />
+              <ModeTab
+                label="語音"
+                icon="mic-outline"
+                active={inputMode === 'voice'}
+                onPress={() => setInputMode('voice')}
+              />
+            </View>
             <View className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-3">
-              <Text className="text-xs text-gray-600 dark:text-gray-400">
-                每行一個名稱（俗名 / 學名 / 科）。支援貼上 .yml 匯出檔內容。
-              </Text>
-              <Pressable
-                onPress={handlePickFile}
-                className="mt-2 flex-row items-center self-start rounded-full bg-white dark:bg-gray-900 px-3 py-1.5 active:bg-blue-50 dark:active:bg-blue-900/40"
-              >
-                <Ionicons name="folder-open-outline" size={14} color="#2563eb" />
-                <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">從檔案讀入</Text>
-              </Pressable>
+              {inputMode === 'paste' ? (
+                <>
+                  <Text className="text-xs text-gray-600 dark:text-gray-400">
+                    每行一個名稱（俗名 / 學名 / 科）。支援貼上 .yml 匯出檔內容。
+                  </Text>
+                  <Pressable
+                    onPress={handlePickFile}
+                    className="mt-2 flex-row items-center self-start rounded-full bg-white dark:bg-gray-900 px-3 py-1.5 active:bg-blue-50 dark:active:bg-blue-900/40"
+                  >
+                    <Ionicons name="folder-open-outline" size={14} color="#2563eb" />
+                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">從檔案讀入</Text>
+                  </Pressable>
+                </>
+              ) : (
+                <Text className="text-xs text-gray-600 dark:text-gray-400">
+                  點下方輸入框後，用鍵盤的麥克風唸出物種名，每筆之間唸「句號」分隔。同音誤判會在預覽中讓你挑選。
+                </Text>
+              )}
             </View>
             <TextInput
               className="flex-1 px-4 py-3 text-base text-gray-900 dark:text-gray-100"
@@ -169,7 +201,11 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
               onChangeText={setText}
               multiline
               autoFocus
-              placeholder={'例：\n殼斗科\n大葉雀榕\nLithocarpus konishii'}
+              placeholder={
+                inputMode === 'voice'
+                  ? '例：臺灣華八仙。粗毛鱗蓋蕨。'
+                  : '例：\n殼斗科\n大葉雀榕\nLithocarpus konishii'
+              }
               placeholderTextColor="#9ca3af"
               textAlignVertical="top"
             />
@@ -309,6 +345,32 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
         )}
       </View>
     </Modal>
+  );
+}
+
+function ModeTab({
+  label,
+  icon,
+  active,
+  onPress,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      className={`flex-1 flex-row items-center justify-center py-2.5 ${active ? 'border-b-2 border-blue-600 dark:border-blue-400' : ''}`}
+    >
+      <Ionicons name={icon} size={16} color={active ? '#2563eb' : '#9ca3af'} />
+      <Text
+        className={`ml-1.5 text-sm font-medium ${active ? 'text-blue-700 dark:text-blue-300' : 'text-gray-500 dark:text-gray-400'}`}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 

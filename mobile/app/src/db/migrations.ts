@@ -471,6 +471,33 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    // v13: per-record GPS + detection method on plot species records, and a
+    // radius column on plot_surveys for the new 定點計數法 (point count) survey
+    // type. All additive ALTERs — no table rebuild:
+    //   - plot_species_records.layer CHECK is untouched: point count reuses the
+    //     'T' bucket (disambiguated by plot_surveys.plot_type), so no rebuild.
+    //   - plot_surveys.plot_type is TEXT DEFAULT 'fixed' with no CHECK, so the
+    //     new 'point_count' literal is a pure code/type change.
+    // `accuracy` mirrors checklist_records.accuracy so the same
+    // updateRecordLocation-shaped helper + DwC mapper key apply unchanged.
+    //
+    // op-sqlite runs each executeSync in autocommit (no transaction wrapper);
+    // the version row is inserted only after up() returns. If the process dies
+    // mid-way, v13 re-runs from the top and ADD COLUMN (not IF NOT EXISTS)
+    // would throw "duplicate column". This is the same latent risk every prior
+    // multi-ALTER version carries (v8/v9/v11) and matches convention — we do
+    // not introduce a transaction wrapper here. The MAX(version) gate in
+    // runUserMigrations is the existing self-heal.
+    version: 13,
+    up: (db) => {
+      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN lat REAL;`);
+      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN lng REAL;`);
+      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN accuracy REAL;`);
+      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN detection_type TEXT;`);
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN point_radius_m REAL;`);
+    },
+  },
 ];
 
 export async function runUserMigrations(db: DB): Promise<void> {

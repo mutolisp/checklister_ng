@@ -7,6 +7,7 @@ import {
   deletePlotSpecies,
   getActiveLayers,
   getPlotLayers,
+  isStratified,
   layerIndexOf,
   layerKeyForIndex,
   listPlotSpecies,
@@ -18,6 +19,7 @@ import {
   type PlotSurvey,
   type SearchResult,
   LAYER_LABEL,
+  updatePlotSpeciesLocation,
   updatePlotSpeciesPhotos,
   updatePlotSpeciesValue,
 } from '~/db';
@@ -49,7 +51,11 @@ export function PlotSpeciesTab({
   plot: PlotSurvey;
   onChanged: () => void;
 }) {
-  const isTransect = plot.plot_type === 'transect';
+  // `stratified` = fixed plot only (has E1..E6 layers). transect + point_count
+  // are non-stratified: a single 'T' bucket, no layer chips/headers. Keep the
+  // transect / point-count distinction only for the user-facing copy.
+  const stratified = isStratified(plot);
+  const isPointCount = plot.plot_type === 'point_count';
   // KSV gap fix: parent plot/[id] wraps in <SafeAreaView edges={['bottom']}>,
   // so KSV's natural bottom sits `insets.bottom` above the screen bottom.
   // Without compensation, the search box floats that gap above the keyboard.
@@ -57,12 +63,12 @@ export function PlotSpeciesTab({
   // Active layers (E1..E{layer_count}) for this plot. Recomputed when the user
   // changes layer_count from the env tab. Transect plots: empty (single 'T').
   const activeLayers = useMemo<FixedLayer[]>(
-    () => (isTransect ? [] : getActiveLayers(plot.layer_count)),
-    [isTransect, plot.layer_count],
+    () => (stratified ? getActiveLayers(plot.layer_count) : []),
+    [stratified, plot.layer_count],
   );
   // Default layer: prefer E2 (草本層) for vegetation surveys — that's the
   // most commonly entered layer. If layer_count < 2, fall back to E1.
-  const defaultLayer: Layer = isTransect
+  const defaultLayer: Layer = !stratified
     ? 'T'
     : (activeLayers.includes('E2' as FixedLayer) ? 'E2' : activeLayers[0]) ?? 'E1';
   const [layer, setLayer] = useState<Layer>(defaultLayer);
@@ -71,21 +77,21 @@ export function PlotSpeciesTab({
   // count to 3), state would otherwise hold a layer that no chip can switch
   // to. Snap back to the first active layer so the entry path is unambiguous.
   useEffect(() => {
-    if (isTransect) return;
+    if (!stratified) return;
     if (activeLayers.length === 0) return;
     if (!activeLayers.includes(layer as FixedLayer)) {
       setLayer(activeLayers[0]);
     }
-  }, [activeLayers, layer, isTransect]);
+  }, [activeLayers, layer, stratified]);
   const [records, setRecords] = useState<PlotSpeciesRecordWithTaxon[]>([]);
   const [modal, setModal] = useState<ValueModalState | null>(null);
   // Per-layer method config from plot_survey_layers (used for default
   // abundance unit when opening the modal). Lazy-loaded; refreshed on plot.id.
   const [plotLayers, setPlotLayers] = useState<PlotLayer[]>([]);
   useMemo(() => {
-    setPlotLayers(isTransect ? [] : getPlotLayers(plot.id));
+    setPlotLayers(stratified ? getPlotLayers(plot.id) : []);
     return null;
-  }, [plot.id, plot.layer_count, isTransect]);
+  }, [plot.id, plot.layer_count, stratified]);
   // Remember last entered value per layer for fast batch entry (carries unit
   // + scalar quantity to the next species). Keyed by Layer.
   const [lastValue, setLastValue] = useState<Partial<Record<Layer, PlotValueDraft>>>({});
@@ -117,7 +123,7 @@ export function PlotSpeciesTab({
     for (const r of records) out[r.layer as Layer]?.push(r);
     // Sort within each layer using the shared user preference.
     const cmp = (a: string, b: string) => a.localeCompare(b);
-    const allLayers: Layer[] = isTransect ? ['T'] : [...activeLayers, 'T'];
+    const allLayers: Layer[] = stratified ? [...activeLayers, 'T'] : ['T'];
     for (const l of allLayers) {
       const arr = out[l];
       arr.sort((a, b) => {
@@ -138,7 +144,7 @@ export function PlotSpeciesTab({
       if (sortDir === 'desc') arr.reverse();
     }
     return out;
-  }, [records, sortOrder, sortDir, activeLayers, isTransect]);
+  }, [records, sortOrder, sortDir, activeLayers, stratified]);
 
   const handlePickSort = async () => {
     const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
@@ -191,6 +197,7 @@ export function PlotSpeciesTab({
         life_stage: v.life_stage,
         reproductive_condition: serializeMultiAttribute(v.reproductive_condition),
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
+        detection_type: v.detection_type,
       });
       // Remember last entry per layer so the next species defaults to the
       // same unit + scalar value. DBH stems & per-individual attributes are
@@ -206,6 +213,7 @@ export function PlotSpeciesTab({
           life_stage: null,
           reproductive_condition: [],
           leaf_phenology: [],
+          detection_type: null,
         },
       }));
     } else {
@@ -217,6 +225,7 @@ export function PlotSpeciesTab({
         life_stage: v.life_stage,
         reproductive_condition: serializeMultiAttribute(v.reproductive_condition),
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
+        detection_type: v.detection_type,
       });
     }
     setModal(null);
@@ -266,6 +275,33 @@ export function PlotSpeciesTab({
     onChanged();
   };
 
+  // Quick +/- adjust for individuals (count) records straight from the list,
+  // without opening the value modal. Clamps to a minimum of 1.
+  const handleAdjustQuantity = (r: PlotSpeciesRecordWithTaxon, delta: number) => {
+    const cur = Number(r.organism_quantity);
+    const base = Number.isFinite(cur) ? cur : 0;
+    const next = Math.max(1, base + delta);
+    if (next === base) return;
+    updatePlotSpeciesValue(r.id, { organism_quantity: String(next) });
+    reload();
+    onChanged();
+  };
+
+  const handleSaveModalLocation = (
+    lat: number | null,
+    lng: number | null,
+    accuracy: number | null,
+  ) => {
+    if (!modal || modal.mode !== 'edit') return;
+    const record = modal.record;
+    updatePlotSpeciesLocation(record.id, lat, lng, accuracy);
+    // Re-seed modal with updated record so the GPS button reflects the new
+    // coords without closing the modal.
+    setModal({ mode: 'edit', record: { ...record, lat, lng, accuracy } });
+    reload();
+    onChanged();
+  };
+
   const handleLongPressRecord = (r: PlotSpeciesRecordWithTaxon) => {
     Alert.alert(r.common_name_c || r.simple_name, undefined, [
       { text: '取消', style: 'cancel' },
@@ -297,18 +333,44 @@ export function PlotSpeciesTab({
       return {
         layer: modal.layer,
         title: `${taxon.cname || ''} ${taxon.name}`.trim(),
+        header: {
+          cname: taxon.cname ?? '',
+          name: taxon.name,
+          author: taxon.fullname.replace(taxon.name, '').trim(),
+          kingdom: taxon.kingdom ?? '',
+          phylum: taxon.phylum ?? '',
+          class_name: taxon.class_name ?? '',
+          order: taxon.order ?? '',
+          family: taxon.family ?? '',
+          family_c: taxon.family_cname ?? '',
+          genus: taxon.genus ?? '',
+        },
         initial,
         kingdom: taxon.kingdom ?? null,
         className: taxon.class_name ?? null,
         // Priority: lastValue.type (user just used) → plot's per-layer method
         // setting → kingdom default (modal-internal fallback).
         defaultType: initial?.organism_quantity_type ?? layerMethodHint(modal.layer),
+        // 偵測方式 shown for point count or any animal record.
+        showDetection: isPointCount || taxon.kingdom === 'Animalia',
       };
     }
     const r = modal.record;
     return {
       layer: r.layer as Layer,
       title: `${r.common_name_c || ''} ${r.simple_name}`.trim(),
+      header: {
+        cname: r.common_name_c ?? '',
+        name: r.simple_name,
+        author: r.name_author ?? '',
+        kingdom: r.kingdom ?? '',
+        phylum: r.phylum ?? '',
+        class_name: r.class ?? '',
+        order: r.order ?? '',
+        family: r.family ?? '',
+        family_c: r.family_c ?? '',
+        genus: r.genus ?? '',
+      },
       initial: {
         organism_quantity: r.organism_quantity,
         organism_quantity_type: r.organism_quantity_type,
@@ -317,10 +379,12 @@ export function PlotSpeciesTab({
         life_stage: r.life_stage ?? null,
         reproductive_condition: parseMultiAttribute(r.reproductive_condition),
         leaf_phenology: parseMultiAttribute(r.leaf_phenology),
+        detection_type: r.detection_type ?? null,
       } satisfies PlotValueDraft,
       kingdom: r.kingdom ?? null,
       className: r.class ?? null,
       defaultType: r.organism_quantity_type ?? null,
+      showDetection: isPointCount || r.kingdom === 'Animalia',
     };
   })();
 
@@ -354,9 +418,9 @@ export function PlotSpeciesTab({
             />
           </Pressable>
         </View>
-        {isTransect ? (
+        {!stratified ? (
           <Text className="text-[11px] text-gray-500 dark:text-gray-400">
-            穿越線記錄
+            {isPointCount ? '定點計數記錄' : '穿越線記錄'}
             {grouped['T'].length > 0 ? ` · 已記 ${grouped['T'].length} 筆` : ''}
           </Text>
         ) : (
@@ -396,16 +460,14 @@ export function PlotSpeciesTab({
 
       {/* Records grouped by layer */}
       <FlatList
-        data={(isTransect ? (['T'] as Layer[]) : activeLayers).flatMap<
+        data={(stratified ? activeLayers : (['T'] as Layer[])).flatMap<
           { kind: 'header'; layer: Layer } | { kind: 'row'; record: PlotSpeciesRecordWithTaxon }
         >((l) => {
           const list = grouped[l];
           if (list.length === 0) return [];
-          // Transect 模式不顯示 header（單一層，已在 chips 區告知）。
+          // 非分層模式（穿越線 / 定點計數）不顯示 header（單一 'T'，已在 chips 區告知）。
           return [
-            ...(isTransect
-              ? []
-              : [{ kind: 'header', layer: l } as const]),
+            ...(stratified ? [{ kind: 'header', layer: l } as const] : []),
             ...list.map((r) => ({ kind: 'row', record: r }) as const),
           ];
         })}
@@ -435,6 +497,7 @@ export function PlotSpeciesTab({
                 record={item.record}
                 onPress={() => setModal({ mode: 'edit', record: item.record })}
                 onLongPress={() => handleLongPressRecord(item.record)}
+                onAdjust={(d) => handleAdjustQuantity(item.record, d)}
               />
             </SwipeRow>
           );
@@ -443,7 +506,7 @@ export function PlotSpeciesTab({
           <View className="items-center px-8 py-12">
             <Ionicons name="leaf-outline" size={40} color="#cbd5e1" />
             <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-              {isTransect ? '從下方搜尋加入物種' : '選擇分層後從下方搜尋加入物種'}
+              {!stratified ? '從下方搜尋加入物種' : '選擇分層後從下方搜尋加入物種'}
             </Text>
           </View>
         }
@@ -459,10 +522,16 @@ export function PlotSpeciesTab({
           visible
           layer={modalProps.layer}
           title={modalProps.title}
+          header={modalProps.header}
           initial={modalProps.initial}
           kingdom={modalProps.kingdom}
           className={modalProps.className}
           defaultType={modalProps.defaultType}
+          showDetection={modalProps.showDetection}
+          lat={modal.mode === 'edit' ? modal.record.lat : undefined}
+          lng={modal.mode === 'edit' ? modal.record.lng : undefined}
+          accuracy={modal.mode === 'edit' ? modal.record.accuracy : undefined}
+          onSaveLocation={modal.mode === 'edit' ? handleSaveModalLocation : undefined}
           photoUris={
             modal.mode === 'edit' ? parsePhotoPaths(modal.record.photo_paths) : undefined
           }
@@ -480,10 +549,12 @@ function SpeciesRow({
   record,
   onPress,
   onLongPress,
+  onAdjust,
 }: {
   record: PlotSpeciesRecordWithTaxon;
   onPress: () => void;
   onLongPress: () => void;
+  onAdjust?: (delta: number) => void;
 }) {
   const ab = alienBadge(record.alien_type, record.kingdom);
   return (
@@ -539,15 +610,39 @@ function SpeciesRow({
         ) : null}
       </View>
       <View className="ml-3 items-end">
-        <ValueBadge record={record} />
+        <ValueBadge record={record} onAdjust={onAdjust} />
       </View>
     </Pressable>
   );
 }
 
-function ValueBadge({ record }: { record: PlotSpeciesRecordWithTaxon }) {
+function ValueBadge({
+  record,
+  onAdjust,
+}: {
+  record: PlotSpeciesRecordWithTaxon;
+  onAdjust?: (delta: number) => void;
+}) {
   const kind = kindForType(record.organism_quantity_type);
   const badge = formatQuantityBadge(record.organism_quantity, record.organism_quantity_type);
+
+  // Individuals (count): inline +/- stepper for quick field tallying without
+  // opening the value modal. Other kinds keep the static badge.
+  if (kind === 'count' && onAdjust) {
+    return (
+      <View className="flex-row items-center">
+        <Pressable onPress={() => onAdjust(-1)} hitSlop={10} className="px-1.5 py-1 active:opacity-50">
+          <Ionicons name="remove-circle-outline" size={22} color="#ea580c" />
+        </Pressable>
+        <View className="min-w-[40px] items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1.5">
+          <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200">{badge}</Text>
+        </View>
+        <Pressable onPress={() => onAdjust(1)} hitSlop={10} className="px-1.5 py-1 active:opacity-50">
+          <Ionicons name="add-circle-outline" size={22} color="#ea580c" />
+        </Pressable>
+      </View>
+    );
+  }
 
   // Tone by kind
   const tone =

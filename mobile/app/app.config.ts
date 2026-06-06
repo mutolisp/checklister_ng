@@ -25,7 +25,7 @@ const GOOGLE_MAPS_ANDROID_API_KEY = process.env.GOOGLE_MAPS_ANDROID_API_KEY;
 const config: ExpoConfig = {
   name: 'Checklister',
   slug: 'checklister-mobile',
-  version: '0.4.0',
+  version: '0.4.1',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'checklister',

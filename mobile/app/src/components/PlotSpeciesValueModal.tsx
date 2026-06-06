@@ -8,6 +8,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Modal,
   Platform,
   Pressable,
@@ -15,18 +16,22 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import * as Location from 'expo-location';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { showActionSheet } from './ActionSheet';
 import { useColorScheme as useNwColorScheme } from 'nativewind';
-import type { Layer } from '~/db';
+import { useRouter } from 'expo-router';
+import { getKeysForScope, type Layer, type Rank, type IdentificationKey } from '~/db';
+import { ScientificName } from './ScientificName';
+import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import {
   SpeciesAttributesBlock,
   type SpeciesAttributesDraft,
 } from './SpeciesAttributesBlock';
-import { EMPTY_DRAFT } from '~/lib/dwcAttributes';
+import { EMPTY_DRAFT, DETECTION_OPTIONS } from '~/lib/dwcAttributes';
 import {
   QUANTITY_TYPES,
   basalArea,
@@ -44,24 +49,52 @@ export type PlotValueDraft = {
   organism_quantity: string | null;
   organism_quantity_type: string | null;
   notes: string | null;
+  /** Detection method (v13): 'seen' | 'heard' | 'flying'. */
+  detection_type: string | null;
 } & SpeciesAttributesDraft;
 
 const EMPTY: PlotValueDraft = {
   organism_quantity: null,
   organism_quantity_type: null,
   notes: null,
+  detection_type: null,
   ...EMPTY_DRAFT,
+};
+
+/** Structured taxon header so the modal can render an italic scientific name +
+ *  a tappable classification path + identification-key chips (replacing the
+ *  bare "分層 T" line for non-stratified plots). Falls back to `title` when absent. */
+export type PlotModalHeader = {
+  cname: string;
+  name: string;
+  author: string;
+  kingdom: string;
+  phylum: string;
+  class_name: string;
+  order: string;
+  family: string;
+  family_c: string;
+  genus: string;
 };
 
 type Props = {
   visible: boolean;
   layer: Layer;
   title: string;
+  header?: PlotModalHeader | null;
   initial?: PlotValueDraft | null;
   kingdom?: string | null;
   className?: string | null;
   /** Plot/layer-suggested default type when starting from blank. */
   defaultType?: string | null;
+  /** Show the 偵測方式 (seen/heard/flying) chips — point count / animal records. */
+  showDetection?: boolean;
+  /** Current per-record GPS (edit mode); displayed by the GPS button. */
+  lat?: number | null;
+  lng?: number | null;
+  accuracy?: number | null;
+  /** Persist per-record GPS (edit mode only). Omit to hide the GPS button. */
+  onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
   /** Existing photo URIs for the record (edit mode only). */
   photoUris?: string[];
   /** Capture / library handlers for the photo section. Parent owns the
@@ -76,10 +109,16 @@ export function PlotSpeciesValueModal({
   visible,
   layer,
   title,
+  header,
   initial,
   kingdom,
   className,
   defaultType,
+  showDetection = false,
+  lat,
+  lng,
+  accuracy,
+  onSaveLocation,
   photoUris,
   onAddPhoto,
   onRemovePhoto,
@@ -97,7 +136,30 @@ export function PlotSpeciesValueModal({
   const [customValue, setCustomValue] = useState<string>('');
   const [customType, setCustomType] = useState<string>('');
   const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [detection, setDetection] = useState<string | null>(initial?.detection_type ?? null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const router = useRouter();
+
+  // Identification keys defined for the taxon's genus / family ("上一階層"),
+  // shown as 鑰匙 chips like the taxonomy tree / SpeciesDetailSheet.
+  const [parentKeys, setParentKeys] = useState<IdentificationKey[]>([]);
+  useEffect(() => {
+    if (!visible || !header) {
+      setParentKeys([]);
+      return;
+    }
+    const found: IdentificationKey[] = [];
+    if (header.genus) found.push(...getKeysForScope('genus', header.genus));
+    if (header.family) found.push(...getKeysForScope('family', header.family));
+    const seen = new Set<number>();
+    setParentKeys(
+      found.filter((k) => {
+        if (seen.has(k.id)) return false;
+        seen.add(k.id);
+        return true;
+      }),
+    );
+  }, [visible, header]);
   const [attrs, setAttrs] = useState<SpeciesAttributesDraft>({
     sex: initial?.sex ?? null,
     life_stage: initial?.life_stage ?? null,
@@ -111,6 +173,7 @@ export function PlotSpeciesValueModal({
     const startType = initial?.organism_quantity_type ?? defaultType ?? defaultQuantityTypeFor(kingdom);
     setQtyType(startType);
     setNotes(initial?.notes ?? '');
+    setDetection(initial?.detection_type ?? null);
     setAttrs({
       sex: initial?.sex ?? null,
       life_stage: initial?.life_stage ?? null,
@@ -168,7 +231,7 @@ export function PlotSpeciesValueModal({
   })();
 
   const handleSave = () => {
-    const base = { ...EMPTY, ...attrs, notes: notes || null };
+    const base = { ...EMPTY, ...attrs, notes: notes || null, detection_type: detection };
     let quantity: string | null = null;
     let type: string | null = qtyType;
     if (currentKind === 'BB') quantity = bb;
@@ -220,9 +283,85 @@ export function PlotSpeciesValueModal({
             >
               <View className="mb-3 border-b border-gray-100 dark:border-gray-800 pb-3">
                 <Text className="text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={2}>
-                  {title}
+                  {header ? header.cname || '(無中文名)' : title}
                 </Text>
-                <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
+                {header ? (
+                  <ScientificName
+                    name={header.name}
+                    author={header.author}
+                    kingdom={header.kingdom}
+                    className="text-sm text-gray-700 dark:text-gray-300"
+                  />
+                ) : null}
+                {layer === 'T' ? (
+                  // Non-stratified plot (transect / point count): show the full
+                  // classification path (each rank tappable → taxonomy tree)
+                  // plus any identification-key chips, instead of a bare layer.
+                  header ? (
+                    <View className="mt-2 flex-row flex-wrap items-center" style={{ gap: 6 }}>
+                      {(
+                        [
+                          { rank: 'kingdom', name: header.kingdom },
+                          { rank: 'phylum', name: header.phylum },
+                          { rank: 'class', name: header.class_name },
+                          { rank: 'order', name: header.order },
+                          { rank: 'family', name: header.family, nameC: header.family_c },
+                          { rank: 'genus', name: header.genus },
+                        ] as Array<{ rank: Rank; name: string; nameC?: string }>
+                      )
+                        .filter((r) => r.name)
+                        .map((r) => (
+                          <TaxonomyJumpChip
+                            key={r.rank}
+                            rank={r.rank}
+                            lineage={{
+                              kingdom: header.kingdom,
+                              phylum: header.phylum,
+                              class: header.class_name,
+                              order: header.order,
+                              family: header.family,
+                              genus: header.genus,
+                            }}
+                            name={r.name}
+                            nameC={r.nameC}
+                            beforeJump={onCancel}
+                          />
+                        ))}
+                      {parentKeys.map((k) => (
+                        <Pressable
+                          key={k.id}
+                          onPress={() => {
+                            onCancel();
+                            requestAnimationFrame(() => router.push(`/key/${k.id}`));
+                          }}
+                          className={`flex-row items-center rounded-full px-2.5 py-1 active:opacity-80 ${
+                            k.mode === 'multi_access'
+                              ? 'bg-blue-100 dark:bg-blue-900/60'
+                              : 'bg-emerald-100 dark:bg-emerald-900/60'
+                          }`}
+                          hitSlop={4}
+                        >
+                          <Ionicons
+                            name="key"
+                            size={12}
+                            color={k.mode === 'multi_access' ? '#2563eb' : '#10b981'}
+                          />
+                          <Text
+                            className={`ml-1 text-xs font-medium ${
+                              k.mode === 'multi_access'
+                                ? 'text-blue-700 dark:text-blue-300'
+                                : 'text-emerald-700 dark:text-emerald-300'
+                            }`}
+                          >
+                            檢索表 ({k.scope_name})
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  ) : null
+                ) : (
+                  <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
+                )}
               </View>
               {/* Quantity type picker */}
               <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">豐度單位</Text>
@@ -307,6 +446,78 @@ export function PlotSpeciesValueModal({
                   onChange={setAttrs}
                 />
               </View>
+
+              {showDetection ? (
+                <View className="mt-4">
+                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">偵測方式</Text>
+                  <View className="flex-row gap-1.5">
+                    {DETECTION_OPTIONS.map((o) => {
+                      const on = detection === o.value;
+                      return (
+                        <Pressable
+                          key={o.value}
+                          onPress={() => setDetection(on ? null : o.value)}
+                          className={`rounded-full border px-3 py-1.5 ${on ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+                        >
+                          <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                            {o.label}
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              ) : null}
+
+              {onSaveLocation ? (
+                <View className="mt-4">
+                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">座標（選填）</Text>
+                  <Pressable
+                    onPress={async () => {
+                      const perm = await Location.requestForegroundPermissionsAsync();
+                      if (perm.status !== 'granted') {
+                        Alert.alert('需要定位權限', '請到系統設定開啟定位權限');
+                        return;
+                      }
+                      try {
+                        const pos = await Location.getCurrentPositionAsync({
+                          accuracy: Location.Accuracy.Balanced,
+                        });
+                        onSaveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy ?? null);
+                      } catch (e) {
+                        Alert.alert('定位失敗', e instanceof Error ? e.message : String(e));
+                      }
+                    }}
+                    onLongPress={
+                      lat != null
+                        ? () => {
+                            Alert.alert('GPS', undefined, [
+                              { text: '取消', style: 'cancel' },
+                              {
+                                text: '清除座標',
+                                style: 'destructive',
+                                onPress: () => onSaveLocation(null, null, null),
+                              },
+                            ]);
+                          }
+                        : undefined
+                    }
+                    className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
+                  >
+                    <Ionicons
+                      name={lat != null ? 'location' : 'location-outline'}
+                      size={18}
+                      color={lat != null ? '#2563eb' : '#4b5563'}
+                    />
+                    <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
+                      {lat != null && lng != null
+                        ? `${lat.toFixed(5)}, ${lng.toFixed(5)}${accuracy != null ? ` (±${Math.round(accuracy)}m)` : ''}`
+                        : '定位此物種'}
+                    </Text>
+                    <Text className="text-[11px] text-gray-400">{lat != null ? '長按清除' : '點選 GPS'}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
 
               {onAddPhoto ? (
                 <View className="mt-4">

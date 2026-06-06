@@ -13,6 +13,7 @@ EXPO := npx expo
         start \
         build-android-dev build-android-release \
         build-ios build-ios-device build-ios-release list-ios-devices \
+        check-ios-team \
         build-android-eas build-ios-eas \
         build-android-prod build-ios-prod \
         submit-ios submit-android \
@@ -25,6 +26,13 @@ EXPO := npx expo
 #   make build-ios-device                          # 互動式挑選
 #   make build-ios-device IOS_DEVICE="My iPhone"   # 直接指定
 IOS_DEVICE ?=
+
+# Expected Apple Developer team for device signing: National Taiwan
+# University(EDU). `expo prebuild --clean` wipes DEVELOPMENT_TEAM (it is not in
+# app.config.ts), which silently reverts signing to the personal team and signs
+# with the wrong certificate. `check-ios-team` guards against that.
+IOS_TEAM := R6QJPK552H
+IOS_PBXPROJ := ios/Checklister.xcodeproj/project.pbxproj
 
 # 專案根目錄與 venv python（icons 產生需要 Pillow）
 PROJECT_ROOT := $(abspath $(CURDIR)/../..)
@@ -77,7 +85,18 @@ build-android-dev:
 build-ios:
 	$(EXPO) run:ios
 
-build-ios-device:
+check-ios-team:
+	@team=$$(grep -m1 'DEVELOPMENT_TEAM' "$(IOS_PBXPROJ)" | sed -E 's/.*= *([A-Z0-9]+);.*/\1/'); \
+	if [ "$$team" != "$(IOS_TEAM)" ]; then \
+		echo "✗ DEVELOPMENT_TEAM is '$$team', expected '$(IOS_TEAM)' (NTU)."; \
+		echo "  Likely a 'prebuild --clean' reverted signing to the personal team."; \
+		echo "  Open ios/Checklister.xcworkspace → Signing & Capabilities → set Team"; \
+		echo "  to National Taiwan University(EDU), then rebuild."; \
+		exit 1; \
+	fi; \
+	echo "✓ DEVELOPMENT_TEAM = $(IOS_TEAM) (NTU)"
+
+build-ios-device: check-ios-team
 	@if [ -z "$(IOS_DEVICE)" ]; then \
 		$(EXPO) run:ios --device; \
 	else \
@@ -91,7 +110,7 @@ list-ios-devices:
 build-android-release:
 	$(EXPO) run:android --variant release
 
-build-ios-release:
+build-ios-release: check-ios-team
 	@if [ -z "$(IOS_DEVICE)" ]; then \
 		$(EXPO) run:ios --device --configuration Release; \
 	else \

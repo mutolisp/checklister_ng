@@ -55,6 +55,12 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   life_stage: 'lifeStage',
   reproductive_condition: 'reproductiveCondition',
   leaf_phenology: 'leafPhenology',
+  // Free-text remarks + taxon rank (were previously passed through unmapped).
+  notes: 'occurrenceRemarks',
+  rank: 'taxonRank',
+  // Detection method (point count / animal records). No standard DwC term —
+  // use a custom camelCase key, consistent with verbatimVegetationLayer etc.
+  detection_type: 'detectionType',
 };
 
 export function convertToDwc(obj: Record<string, unknown>): Record<string, unknown> {

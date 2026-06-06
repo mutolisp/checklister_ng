@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from 'expo-router';
+import { useIsFocused } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,12 +15,10 @@ import {
 import { KeyboardController } from 'react-native-keyboard-controller';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import {
-  addRecord,
   addSearchHistory,
   getKeysForScope,
   getSpeciesUnder,
   getTaxonChildren,
-  isTaxonInSession,
   nodeKeyFor,
   type Ancestors,
   type IdentificationKey,
@@ -47,6 +46,7 @@ import { alienBadge } from '~/lib/conservationColors';
 import { perf } from '~/lib/perf';
 import { rankColor } from '~/lib/rankColors';
 import { taxonSpeciesToSearchResult } from '~/lib/taxonSpecies';
+import { useAddToActiveRecord } from '~/lib/useAddToActiveRecord';
 import { useActiveSession } from '~/stores/activeSession';
 import { useSettings } from '~/stores/settings';
 import { useTaxonomyJump } from '~/stores/taxonomyJump';
@@ -100,10 +100,9 @@ export default function TaxonomyScreen() {
     renderStartMarkedRef.current = true;
     perf.mark('taxonomy:render-start');
   }
-  const session = useActiveSession((s) => s.session);
-  const start = useActiveSession((s) => s.start);
   const refreshActive = useActiveSession((s) => s.refresh);
   const toast = useToast((s) => s.show);
+  const { addSpecies, modal: addRecordModal, targetLabel: addTargetLabel } = useAddToActiveRecord();
 
   const persistedExpanded = useSettings((s) => s.taxonomy_expanded);
   const setSetting = useSettings((s) => s.set);
@@ -453,12 +452,19 @@ export default function TaxonomyScreen() {
   // 'tree' so the cascade is actually visible.
   const pendingJumpPath = useTaxonomyJump((s) => s.pendingPath);
   const clearJump = useTaxonomyJump((s) => s.clear);
+  const isFocused = useIsFocused();
+  // Consume the jump ONLY once this tab is focused. `request(path)` fires from
+  // another screen (plot/session detail), so this effect would otherwise run
+  // while taxonomy is still in the background — the FlatList isn't laid out, the
+  // scroll silently fails, and the early `clearJump()` removes the request so it
+  // never retries on focus. Gating on `isFocused` defers consumption until the
+  // tree is actually on-screen, fixing "jump never locates".
   useEffect(() => {
-    if (!pendingJumpPath || loading || roots.length === 0) return;
+    if (!isFocused || !pendingJumpPath || loading || roots.length === 0) return;
     setSegment('tree');
     expandToPath(pendingJumpPath, pendingJumpPath[pendingJumpPath.length - 1]?.value);
     clearJump();
-  }, [pendingJumpPath, loading, roots.length, expandToPath, clearJump]);
+  }, [isFocused, pendingJumpPath, loading, roots.length, expandToPath, clearJump]);
 
   // Scroll-to-target resolver. Uses getItemLayout-derived offset and a
   // direct scrollToOffset (bypassing scrollToIndex entirely) so we control
@@ -566,35 +572,15 @@ export default function TaxonomyScreen() {
     );
   }, [segment, loading, pendingScrollKey, pendingJumpPath]);
 
+  // Smart-routes to the active plot (opens abundance modal) or session.
   const handleQuickAdd = (sp: TaxonSpecies) => {
-    if (!sp.taxon_id) {
-      toast('此物種無 taxon_id，無法加入');
-      return;
-    }
-    const target = session ?? start();
-    if (isTaxonInSession(target.id, sp.taxon_id)) {
-      toast(`已存在於當前記錄：${sp.common_name_c || sp.simple_name}`);
-      return;
-    }
-    addRecord({ session_id: target.id, taxon_id: sp.taxon_id });
-    refreshActive();
-    toast(`已加入：${sp.common_name_c || sp.simple_name}`);
+    addSpecies(taxonSpeciesToSearchResult(sp));
   };
 
   const handleAddFromSheet = () => {
-    if (!activeSpecies?.taxon_id) {
-      toast('此物種無 taxon_id');
-      return;
-    }
+    if (!activeSpecies) return;
     addSearchHistory(activeSpecies.cname || activeSpecies.name);
-    const target = session ?? start();
-    if (isTaxonInSession(target.id, activeSpecies.taxon_id)) {
-      toast(`已存在：${activeSpecies.cname || activeSpecies.name}`);
-      return;
-    }
-    addRecord({ session_id: target.id, taxon_id: activeSpecies.taxon_id });
-    refreshActive();
-    toast(`已加入：${activeSpecies.cname || activeSpecies.name}`);
+    addSpecies(activeSpecies);
   };
 
   return (
@@ -810,7 +796,9 @@ export default function TaxonomyScreen() {
         result={activeSpecies}
         onClose={() => setActiveSpecies(null)}
         onAddToSession={handleAddFromSheet}
+        addButtonLabel={addTargetLabel}
       />
+      {addRecordModal}
     </View>
   );
 }

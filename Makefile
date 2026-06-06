@@ -112,6 +112,8 @@ mobile-db: backend
 	cp backend/twnamelist.db $(MOBILE_DB)
 	@echo "==> Building mobile fuzzy index"
 	$(BACKEND_VENV)/bin/python -m backend.scripts.build_mobile_fuzzy_index $(MOBILE_DB)
+	@echo "==> Filling pinyin column (pinyin-pro, for voice homophone matching)"
+	NODE_NO_WARNINGS=1 node mobile/app/scripts/build_pinyin_index.mjs $(MOBILE_DB)
 
 # ─── Icon ─────────────────────────────────────────────────
 icon:

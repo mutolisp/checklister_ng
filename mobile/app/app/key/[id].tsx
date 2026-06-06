@@ -421,10 +421,10 @@ export default function KeyRunnerScreen() {
         return;
       }
       if (activePlot) {
-        // Transect plots store every row under layer 'T'; fixed plots
-        // default to E2 (草本層) — most common entry layer for vegetation
-        // surveys. User can change in the modal that follows.
-        const layer: Layer = activePlot.plot_type === 'transect' ? 'T' : 'E2';
+        // Non-stratified plots (transect / point count) store every row under
+        // layer 'T'; fixed plots default to E2 (草本層) — most common entry
+        // layer for vegetation surveys. User can change in the modal that follows.
+        const layer: Layer = activePlot.plot_type === 'fixed' ? 'E2' : 'T';
         setPlotValueTarget({ taxon, layer });
         return;
       }

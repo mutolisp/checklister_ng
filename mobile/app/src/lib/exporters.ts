@@ -46,6 +46,13 @@ function recordToExportItem(rec: RecordWithTaxon, extra: ExportItem = {}): Expor
     life_stage: rec.life_stage,
     reproductive_condition: multiToDwc(rec.reproductive_condition),
     leaf_phenology: multiToDwc(rec.leaf_phenology),
+    // notes + per-record GPS were previously dropped here, so the standalone
+    // CSV/YAML lost user-entered remarks and coordinates. Keep them aligned
+    // with the bundle exporter.
+    notes: rec.notes,
+    lat: rec.lat,
+    lng: rec.lng,
+    accuracy: rec.accuracy,
     eventDate: new Date(rec.observed_at).toISOString(),
     ...extra,
   };
@@ -128,6 +135,7 @@ function recordToMarkdownItem(rec: RecordWithTaxon): MarkdownItem {
     protected: rec.protected,
     is_hybrid: rec.is_hybrid,
     nomenclature_name: '',
+    notes: rec.notes,
   };
 }
 

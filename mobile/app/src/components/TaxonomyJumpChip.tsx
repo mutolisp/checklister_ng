@@ -8,7 +8,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { Pressable, Text } from 'react-native';
+import { Keyboard, Pressable, Text } from 'react-native';
 import type { Rank } from '~/db';
 import { useTaxonomyJump, type JumpPath } from '~/stores/taxonomyJump';
 
@@ -78,6 +78,10 @@ export function TaxonomyJumpChip({
       if (v) path.push({ rank: r, value: v });
     }
     if (path.length === 0) return;
+    // Dismiss the keyboard before navigating so the taxonomy tree's
+    // KeyboardStickyView doesn't mount/latch against an open keyboard (which
+    // leaves the 「搜尋分類群」 box floating mid-screen).
+    Keyboard.dismiss();
     requestJump(path);
     beforeJump?.();
     requestAnimationFrame(() => {

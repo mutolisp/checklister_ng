@@ -1,5 +1,5 @@
 import yaml from 'js-yaml';
-import { searchSpecies } from '~/db/search';
+import { searchWithFuzzyFallback } from '~/db/fuzzy';
 import type { SearchResult } from '~/db/types';
 
 export type ImportEntry = {
@@ -61,11 +61,16 @@ function extractNamesFromYaml(data: unknown): string[] {
   return names;
 }
 
-/** For each input name, search and categorize. */
-export function resolveBatch(names: string[]): CategorizedImport {
+/** For each input name, search and categorize. Routes through
+ *  `searchWithFuzzyFallback` so misspellings / OS-dictation output resolve via
+ *  fuzzy + (when `phonetic`) toneless-pinyin homophone matching. */
+export function resolveBatch(
+  names: string[],
+  opts?: { phonetic?: boolean },
+): CategorizedImport {
   const out: CategorizedImport = { exact: [], ambiguous: [], unmatched: [] };
   for (const raw of names) {
-    const matches = searchSpecies({ q: raw, limit: 5 });
+    const matches = searchWithFuzzyFallback({ q: raw, phonetic: opts?.phonetic }).slice(0, 5);
     const entry: ImportEntry = { raw, matches };
     if (matches.length === 0) out.unmatched.push(entry);
     else if (matches.length === 1) out.exact.push(entry);

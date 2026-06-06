@@ -33,6 +33,10 @@ export type MarkdownItem = {
   is_hybrid: string;
   nomenclature_name: string;
   pt_name?: string;
+  /** Observer remarks, appended inline after the species line (optional). */
+  notes?: string | null;
+  /** Abundance badge text, appended inline (optional). */
+  abundance?: string | null;
 };
 
 export type MarkdownMetadata = {
@@ -252,6 +256,12 @@ function renderGroup(
         statusParts.push(p === '1' ? '文資法珍稀' : `保育類:${p}`);
       }
       if (statusParts.length > 0) parts.push(statusParts.join('; '));
+      // Append observer remarks / abundance inline so user-entered notes are
+      // visible in the human-readable checklist (CSV/YAML carry the full data).
+      const extras: string[] = [];
+      if (item.abundance) extras.push(item.abundance);
+      if (item.notes) extras.push(item.notes);
+      if (extras.length > 0) parts.push(`（${extras.join('；')}）`);
       lines.push(parts.join(' '));
       state.spCounter += 1;
     }
