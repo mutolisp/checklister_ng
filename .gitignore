@@ -80,5 +80,8 @@ yarn-error.*
 app-example
 
 # generated native folders
-/mobile/app/ios
+# ios/ is committed so Xcode Cloud can find Checklister.xcworkspace + xcodeproj.
+# Pods/ and build artifacts inside ios/ stay ignored via mobile/app/ios/.gitignore;
+# CocoaPods are regenerated on CI by mobile/app/ios/ci_scripts/ci_post_clone.sh.
+# /mobile/app/ios
 /mobile/app/android
