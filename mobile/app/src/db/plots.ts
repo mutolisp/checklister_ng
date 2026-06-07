@@ -522,6 +522,33 @@ export function listPlotSurveys(): PlotSurvey[] {
   return (res.rows ?? []) as unknown as PlotSurvey[];
 }
 
+/** Plot survey + project name + species count, for the map overlay. */
+export type PlotSurveyWithMeta = PlotSurvey & {
+  project_name: string;
+  species_count: number;
+};
+
+/**
+ * All plots with their project name and species count in one query (no N+1).
+ * NOTE: uses LEFT JOIN projects (unlike listSites which inner-joins) because a
+ * plot's project_id may be 0 (未指定) — an inner join would silently drop those.
+ * COUNT(psr.id) (not *) yields 0 for plots with no species.
+ */
+export function listPlotSurveysWithMeta(): PlotSurveyWithMeta[] {
+  const db = getUserDb();
+  const res = db.executeSync(
+    `SELECT ps.*,
+            COALESCE(p.name, '未指定') AS project_name,
+            COUNT(psr.id) AS species_count
+     FROM plot_surveys ps
+       LEFT JOIN projects p ON p.id = ps.project_id
+       LEFT JOIN plot_species_records psr ON psr.plot_survey_id = ps.id
+     GROUP BY ps.id
+     ORDER BY COALESCE(ps.start_ts, ps.created_at) DESC`,
+  );
+  return (res.rows ?? []) as unknown as PlotSurveyWithMeta[];
+}
+
 export function getActivePlot(): PlotSurvey | null {
   const db = getUserDb();
   const res = db.executeSync(
@@ -809,6 +836,12 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
 export function deletePlotSpecies(id: number): void {
   const db = getUserDb();
   db.executeSync(`DELETE FROM plot_species_records WHERE id = ?`, [id]);
+}
+
+/** Move a species record to a different vegetation layer (fix mis-entry). */
+export function updatePlotSpeciesLayer(id: number, layer: Layer): void {
+  const db = getUserDb();
+  db.executeSync(`UPDATE plot_species_records SET layer = ? WHERE id = ?`, [layer, id]);
 }
 
 export function parseDbhValues(s: string | null): number[] {

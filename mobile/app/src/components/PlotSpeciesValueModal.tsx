@@ -239,8 +239,13 @@ export function PlotSpeciesValueModal({
 
   const canSave = (() => {
     if (currentKind === 'BB') return bb !== null;
-    if (currentKind === 'count' || currentKind === 'percent')
+    if (currentKind === 'count')
       return numericValue.trim() !== '' && Number.isFinite(Number(numericValue));
+    if (currentKind === 'percent') {
+      const n = Number(numericValue);
+      // Cover estimate must be in (0, 100].
+      return numericValue.trim() !== '' && Number.isFinite(n) && n > 0 && n <= 100;
+    }
     if (currentKind === 'DBH') return stems.length > 0;
     if (currentKind === 'custom')
       return customValue.trim() !== '' && customType.trim() !== '';
@@ -656,6 +661,13 @@ function PercentInput({ value, onChange }: { value: string; onChange: (v: string
         />
         <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">%</Text>
       </View>
+      {(() => {
+        const t = value.trim();
+        if (t === '') return null;
+        const n = Number(t);
+        if (Number.isFinite(n) && n > 0 && n <= 100) return null;
+        return <Text className="mt-1 text-xs text-red-500">覆蓋度需大於 0、小於等於 100</Text>;
+      })()}
       <View className="mt-2 flex-row flex-wrap gap-2">
         {[1, 5, 10, 25, 50, 75].map((v) => (
           <Pressable

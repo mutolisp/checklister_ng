@@ -50,6 +50,14 @@ export function setSurveyorDefault(id: number, on: boolean): void {
   getUserDb().executeSync(`UPDATE surveyors SET is_default = ? WHERE id = ?;`, [on ? 1 : 0, id]);
 }
 
+/** Persist a new ordering: `sort_order` = position in `ids` (drag-to-reorder). */
+export function reorderSurveyors(ids: number[]): void {
+  const db = getUserDb();
+  ids.forEach((id, i) => {
+    db.executeSync(`UPDATE surveyors SET sort_order = ? WHERE id = ?;`, [i, id]);
+  });
+}
+
 export function getDefaultSurveyorNames(): string[] {
   const res = getUserDb().executeSync(
     `SELECT name FROM surveyors WHERE is_default = 1 ORDER BY sort_order ASC, name ASC;`,

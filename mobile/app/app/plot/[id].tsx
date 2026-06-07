@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import * as Location from 'expo-location';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Platform,
@@ -43,6 +43,8 @@ import {
   MAX_LAYER_COUNT,
 } from '~/db';
 import { PhotoGrid, PhotoViewerModal } from '~/components/PhotoGrid';
+import { useThemeColors } from '~/hooks/useThemeColors';
+import { useToast } from '~/stores/toast';
 import { PlotSpeciesTab } from '~/components/PlotSpeciesTab';
 import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { SurveyorAssignSheet } from '~/components/SurveyorAssignSheet';
@@ -189,7 +191,6 @@ function fmtClock(ts: number): string {
 }
 
 function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
   const [surveyorSheetOpen, setSurveyorSheetOpen] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
@@ -331,6 +332,26 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           </>
         ) : null}
 
+        <View className="mb-3">
+          <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+            調查者 (recordedBy)
+          </Text>
+          <Pressable
+            onPress={() => setSurveyorSheetOpen(true)}
+            className="flex-row items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <Text
+              className={`flex-1 text-sm ${plot.recorded_by ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}
+              numberOfLines={1}
+            >
+              {plot.recorded_by || '點選指派調查者…'}
+            </Text>
+            <Ionicons name="people-outline" size={16} color="#9ca3af" />
+          </Pressable>
+        </View>
+      </Section>
+
+      <CollapsibleSection title="基本資訊">
         {/* 穿越線不需要樣區大小 / 單位（其尺度由軌跡長度表示）。 */}
         {plot.plot_type !== 'transect' ? (
           <>
@@ -358,37 +379,14 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           placeholder="例: 方形樣區調查法 / 穿越線調查法"
           onSave={(v) => patch({ sampling_protocol: v || null })}
         />
-        <Field
+        <NumField
           label="總植被覆蓋度 (totalCoverInPercentage)"
-          value={plot.total_cover_pct !== null ? String(plot.total_cover_pct) : ''}
-          placeholder="0–100"
-          keyboardType="decimal-pad"
+          value={plot.total_cover_pct}
           suffix="%"
-          onSave={(v) => {
-            const n = v.trim() === '' ? null : Number(v);
-            patch({ total_cover_pct: Number.isFinite(n as number) ? (n as number) : null });
-          }}
+          min={0}
+          max={100}
+          onSave={(n) => patch({ total_cover_pct: n })}
         />
-        <View className="mb-3">
-          <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-            調查者 (recordedBy)
-          </Text>
-          <Pressable
-            onPress={() => setSurveyorSheetOpen(true)}
-            className="flex-row items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
-          >
-            <Text
-              className={`flex-1 text-sm ${plot.recorded_by ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}
-              numberOfLines={1}
-            >
-              {plot.recorded_by || '點選指派調查者…'}
-            </Text>
-            <Ionicons name="people-outline" size={16} color="#9ca3af" />
-          </Pressable>
-        </View>
-      </Section>
-
-      <Section title="位置資訊">
         <Field
           label="地點描述 (locality)"
           value={plot.locality ?? ''}
@@ -402,7 +400,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           onSave={(v) => patch({ field_note: v || null })}
           multiline
         />
-      </Section>
+      </CollapsibleSection>
 
       {plot.plot_type === 'fixed' ? (
         <LayerSection plot={plot} onUpdated={onUpdated} />
@@ -412,67 +410,52 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         <SubplotSection plot={plot} onUpdated={onUpdated} />
       ) : null}
 
-      <EnvPhotoSection plot={plot} onUpdated={onUpdated} />
-
-      <Pressable
-        onPress={() => setShowAdvanced((v) => !v)}
-        className="mt-2 flex-row items-center justify-between bg-gray-100 dark:bg-gray-800 px-4 py-3"
-      >
-        <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          進階（地形、地表覆蓋）
-        </Text>
-        <Ionicons
-          name={showAdvanced ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color="#4b5563"
+      <CollapsibleSection title="進階（地形、地表覆蓋）">
+        <NumField
+          label="海拔 (elevation)"
+          suffix="m"
+          value={plot.elevation_m}
+          onSave={(n) => patch({ elevation_m: n })}
         />
-      </Pressable>
-      {showAdvanced ? (
-        <Section title="">
-          <NumField
-            label="海拔 (elevation)"
-            suffix="m"
-            value={plot.elevation_m}
-            onSave={(n) => patch({ elevation_m: n })}
-          />
-          <NumField
-            label="坡度 (slope)"
-            suffix="°"
-            value={plot.slope_deg}
-            onSave={(n) => patch({ slope_deg: n })}
-          />
-          <NumField
-            label="坡向 (aspect)"
-            suffix="°"
-            value={plot.aspect_deg}
-            onSave={(n) => patch({ aspect_deg: n })}
-          />
-          <Field
-            label="地形位置 (terrainPosition)"
-            value={plot.terrain_position ?? ''}
-            placeholder="ridge / upper / mid / lower / valley / plain"
-            onSave={(v) => patch({ terrain_position: v || null })}
-          />
-          <NumField
-            label="岩石覆蓋"
-            suffix="%"
-            value={plot.rock_cover_pct}
-            onSave={(n) => patch({ rock_cover_pct: n })}
-          />
-          <NumField
-            label="碎石覆蓋"
-            suffix="%"
-            value={plot.gravel_cover_pct}
-            onSave={(n) => patch({ gravel_cover_pct: n })}
-          />
-          <NumField
-            label="裸露地覆蓋"
-            suffix="%"
-            value={plot.bareland_cover_pct}
-            onSave={(n) => patch({ bareland_cover_pct: n })}
-          />
-        </Section>
-      ) : null}
+        <NumField
+          label="坡度 (slope)"
+          suffix="°"
+          value={plot.slope_deg}
+          onSave={(n) => patch({ slope_deg: n })}
+        />
+        <NumField
+          label="坡向 (aspect)"
+          suffix="°"
+          value={plot.aspect_deg}
+          onSave={(n) => patch({ aspect_deg: n })}
+        />
+        <Field
+          label="地形位置 (terrainPosition)"
+          value={plot.terrain_position ?? ''}
+          placeholder="ridge / upper / mid / lower / valley / plain"
+          onSave={(v) => patch({ terrain_position: v || null })}
+        />
+        <NumField
+          label="岩石覆蓋"
+          suffix="%"
+          value={plot.rock_cover_pct}
+          onSave={(n) => patch({ rock_cover_pct: n })}
+        />
+        <NumField
+          label="碎石覆蓋"
+          suffix="%"
+          value={plot.gravel_cover_pct}
+          onSave={(n) => patch({ gravel_cover_pct: n })}
+        />
+        <NumField
+          label="裸露地覆蓋"
+          suffix="%"
+          value={plot.bareland_cover_pct}
+          onSave={(n) => patch({ bareland_cover_pct: n })}
+        />
+      </CollapsibleSection>
+
+      <EnvPhotoSection plot={plot} onUpdated={onUpdated} />
 
       <View className="h-12" />
 
@@ -522,21 +505,88 @@ function Section({
   );
 }
 
+/** Section with a tappable header that collapses/expands its body. Matches the
+ *  visual style of `Section`; default collapsed to declutter the env tab. */
+function CollapsibleSection({
+  title,
+  defaultExpanded = false,
+  children,
+}: {
+  title: string;
+  defaultExpanded?: boolean;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(defaultExpanded);
+  return (
+    <View className="px-4 py-3">
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        className={`flex-row items-center ${open ? 'mb-2' : ''}`}
+        hitSlop={6}
+      >
+        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={16} color="#6b7280" />
+        <Text className="ml-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+          {title}
+        </Text>
+      </Pressable>
+      {open ? children : null}
+    </View>
+  );
+}
+
 function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  // +/- icons sit on a dark button in dark mode — use a bright glyph there.
+  const { scheme } = useThemeColors();
+  const stepIcon = scheme === 'dark' ? '#f3f4f6' : '#374151';
   const [subplots, setSubplots] = useState<Subplot[]>([]);
   const reload = useCallback(() => setSubplots(listSubplots(plot.id)), [plot.id]);
   useEffect(() => reload(), [reload]);
+
+  // 各小區尺寸相同：開啟後只填一組寬/長套用到全部，省去逐區輸入。
+  const [uniform, setUniform] = useState(true);
+  // One-time init from existing data: default ON unless subplots already differ.
+  const syncedRef = useRef(false);
+  useEffect(() => {
+    if (syncedRef.current || subplots.length === 0) return;
+    syncedRef.current = true;
+    const { width_m: w, length_m: l } = subplots[0];
+    setUniform(subplots.every((s) => s.width_m === w && s.length_m === l));
+  }, [subplots]);
+
+  /** Write the same width/length to every subplot. */
+  const applyUniform = (fields: { width_m?: number | null; length_m?: number | null }) => {
+    for (const s of subplots) updateSubplot(s.id, fields);
+    reload();
+    onUpdated();
+  };
 
   const count = subplots.length;
   const setCount = (n: number) => {
     if (n < 0) return;
     setSubplotCount(plot.id, n);
-    reload();
+    const fresh = listSubplots(plot.id);
+    // In uniform mode, newly-added subplots inherit the shared size.
+    if (uniform && fresh.length > 0) {
+      const { width_m: w, length_m: l } = fresh[0];
+      for (const s of fresh) updateSubplot(s.id, { width_m: w, length_m: l });
+    }
+    setSubplots(listSubplots(plot.id));
     onUpdated();
   };
 
+  const toggleUniform = () => {
+    const next = !uniform;
+    setUniform(next);
+    // Turning ON: propagate the first subplot's size to all so they match.
+    if (next && subplots.length > 0) {
+      applyUniform({ width_m: subplots[0].width_m, length_m: subplots[0].length_m });
+    }
+  };
+
+  const first = subplots[0];
+
   return (
-    <Section title="小區劃分 (subplots)">
+    <CollapsibleSection title="小區劃分 (subplots)">
       <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
         切分後在「物種」分頁可逐小區記錄物種、豐度與各層 cover/height（分層設定共用）。0 = 不切分。
       </Text>
@@ -546,7 +596,7 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
           disabled={count <= 0}
           className={`h-9 w-9 items-center justify-center rounded-full ${count <= 0 ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600'}`}
         >
-          <Ionicons name="remove" size={18} color={count <= 0 ? '#9ca3af' : '#374151'} />
+          <Ionicons name="remove" size={18} color={count <= 0 ? '#9ca3af' : stepIcon} />
         </Pressable>
         <Text className="mx-4 min-w-[24px] text-center text-lg font-semibold text-gray-900 dark:text-gray-100">
           {count}
@@ -555,10 +605,45 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
           onPress={() => setCount(count + 1)}
           className="h-9 w-9 items-center justify-center rounded-full bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600"
         >
-          <Ionicons name="add" size={18} color="#374151" />
+          <Ionicons name="add" size={18} color={stepIcon} />
         </Pressable>
         <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">小區數量</Text>
       </View>
+
+      {count > 0 ? (
+        <Pressable onPress={toggleUniform} className="mb-2 flex-row items-center" hitSlop={6}>
+          <Ionicons
+            name={uniform ? 'checkbox' : 'square-outline'}
+            size={20}
+            color={uniform ? '#2563eb' : scheme === 'dark' ? '#9ca3af' : '#6b7280'}
+          />
+          <Text className="ml-2 text-sm text-gray-800 dark:text-gray-200">各小區長寬相同</Text>
+        </Pressable>
+      ) : null}
+
+      {/* Uniform mode: one shared 寬/長 pair applied to all subplots. */}
+      {uniform && count > 0 ? (
+        <View className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2">
+          <Text className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">所有小區共用尺寸</Text>
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <NumField
+                label="寬 (m)"
+                value={first?.width_m ?? null}
+                onSave={(n) => applyUniform({ width_m: n })}
+              />
+            </View>
+            <View className="flex-1">
+              <NumField
+                label="長 (m)"
+                value={first?.length_m ?? null}
+                onSave={(n) => applyUniform({ length_m: n })}
+              />
+            </View>
+          </View>
+        </View>
+      ) : null}
+
       {subplots.map((s) => (
         <View
           key={s.id}
@@ -572,31 +657,34 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
               reload();
             }}
           />
-          <View className="flex-row gap-3">
-            <View className="flex-1">
-              <NumField
-                label="寬 (m)"
-                value={s.width_m}
-                onSave={(n) => {
-                  updateSubplot(s.id, { width_m: n });
-                  reload();
-                }}
-              />
+          {/* Per-subplot 寬/長 only when sizes are independent. */}
+          {!uniform ? (
+            <View className="flex-row gap-3">
+              <View className="flex-1">
+                <NumField
+                  label="寬 (m)"
+                  value={s.width_m}
+                  onSave={(n) => {
+                    updateSubplot(s.id, { width_m: n });
+                    reload();
+                  }}
+                />
+              </View>
+              <View className="flex-1">
+                <NumField
+                  label="長 (m)"
+                  value={s.length_m}
+                  onSave={(n) => {
+                    updateSubplot(s.id, { length_m: n });
+                    reload();
+                  }}
+                />
+              </View>
             </View>
-            <View className="flex-1">
-              <NumField
-                label="長 (m)"
-                value={s.length_m}
-                onSave={(n) => {
-                  updateSubplot(s.id, { length_m: n });
-                  reload();
-                }}
-              />
-            </View>
-          </View>
+          ) : null}
         </View>
       ))}
-    </Section>
+    </CollapsibleSection>
   );
 }
 
@@ -655,21 +743,51 @@ function NumField({
   suffix,
   value,
   onSave,
+  min,
+  max,
 }: {
   label: string;
   suffix?: string;
   value: number | null;
   onSave: (n: number | null) => void;
+  /** Exclusive lower bound — entered value must be strictly greater. */
+  min?: number;
+  /** Inclusive upper bound — entered value must be ≤ this. */
+  max?: number;
 }) {
+  const toast = useToast((s) => s.show);
+  // Bumping this remounts <Field>, resetting its draft to the last saved value
+  // (used to discard an out-of-range entry).
+  const [resetKey, setResetKey] = useState(0);
+  const ranged = min !== undefined || max !== undefined;
   return (
     <Field
+      key={resetKey}
       label={label}
       value={value !== null ? String(value) : ''}
       keyboardType="decimal-pad"
       suffix={suffix}
       onSave={(v) => {
-        const n = v.trim() === '' ? null : Number(v);
-        onSave(Number.isFinite(n as number) ? (n as number) : null);
+        const t = v.trim();
+        if (t === '') {
+          onSave(null);
+          return;
+        }
+        const n = Number(t);
+        if (ranged) {
+          const ok =
+            Number.isFinite(n) &&
+            (min === undefined || n > min) &&
+            (max === undefined || n <= max);
+          if (!ok) {
+            toast(`數值須大於 ${min ?? 0}、小於等於 ${max ?? 100}`);
+            setResetKey((k) => k + 1);
+            return;
+          }
+          onSave(n);
+          return;
+        }
+        onSave(Number.isFinite(n) ? n : null);
       }}
     />
   );
@@ -691,6 +809,9 @@ function SpeciesGateScreen() {
 // ─────────────────────────────────────────────────────────────────────
 
 function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  // +/- icons sit on a dark button in dark mode — use a bright glyph there.
+  const { scheme } = useThemeColors();
+  const stepIcon = scheme === 'dark' ? '#f3f4f6' : '#374151';
   const [layers, setLayers] = useState<PlotLayer[]>([]);
   useEffect(() => {
     setLayers(getPlotLayers(plot.id));
@@ -724,12 +845,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
   };
 
   return (
-    <View className="px-4 py-3">
-      <View className="mb-2 flex-row items-center">
-        <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          分層
-        </Text>
-      </View>
+    <CollapsibleSection title="分層 (layer)">
       <View className="mb-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3">
         <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">分層數量</Text>
         <View className="mt-2 flex-row items-center">
@@ -741,7 +857,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
             <Ionicons
               name="remove"
               size={18}
-              color={plot.layer_count <= 1 ? '#9ca3af' : '#374151'}
+              color={plot.layer_count <= 1 ? '#9ca3af' : stepIcon}
             />
           </Pressable>
           <Text className="mx-4 min-w-[24px] text-center text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -755,7 +871,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
             <Ionicons
               name="add"
               size={18}
-              color={plot.layer_count >= MAX_LAYER_COUNT ? '#9ca3af' : '#374151'}
+              color={plot.layer_count >= MAX_LAYER_COUNT ? '#9ca3af' : stepIcon}
             />
           </Pressable>
           <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">
@@ -783,6 +899,8 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
                   label="Cover"
                   suffix="%"
                   value={row?.cover_pct ?? null}
+                  min={0}
+                  max={100}
                   onSave={(n) => patchLayer(idx, { cover_pct: n })}
                 />
               </View>
@@ -850,7 +968,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
           </View>
         );
       })}
-    </View>
+    </CollapsibleSection>
   );
 }
 

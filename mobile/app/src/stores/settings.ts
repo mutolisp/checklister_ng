@@ -22,6 +22,10 @@ export type MapViewState = {
   sinica_layer: string;
   /** WMTS overlay opacity 0..1 */
   sinica_opacity: number;
+  /** Selected NLSC (國土測繪中心) WMTS layer id, '' for none */
+  nlsc_layer: string;
+  /** NLSC overlay opacity 0..1 */
+  nlsc_opacity: number;
 };
 
 const DEFAULT_MAP_VIEW: MapViewState = {
@@ -33,6 +37,8 @@ const DEFAULT_MAP_VIEW: MapViewState = {
   basemap: 'standard',
   sinica_layer: '',
   sinica_opacity: 0.7,
+  nlsc_layer: '',
+  nlsc_opacity: 0.7,
 };
 
 export const FONT_SCALE_VALUE: Record<FontScale, number> = {

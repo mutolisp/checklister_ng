@@ -626,121 +626,89 @@ export default function SessionDetailScreen() {
         }}
       />
       <View className="flex-1">
-        <View className="flex-row items-center justify-between gap-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
-          {/* Left: project (icon) + spatial chip (text + state color) */}
-          <View className="flex-1 flex-row items-center gap-3">
-            <Pressable
-              onPress={() => setProjectSheetOpen(true)}
-              hitSlop={8}
-              className="active:opacity-70"
-            >
-              <Ionicons
-                name={project && project.id !== 0 ? 'folder' : 'folder-open-outline'}
-                size={18}
-                color={project && project.id !== 0 ? '#2563eb' : '#9ca3af'}
-              />
-            </Pressable>
-            <Pressable
-              onPress={isActive ? handleSpatialMenu : () => setSiteSheetOpen(true)}
-              hitSlop={6}
-              className="flex-1 flex-row items-center active:opacity-70"
-            >
-              {(() => {
-                // Priority: tracking > site assigned > start point > empty
-                if (tracking) {
-                  return (
-                    <>
-                      <Ionicons name="radio" size={14} color="#dc2626" />
-                      <Text className="ml-1 text-xs font-medium text-red-600 dark:text-red-400" numberOfLines={1}>
-                        軌跡 {trackCount}
-                      </Text>
-                    </>
-                  );
-                }
-                if (site) {
-                  return (
-                    <>
-                      <Ionicons name="pin" size={14} color="#2563eb" />
-                      <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
-                        {site.name}
-                      </Text>
-                    </>
-                  );
-                }
-                if (session.start_lat !== null) {
-                  return (
-                    <>
-                      <Ionicons name="location" size={14} color="#2563eb" />
-                      <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
-                        已定位
-                      </Text>
-                    </>
-                  );
-                }
+        {/* Row 1 — identity: project · spatial · surveyor (full width so the
+            long surveyor name has room and no longer squeezes the controls). */}
+        <View className="flex-row items-center gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
+          <Pressable
+            onPress={() => setProjectSheetOpen(true)}
+            hitSlop={8}
+            className="active:opacity-70"
+          >
+            <Ionicons
+              name={project && project.id !== 0 ? 'folder' : 'folder-open-outline'}
+              size={18}
+              color={project && project.id !== 0 ? '#2563eb' : '#9ca3af'}
+            />
+          </Pressable>
+          <Pressable
+            onPress={isActive ? handleSpatialMenu : () => setSiteSheetOpen(true)}
+            hitSlop={6}
+            className="shrink flex-row items-center active:opacity-70"
+          >
+            {(() => {
+              // Priority: tracking > site assigned > start point > empty
+              if (tracking) {
                 return (
                   <>
-                    <Ionicons name="pin-outline" size={14} color="#9ca3af" />
-                    <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">空間</Text>
+                    <Ionicons name="radio" size={14} color="#dc2626" />
+                    <Text className="ml-1 text-xs font-medium text-red-600 dark:text-red-400" numberOfLines={1}>
+                      軌跡 {trackCount}
+                    </Text>
                   </>
                 );
-              })()}
-            </Pressable>
-            <Pressable
-              onPress={() => setSurveyorSheetOpen(true)}
-              hitSlop={6}
-              className="flex-row items-center active:opacity-70"
+              }
+              if (site) {
+                return (
+                  <>
+                    <Ionicons name="pin" size={14} color="#2563eb" />
+                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
+                      {site.name}
+                    </Text>
+                  </>
+                );
+              }
+              if (session.start_lat !== null) {
+                return (
+                  <>
+                    <Ionicons name="location" size={14} color="#2563eb" />
+                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
+                      已定位
+                    </Text>
+                  </>
+                );
+              }
+              return (
+                <>
+                  <Ionicons name="pin-outline" size={14} color="#9ca3af" />
+                  <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">空間</Text>
+                </>
+              );
+            })()}
+          </Pressable>
+          <Pressable
+            onPress={() => setSurveyorSheetOpen(true)}
+            hitSlop={6}
+            className="flex-1 flex-row items-center active:opacity-70"
+          >
+            <Ionicons
+              name="people-outline"
+              size={14}
+              color={session.recorded_by ? '#2563eb' : '#9ca3af'}
+            />
+            <Text
+              className={`ml-1 flex-1 text-xs ${session.recorded_by ? 'font-medium text-blue-700 dark:text-blue-300' : 'italic text-gray-500 dark:text-gray-400'}`}
+              numberOfLines={1}
             >
-              <Ionicons
-                name="people-outline"
-                size={14}
-                color={session.recorded_by ? '#2563eb' : '#9ca3af'}
-              />
-              <Text
-                className={`ml-1 text-xs ${session.recorded_by ? 'font-medium text-blue-700 dark:text-blue-300' : 'italic text-gray-500 dark:text-gray-400'}`}
-                numberOfLines={1}
-              >
-                {session.recorded_by || '調查者'}
-              </Text>
-            </Pressable>
-          </View>
-          {/* Right: count + sort icon + batch icon */}
-          <View className="flex-row items-center gap-3">
-            <Text className="text-xs text-gray-500 dark:text-gray-400">
-              {records.length}
-              {filtered.length !== records.length ? `/${filtered.length}` : ''}
+              {session.recorded_by || '調查者'}
             </Text>
-            <View className="flex-row items-center">
-              <Pressable
-                onPress={handlePickSort}
-                hitSlop={8}
-                className="flex-row items-center active:opacity-70"
-              >
-                <Ionicons name="swap-vertical" size={18} color="#6b7280" />
-                <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">{SORT_LABEL[sortOrder]}</Text>
-              </Pressable>
-              <Pressable onPress={handleToggleSortDir} hitSlop={6} className="ml-0.5 active:opacity-50">
-                <Ionicons
-                  name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'}
-                  size={14}
-                  color="#6b7280"
-                />
-              </Pressable>
-            </View>
-            {isActive ? (
-              <Pressable
-                onPress={() => setBatchImportOpen(true)}
-                hitSlop={8}
-                className="active:opacity-70"
-              >
-                <Ionicons name="cloud-upload-outline" size={18} color="#2563eb" />
-              </Pressable>
-            ) : null}
-          </View>
+          </Pressable>
         </View>
-        <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        {/* Row 2 — filter chips (scrollable) + sort + batch import. */}
+        <View className="flex-row items-center border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            className="flex-1"
             contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center' }}
           >
             <Chip
@@ -761,6 +729,20 @@ export default function SessionDetailScreen() {
               );
             })}
           </ScrollView>
+          <View className="flex-row items-center gap-3 pl-2 pr-3">
+            <Pressable onPress={handlePickSort} hitSlop={8} className="flex-row items-center active:opacity-70">
+              <Ionicons name="swap-vertical" size={18} color="#6b7280" />
+              <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">{SORT_LABEL[sortOrder]}</Text>
+            </Pressable>
+            <Pressable onPress={handleToggleSortDir} hitSlop={6} className="active:opacity-50">
+              <Ionicons name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} size={14} color="#6b7280" />
+            </Pressable>
+            {isActive ? (
+              <Pressable onPress={() => setBatchImportOpen(true)} hitSlop={8} className="active:opacity-70">
+                <Ionicons name="cloud-upload-outline" size={18} color="#2563eb" />
+              </Pressable>
+            ) : null}
+          </View>
         </View>
         {filtered.length === 0 ? (
           <View className="flex-1 items-center justify-center px-6">

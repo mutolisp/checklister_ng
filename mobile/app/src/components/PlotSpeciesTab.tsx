@@ -25,6 +25,7 @@ import {
   type SearchResult,
   LAYER_LABEL,
   updatePlotSpeciesLocation,
+  updatePlotSpeciesLayer,
   updatePlotSpeciesPhotos,
   updatePlotSpeciesValue,
 } from '~/db';
@@ -92,6 +93,9 @@ export function PlotSpeciesTab({
   }, [activeLayers, layer, stratified]);
   const [allRecords, setAllRecords] = useState<PlotSpeciesRecordWithTaxon[]>([]);
   const [modal, setModal] = useState<ValueModalState | null>(null);
+  // Photos taken while adding a NEW species (no record id yet); attached to the
+  // record on save. Edit mode writes straight to the record instead.
+  const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
 
   // Subplots (小區, fixed plots only). When ≥1 subplot exists the species tab
   // is scoped to the active subplot; otherwise it behaves as before (flat plot).
@@ -220,13 +224,14 @@ export function PlotSpeciesTab({
     // then mount PlotSpeciesValueModal.
     Keyboard.dismiss();
     if (Platform.OS === 'ios') await new Promise((r) => setTimeout(r, 150));
+    setPendingPhotos([]);
     setModal({ mode: 'create', taxon, layer });
   };
 
   const handleSaveValue = (v: PlotValueDraft) => {
     if (!modal) return;
     if (modal.mode === 'create') {
-      addPlotSpecies({
+      const newId = addPlotSpecies({
         plot_survey_id: plot.id,
         taxon_id: modal.taxon.taxon_id,
         subplot_id: subplotMode ? activeSubplotId : null,
@@ -240,6 +245,11 @@ export function PlotSpeciesTab({
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
         detection_type: v.detection_type,
       });
+      // Attach any photos taken before the record existed.
+      if (newId > 0 && pendingPhotos.length > 0) {
+        updatePlotSpeciesPhotos(newId, pendingPhotos);
+      }
+      setPendingPhotos([]);
       // Remember last entry per layer so the next species defaults to the
       // same unit + scalar value. DBH stems & per-individual attributes are
       // wiped to avoid leakage to the next species.
@@ -275,13 +285,27 @@ export function PlotSpeciesTab({
   };
 
   const handleAddPhotoForModal = async (mode: 'camera' | 'library') => {
-    if (!modal || modal.mode !== 'edit') return;
-    const record = modal.record;
+    if (!modal) return;
     try {
       const { captureAndSavePhoto, pickPhotos, buildContextFromPlotRecord } = await import(
         '~/lib/photoCapture'
       );
-      const ctx = buildContextFromPlotRecord(record);
+      // EXIF/caption context: from the saved record in edit mode, or synthesized
+      // from the picked taxon in create mode (no record exists yet).
+      const ctx =
+        modal.mode === 'edit'
+          ? buildContextFromPlotRecord(modal.record)
+          : {
+              taxon_id: modal.taxon.taxon_id,
+              simple_name: modal.taxon.name,
+              name_author: modal.taxon.fullname.replace(modal.taxon.name, '').trim(),
+              common_name_c: modal.taxon.cname ?? '',
+              family: modal.taxon.family ?? '',
+              family_c: modal.taxon.family_cname ?? '',
+              kingdom: modal.taxon.kingdom ?? '',
+              observed_at: Date.now(),
+              plot_survey_id: plot.id,
+            };
       let newUris: string[] = [];
       if (mode === 'camera') {
         const uri = await captureAndSavePhoto(ctx);
@@ -290,30 +314,36 @@ export function PlotSpeciesTab({
         newUris = await pickPhotos();
       }
       if (newUris.length === 0) return;
-      const existing = parsePhotoPaths(record.photo_paths);
-      const merged = [...existing, ...newUris];
-      updatePlotSpeciesPhotos(record.id, merged);
-      // Re-seed modal with updated record so PhotoGrid reflects the new entry
-      // without closing the modal.
-      const updated = { ...record, photo_paths: JSON.stringify(merged) };
-      setModal({ mode: 'edit', record: updated });
-      reload();
-      onChanged();
+      if (modal.mode === 'edit') {
+        const record = modal.record;
+        const merged = [...parsePhotoPaths(record.photo_paths), ...newUris];
+        updatePlotSpeciesPhotos(record.id, merged);
+        // Re-seed modal so PhotoGrid reflects the new entry without closing.
+        setModal({ mode: 'edit', record: { ...record, photo_paths: JSON.stringify(merged) } });
+        reload();
+        onChanged();
+      } else {
+        // Create mode: buffer until the record is saved.
+        setPendingPhotos((prev) => [...prev, ...newUris]);
+      }
     } catch (e) {
       Alert.alert('加照片失敗', e instanceof Error ? e.message : String(e));
     }
   };
 
   const handleRemovePhotoForModal = (uri: string) => {
-    if (!modal || modal.mode !== 'edit') return;
-    const record = modal.record;
-    const existing = parsePhotoPaths(record.photo_paths);
-    const next = existing.filter((u) => u !== uri);
-    updatePlotSpeciesPhotos(record.id, next);
-    const updated = { ...record, photo_paths: next.length > 0 ? JSON.stringify(next) : null };
-    setModal({ mode: 'edit', record: updated });
-    reload();
-    onChanged();
+    if (!modal) return;
+    if (modal.mode === 'edit') {
+      const record = modal.record;
+      const next = parsePhotoPaths(record.photo_paths).filter((u) => u !== uri);
+      updatePlotSpeciesPhotos(record.id, next);
+      const updated = { ...record, photo_paths: next.length > 0 ? JSON.stringify(next) : null };
+      setModal({ mode: 'edit', record: updated });
+      reload();
+      onChanged();
+    } else {
+      setPendingPhotos((prev) => prev.filter((u) => u !== uri));
+    }
   };
 
   // Quick +/- adjust for individuals (count) records straight from the list,
@@ -343,18 +373,46 @@ export function PlotSpeciesTab({
     onChanged();
   };
 
+  const handleChangeLayer = async (r: PlotSpeciesRecordWithTaxon) => {
+    const idx = await showActionSheet({
+      title: '變更分層',
+      cancelLabel: '取消',
+      options: activeLayers.map((l) => ({
+        label: `${LAYER_LABEL[l]}${l === r.layer ? '（目前）' : ''}`,
+      })),
+    });
+    if (idx < 0 || idx >= activeLayers.length) return;
+    const next = activeLayers[idx];
+    if (next === r.layer) return;
+    updatePlotSpeciesLayer(r.id, next);
+    reload();
+    onChanged();
+    useToast.getState().show(`已移至 ${next}`);
+  };
+
   const handleLongPressRecord = async (r: PlotSpeciesRecordWithTaxon) => {
     const fav = useFavorites.getState().ids.has(r.taxon_id);
+    // "變更分層" only makes sense for stratified plots (E1..E6); transect /
+    // point_count records all live in the single 'T' bucket.
+    const canChangeLayer = stratified;
+    const options = [
+      { label: '編輯' },
+      ...(canChangeLayer ? [{ label: '變更分層' }] : []),
+      { label: fav ? '移除常用名錄' : '加入常用名錄' },
+      { label: '刪除', destructive: true },
+    ];
+    let i = 0;
+    const editIdx = i++;
+    const layerIdx = canChangeLayer ? i++ : -1;
+    const favIdx = i++;
+    const delIdx = i++;
     const idx = await showActionSheet({
       title: r.common_name_c || r.simple_name,
-      options: [
-        { label: '編輯' },
-        { label: fav ? '移除常用名錄' : '加入常用名錄' },
-        { label: '刪除', destructive: true },
-      ],
+      options,
     });
-    if (idx === 0) setModal({ mode: 'edit', record: r });
-    else if (idx === 1) {
+    if (idx === editIdx) setModal({ mode: 'edit', record: r });
+    else if (idx === layerIdx) handleChangeLayer(r);
+    else if (idx === favIdx) {
       const t = useToast.getState().show;
       if (fav) {
         useFavorites.getState().remove(r.taxon_id);
@@ -362,7 +420,7 @@ export function PlotSpeciesTab({
       } else {
         t(useFavorites.getState().addById(r.taxon_id) ? '已加入常用名錄' : '無法加入常用名錄');
       }
-    } else if (idx === 2) {
+    } else if (idx === delIdx) {
       deletePlotSpecies(r.id);
       reload();
       onChanged();
@@ -476,14 +534,6 @@ export function PlotSpeciesTab({
               );
             })}
           </ScrollView>
-          {activeSubplotId != null ? (
-            <SubplotLayerInputs
-              subplotId={activeSubplotId}
-              activeLayers={activeLayers}
-              plotLayers={plotLayers}
-              onChanged={onChanged}
-            />
-          ) : null}
         </View>
       ) : null}
 
@@ -565,6 +615,19 @@ export function PlotSpeciesTab({
           item.kind === 'header' ? `h-${item.layer}` : `r-${item.record.id}-${idx}`
         }
         keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets
+        ListHeaderComponent={
+          subplotMode && activeSubplotId != null ? (
+            <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2">
+              <SubplotLayerInputs
+                subplotId={activeSubplotId}
+                activeLayers={activeLayers}
+                plotLayers={plotLayers}
+                onChanged={onChanged}
+              />
+            </View>
+          ) : null
+        }
         renderItem={({ item }) => {
           if (item.kind === 'header') {
             return (
@@ -629,11 +692,14 @@ export function PlotSpeciesTab({
             radiusM: plot.point_radius_m,
           }}
           photoUris={
-            modal.mode === 'edit' ? parsePhotoPaths(modal.record.photo_paths) : undefined
+            modal.mode === 'edit' ? parsePhotoPaths(modal.record.photo_paths) : pendingPhotos
           }
-          onAddPhoto={modal.mode === 'edit' ? handleAddPhotoForModal : undefined}
-          onRemovePhoto={modal.mode === 'edit' ? handleRemovePhotoForModal : undefined}
-          onCancel={() => setModal(null)}
+          onAddPhoto={handleAddPhotoForModal}
+          onRemovePhoto={handleRemovePhotoForModal}
+          onCancel={() => {
+            setPendingPhotos([]);
+            setModal(null);
+          }}
           onSave={handleSaveValue}
         />
       ) : null}
@@ -781,16 +847,23 @@ function MiniNum({
   placeholder,
   suffix,
   onSave,
+  min,
+  max,
 }: {
   value: number | null | undefined;
   placeholder?: string;
   suffix?: string;
   onSave: (n: number | null) => void;
+  /** Exclusive lower bound — entered value must be strictly greater. */
+  min?: number;
+  /** Inclusive upper bound — entered value must be ≤ this. */
+  max?: number;
 }) {
   const [draft, setDraft] = useState(value == null ? '' : String(value));
   useEffect(() => {
     setDraft(value == null ? '' : String(value));
   }, [value]);
+  const toast = useToast((s) => s.show);
   return (
     <View className="flex-1 flex-row items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2">
       <TextInput
@@ -800,6 +873,18 @@ function MiniNum({
           const t = draft.trim();
           if (t === '') return onSave(null);
           const n = Number(t);
+          if (min !== undefined || max !== undefined) {
+            const ok =
+              Number.isFinite(n) &&
+              (min === undefined || n > min) &&
+              (max === undefined || n <= max);
+            if (!ok) {
+              toast(`數值須大於 ${min ?? 0}、小於等於 ${max ?? 100}`);
+              setDraft(value == null ? '' : String(value)); // revert
+              return;
+            }
+            return onSave(n);
+          }
           onSave(Number.isFinite(n) ? n : null);
         }}
         placeholder={placeholder}
@@ -853,6 +938,8 @@ function SubplotLayerInputs({
                   value={row?.cover_pct ?? null}
                   placeholder="覆蓋"
                   suffix="%"
+                  min={0}
+                  max={100}
                   onSave={(n) => {
                     updateSubplotLayer(subplotId, idx, { cover_pct: n });
                     reload();

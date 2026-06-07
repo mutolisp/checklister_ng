@@ -4,6 +4,7 @@ import {
   listSurveyors,
   removeSurveyor,
   renameSurveyor,
+  reorderSurveyors,
   setSurveyorDefault,
   type Surveyor,
 } from '~/db';
@@ -16,6 +17,8 @@ type SurveyorsState = {
   rename: (id: number, name: string) => void;
   remove: (id: number) => void;
   toggleDefault: (id: number, on: boolean) => void;
+  /** Apply a drag-reordered list: set items immediately + persist sort_order. */
+  reorder: (items: Surveyor[]) => void;
 };
 
 export const useSurveyors = create<SurveyorsState>((set, get) => ({
@@ -40,5 +43,9 @@ export const useSurveyors = create<SurveyorsState>((set, get) => ({
   toggleDefault: (id, on) => {
     setSurveyorDefault(id, on);
     get().refresh();
+  },
+  reorder: (items) => {
+    set({ items });
+    reorderSurveyors(items.map((s) => s.id));
   },
 }));

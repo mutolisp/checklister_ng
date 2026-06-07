@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { showActionSheet } from '~/components/ActionSheet';
 import MapView, {
+  Circle,
   Marker,
   Polygon,
   Polyline,
@@ -25,7 +26,9 @@ import MapView, {
   type Region,
 } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SinicaLayerSheet } from '~/components/SinicaLayerSheet';
+import { LayerSheet } from '~/components/LayerSheet';
+import { SINICA_LAYERS } from '~/lib/sinicaLayers';
+import { NLSC_LAYERS } from '~/lib/nlscLayers';
 import { SaveSiteModal } from '~/components/SaveSiteModal';
 import { GeoImportModal } from '~/components/GeoImportModal';
 import {
@@ -33,14 +36,23 @@ import {
   deleteSite,
   geometryBounds,
   geometryToPrimitives,
+  listPlotSurveysWithMeta,
   listSessionRecords,
+  listSessions,
   listSites,
   parseGeometry,
+  parseTrackSegments,
+  updatePlotSurvey,
   updateSession,
+  usesTrack,
+  writePlotTrack,
+  type PlotSurveyWithMeta,
   type RecordWithTaxon,
+  type SessionWithStats,
   type SiteWithProject,
 } from '~/db';
 import { useActiveSession } from '~/stores/activeSession';
+import { useTrackRecorder } from '~/lib/trackRecorder';
 import { useSettings, type MapBasemap } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 
@@ -57,6 +69,8 @@ const BASEMAP_OPTIONS: Array<{
 ];
 
 const SINICA_TILE_URL = 'https://gis.sinica.edu.tw/tileserver/file-exists.php?img={LAYER}-png-{z}-{x}-{y}';
+// NLSC WMTS RESTful — note the WMTS tile order is z/y/x (TileMatrix/Row/Col).
+const NLSC_TILE_URL = 'https://wmts.nlsc.gov.tw/wmts/{LAYER}/default/GoogleMapsCompatible/{z}/{y}/{x}';
 
 const DRAW_LABEL: Record<string, string> = {
   Point: '點位',
@@ -71,6 +85,22 @@ const SITE_COLOR = '#2563eb';
 const SITE_FILL = 'rgba(37, 99, 235, 0.18)';
 const DRAW_COLOR = '#dc2626';
 const DRAW_FILL = 'rgba(220, 38, 38, 0.18)';
+// Plot survey overlay (distinct from site-blue / draw-red).
+const PLOT_COLOR = '#7c3aed'; // violet — done plots
+const PLOT_ACTIVE_COLOR = '#db2777'; // magenta — the single active plot
+const PLOT_FILL = 'rgba(124, 58, 237, 0.15)'; // point_count radius circle
+// Session (名錄) overlay.
+const SESSION_COLOR = '#0891b2'; // cyan — done sessions
+const SESSION_ACTIVE_COLOR = '#10b981'; // green — the active session
+
+/** Soft cap above which editing a track segment warns about map jank. */
+const TRACK_EDIT_WARN_POINTS = 200;
+
+const PLOT_TYPE_LABEL: Record<string, string> = {
+  fixed: '固定樣區',
+  transect: '穿越線',
+  point_count: '定點計數',
+};
 
 function basemapToMapType(b: MapBasemap): MapType {
   return BASEMAP_OPTIONS.find((o) => o.value === b)?.mapType ?? 'standard';
@@ -101,6 +131,8 @@ export default function MapScreen() {
   const [currentBasemap, setCurrentBasemap] = useState<MapBasemap>(initial.basemap);
   const [sinicaLayer, setSinicaLayer] = useState<string>(initial.sinica_layer);
   const [sinicaOpacity, setSinicaOpacity] = useState<number>(initial.sinica_opacity);
+  const [nlscLayer, setNlscLayer] = useState<string>(initial.nlsc_layer);
+  const [nlscOpacity, setNlscOpacity] = useState<number>(initial.nlsc_opacity);
 
   // Drawing UI only produces simple types; Multi* arrive via import (KML/GPX).
   const [drawMode, setDrawMode] = useState<'Point' | 'LineString' | 'Polygon' | null>(null);
@@ -108,6 +140,14 @@ export default function MapScreen() {
   const [saveSiteOpen, setSaveSiteOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [sites, setSites] = useState<SiteWithProject[]>([]);
+  const [plots, setPlots] = useState<PlotSurveyWithMeta[]>([]);
+  const [sessions, setSessions] = useState<SessionWithStats[]>([]);
+  // Editing an existing plot's geometry. 'point' = moving a fixed / point_count
+  // marker; 'track' = dragging/deleting vertices of one transect segment.
+  const [editPlot, setEditPlot] = useState<PlotSurveyWithMeta | null>(null);
+  const [editMode, setEditMode] = useState<'point' | 'track' | null>(null);
+  /** Which MultiLineString segment is being edited in 'track' mode. */
+  const [editSegmentIndex, setEditSegmentIndex] = useState(0);
   const [mapReady, setMapReady] = useState(false);
 
   const mapRef = useRef<MapView>(null);
@@ -121,16 +161,22 @@ export default function MapScreen() {
   });
 
   const reloadSites = useCallback(() => setSites(listSites()), []);
+  const reloadPlots = useCallback(() => setPlots(listPlotSurveysWithMeta()), []);
+  const reloadSessions = useCallback(() => setSessions(listSessions()), []);
 
   useFocusEffect(
     useCallback(() => {
+      // Don't stomp an in-progress geometry edit when the screen re-focuses.
+      if (editPlot) return;
       reloadSites();
+      reloadPlots();
+      reloadSessions();
       if (activeSession) {
         setActiveRecords(listSessionRecords(activeSession.id));
       } else {
         setActiveRecords([]);
       }
-    }, [reloadSites, activeSession]),
+    }, [reloadSites, reloadPlots, reloadSessions, activeSession, editPlot]),
   );
 
   // Safety: hide the loading overlay after a max wait if onMapReady doesn't fire (rare).
@@ -161,8 +207,37 @@ export default function MapScreen() {
       basemap: currentBasemap,
       sinica_layer: sinicaLayer,
       sinica_opacity: sinicaOpacity,
+      nlsc_layer: nlscLayer,
+      nlsc_opacity: nlscOpacity,
     });
-  }, [currentBasemap, sinicaLayer, sinicaOpacity, setSetting]);
+  }, [currentBasemap, sinicaLayer, sinicaOpacity, nlscLayer, nlscOpacity, setSetting]);
+
+  // Precompute transect track projection once per plots load (not per render /
+  // map pan) — JSON parse + lng/lat swap is the costly part with many plots.
+  const plotRenderItems = useMemo(
+    () =>
+      plots.map((p) => ({
+        plot: p,
+        segments: usesTrack(p)
+          ? parseTrackSegments(p.track_geojson).map((seg) =>
+              seg.map(([lng, lat]) => ({ latitude: lat, longitude: lng })),
+            )
+          : [],
+      })),
+    [plots],
+  );
+
+  // Same precompute for session tracks (LineString or MultiLineString).
+  const sessionRenderItems = useMemo(
+    () =>
+      sessions.map((s) => ({
+        session: s,
+        segments: parseTrackSegments(s.track_geojson).map((seg) =>
+          seg.map(([lng, lat]) => ({ latitude: lat, longitude: lng })),
+        ),
+      })),
+    [sessions],
+  );
 
   if (!settingsLoaded) return <View className="flex-1 bg-gray-100 dark:bg-gray-800" />;
 
@@ -175,6 +250,8 @@ export default function MapScreen() {
         basemap: currentBasemap,
         sinica_layer: sinicaLayer,
         sinica_opacity: sinicaOpacity,
+        nlsc_layer: nlscLayer,
+        nlsc_opacity: nlscOpacity,
       });
     }, 600);
   };
@@ -343,6 +420,180 @@ export default function MapScreen() {
     }
   };
 
+  /** Region that fits a plot's geometry, or null if it has no coordinates. */
+  const plotRegion = (plot: PlotSurveyWithMeta) => {
+    if (usesTrack(plot)) {
+      const segs = parseTrackSegments(plot.track_geojson);
+      if (segs.length === 0) return null;
+      return geometryBounds({ type: 'MultiLineString', coordinates: segs });
+    }
+    if (plot.decimal_latitude === null || plot.decimal_longitude === null) return null;
+    return geometryBounds({
+      type: 'Point',
+      coordinates: [plot.decimal_longitude, plot.decimal_latitude] as [number, number],
+    });
+  };
+
+  const handlePlotTap = async (plot: PlotSurveyWithMeta) => {
+    const idx = await showActionSheet({
+      title: plot.plotid || `樣區 #${plot.id}`,
+      message:
+        `${PLOT_TYPE_LABEL[plot.plot_type] ?? plot.plot_type} · 物種 ${plot.species_count} 筆 · ${plot.project_name}` +
+        (plot.status === 'active' ? '\n\n（進行中）' : ''),
+      cancelLabel: '關閉',
+      options: [{ label: '跳回此記錄' }, { label: '跳到此位置' }, { label: '編輯位置' }],
+    });
+    if (idx === 0) {
+      router.push(`/plot/${plot.id}`);
+    } else if (idx === 1) {
+      const region = plotRegion(plot);
+      if (region) mapRef.current?.animateToRegion(region, 400);
+      else toast('此記錄尚無座標');
+    } else if (idx === 2) {
+      enterPlotEdit(plot);
+    }
+  };
+
+  const enterPlotEdit = async (plot: PlotSurveyWithMeta) => {
+    if (usesTrack(plot)) {
+      // Block editing a transect that's actively recording — trackRecorder
+      // flushes writePlotTrack every few points and would clobber the edit.
+      if (useTrackRecorder.getState().recordingPlotId === plot.id) {
+        Alert.alert('此穿越線正在錄製中', '請先暫停軌跡錄製再編輯');
+        return;
+      }
+      const segs = parseTrackSegments(plot.track_geojson);
+      if (segs.length === 0) {
+        Alert.alert('尚無軌跡', '此穿越線尚未錄製任何軌跡，無法編輯');
+        return;
+      }
+      // Pick a segment when the track has more than one (pause/resume splits).
+      let segIdx = 0;
+      if (segs.length > 1) {
+        segIdx = await showActionSheet({
+          title: '選擇要編輯的軌跡段',
+          cancelLabel: '取消',
+          options: segs.map((s, i) => ({ label: `第 ${i + 1} 段（${s.length} 點）` })),
+        });
+        if (segIdx < 0 || segIdx >= segs.length) return; // cancelled
+      }
+      if (segs[segIdx].length > TRACK_EDIT_WARN_POINTS) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            '軌跡點較多',
+            `此段有 ${segs[segIdx].length} 個點，編輯時地圖可能較卡。仍要編輯嗎？`,
+            [
+              { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+              { text: '繼續', onPress: () => resolve(true) },
+            ],
+          );
+        });
+        if (!proceed) return;
+      }
+      setEditPlot(plot);
+      setEditMode('track');
+      setEditSegmentIndex(segIdx);
+      setDrawPoints(segs[segIdx].map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
+      toast('拖動頂點調整，點頂點可刪除，完成後按儲存');
+      return;
+    }
+    if (plot.decimal_latitude === null || plot.decimal_longitude === null) {
+      Alert.alert('尚無座標', '此樣區尚未取得 GPS 座標，無法編輯位置');
+      return;
+    }
+    setEditPlot(plot);
+    setEditMode('point');
+    setDrawPoints([{ latitude: plot.decimal_latitude, longitude: plot.decimal_longitude }]);
+    toast('拖動標記調整位置，完成後按儲存');
+  };
+
+  const cancelPlotEdit = () => {
+    setEditPlot(null);
+    setEditMode(null);
+    setDrawPoints([]);
+  };
+
+  const savePlotEdit = () => {
+    if (!editPlot || !editMode) return;
+    const label = editPlot.plotid || `樣區 #${editPlot.id}`;
+
+    if (editMode === 'track') {
+      if (drawPoints.length < 2) {
+        toast('軌跡段至少需 2 點');
+        return;
+      }
+      Alert.alert('儲存軌跡變更？', `「${label}」的穿越線軌跡將被更新`, [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '儲存',
+          onPress: () => {
+            // Re-parse the original track, replace the edited segment, drop any
+            // segment left with <2 points.
+            const segs = parseTrackSegments(editPlot.track_geojson);
+            segs[editSegmentIndex] = drawPoints.map((p) => [p.longitude, p.latitude]);
+            writePlotTrack(
+              editPlot.id,
+              segs.filter((s) => s.length >= 2),
+            );
+            cancelPlotEdit();
+            reloadPlots();
+            toast('已更新軌跡');
+          },
+        },
+      ]);
+      return;
+    }
+
+    // editMode === 'point'
+    if (drawPoints.length === 0) return;
+    const pt = drawPoints[0];
+    Alert.alert('儲存位置變更？', `「${label}」的座標將被更新`, [
+      { text: '取消', style: 'cancel' },
+      {
+        text: '儲存',
+        onPress: () => {
+          updatePlotSurvey(editPlot.id, {
+            decimal_latitude: pt.latitude,
+            decimal_longitude: pt.longitude,
+          });
+          cancelPlotEdit();
+          reloadPlots();
+          toast('已更新樣區位置');
+        },
+      },
+    ]);
+  };
+
+  /** Region that fits a session's geometry (track preferred, else start point). */
+  const sessionRegion = (s: SessionWithStats) => {
+    const segs = parseTrackSegments(s.track_geojson);
+    if (segs.length > 0) return geometryBounds({ type: 'MultiLineString', coordinates: segs });
+    if (s.start_lat === null || s.start_lng === null) return null;
+    return geometryBounds({
+      type: 'Point',
+      coordinates: [s.start_lng, s.start_lat] as [number, number],
+    });
+  };
+
+  const handleSessionTap = async (s: SessionWithStats) => {
+    const isActive = activeSession?.id === s.id;
+    const idx = await showActionSheet({
+      title: s.name || `名錄 #${s.id}`,
+      message:
+        `名錄 · 物種 ${s.record_count} 筆 · ${s.project_name}` +
+        (isActive ? '\n\n（進行中）' : ''),
+      cancelLabel: '關閉',
+      options: [{ label: '跳回此記錄' }, { label: '跳到此位置' }],
+    });
+    if (idx === 0) {
+      router.push(`/session/${s.id}`);
+    } else if (idx === 1) {
+      const region = sessionRegion(s);
+      if (region) mapRef.current?.animateToRegion(region, 400);
+      else toast('此記錄尚無座標');
+    }
+  };
+
   const handleSearch = async () => {
     const q = searchQuery.trim();
     if (!q) return;
@@ -401,6 +652,14 @@ export default function MapScreen() {
         onRegionChangeComplete={handleRegionChangeComplete}
         onPress={handleMapPress}
       >
+        {nlscLayer ? (
+          <UrlTile
+            urlTemplate={NLSC_TILE_URL.replace('{LAYER}', nlscLayer)}
+            opacity={nlscOpacity}
+            zIndex={0}
+            maximumZ={20}
+          />
+        ) : null}
         {sinicaLayer ? (
           <UrlTile
             urlTemplate={SINICA_TILE_URL.replace('{LAYER}', sinicaLayer)}
@@ -410,36 +669,40 @@ export default function MapScreen() {
           />
         ) : null}
 
-        {/* Active session GPS overlay: start point + track + per-record points */}
-        {activeSession && activeSession.start_lat !== null && activeSession.start_lng !== null ? (
-          <Marker
-            key="session-start"
-            coordinate={{ latitude: activeSession.start_lat, longitude: activeSession.start_lng }}
-            title="記錄起點"
-            description={activeSession.name}
-            pinColor="#10b981"
-            zIndex={3}
-          />
-        ) : null}
-        {activeSession && activeSession.track_geojson ? (() => {
-          try {
-            const g = JSON.parse(activeSession.track_geojson);
-            if (g?.type === 'LineString' && Array.isArray(g.coordinates) && g.coordinates.length >= 2) {
-              return (
-                <Polyline
-                  key="session-track"
-                  coordinates={g.coordinates.map(([lng, lat]: [number, number]) => ({ latitude: lat, longitude: lng }))}
-                  strokeColor="#10b981"
-                  strokeWidth={4}
-                  zIndex={2}
-                />
-              );
-            }
-          } catch {
-            // ignore malformed
+        {/* All sessions (名錄): start-point marker + track. The active session is
+            colored green; its per-record species points are drawn separately
+            below. Tap → info / jump to the record. */}
+        {sessionRenderItems.flatMap(({ session, segments }) => {
+          const isActive = activeSession?.id === session.id;
+          const color = isActive ? SESSION_ACTIVE_COLOR : SESSION_COLOR;
+          const els = segments
+            .filter((seg) => seg.length >= 2)
+            .map((seg, i) => (
+              <Polyline
+                key={`sess-${session.id}-${i}`}
+                coordinates={seg}
+                strokeColor={color}
+                strokeWidth={4}
+                zIndex={2}
+                tappable
+                onPress={() => handleSessionTap(session)}
+              />
+            ));
+          if (session.start_lat !== null && session.start_lng !== null) {
+            els.push(
+              <Marker
+                key={`sess-m-${session.id}`}
+                coordinate={{ latitude: session.start_lat, longitude: session.start_lng }}
+                title={session.name || `名錄 #${session.id}`}
+                description={`名錄 · 物種 ${session.record_count} 筆`}
+                pinColor={color}
+                zIndex={3}
+                onPress={() => handleSessionTap(session)}
+              />,
+            );
           }
-          return null;
-        })() : null}
+          return els;
+        })}
         {activeRecords
           .filter((r) => r.lat !== null && r.lng !== null)
           .map((r) => (
@@ -496,8 +759,57 @@ export default function MapScreen() {
           });
         })}
 
+        {/* Existing plot surveys — fixed/point_count markers (+ radius circle),
+            transect tracks. The plot under edit is hidden here; the draggable
+            marker below takes over. */}
+        {plotRenderItems.flatMap(({ plot, segments }) => {
+          if (editPlot && editPlot.id === plot.id) return [];
+          const color = plot.status === 'active' ? PLOT_ACTIVE_COLOR : PLOT_COLOR;
+          if (usesTrack(plot)) {
+            return segments
+              .filter((seg) => seg.length >= 2)
+              .map((seg, i) => (
+                <Polyline
+                  key={`plot-${plot.id}-${i}`}
+                  coordinates={seg}
+                  strokeColor={color}
+                  strokeWidth={4}
+                  zIndex={5}
+                  tappable
+                  onPress={() => handlePlotTap(plot)}
+                />
+              ));
+          }
+          if (plot.decimal_latitude === null || plot.decimal_longitude === null) return [];
+          const center = { latitude: plot.decimal_latitude, longitude: plot.decimal_longitude };
+          const circle =
+            plot.plot_type === 'point_count' && plot.point_radius_m && plot.point_radius_m > 0 ? (
+              <Circle
+                key={`plot-c-${plot.id}`}
+                center={center}
+                radius={plot.point_radius_m}
+                strokeColor={color}
+                fillColor={PLOT_FILL}
+                strokeWidth={2}
+                zIndex={4}
+              />
+            ) : null;
+          return [
+            circle,
+            <Marker
+              key={`plot-m-${plot.id}`}
+              coordinate={center}
+              pinColor={color}
+              title={plot.plotid || `樣區 #${plot.id}`}
+              description={`${PLOT_TYPE_LABEL[plot.plot_type] ?? plot.plot_type} · 物種 ${plot.species_count} 筆`}
+              zIndex={5}
+              onPress={() => handlePlotTap(plot)}
+            />,
+          ];
+        })}
+
         {/* In-progress drawing — markers are draggable; tap a marker to remove it */}
-        {drawMode && drawPoints.length > 0
+        {(drawMode || editMode) && drawPoints.length > 0
           ? drawPoints.map((p, i) => (
               <Marker
                 key={`d-${i}`}
@@ -512,6 +824,8 @@ export default function MapScreen() {
                   setDrawPoints(next);
                 }}
                 onPress={() => {
+                  // Editing a plot's single point: drag only, never delete.
+                  if (editMode === 'point') return;
                   Alert.alert('編輯點位', `第 ${i + 1} 個點`, [
                     { text: '取消', style: 'cancel' },
                     {
@@ -527,7 +841,7 @@ export default function MapScreen() {
               />
             ))
           : null}
-        {drawMode === 'LineString' && drawPoints.length >= 2 ? (
+        {(drawMode === 'LineString' || editMode === 'track') && drawPoints.length >= 2 ? (
           <Polyline coordinates={drawPoints} strokeColor={DRAW_COLOR} strokeWidth={3} />
         ) : null}
         {drawMode === 'Polygon' && drawPoints.length >= 3 ? (
@@ -587,12 +901,12 @@ export default function MapScreen() {
       </View>
 
       {/* Top-right: tools FAB */}
-      {!searchOpen && !drawMode ? (
+      {!searchOpen && !drawMode && !editMode ? (
         <View className="absolute right-3 items-end" style={{ top: insets.top + 8 }}>
           <FabButton
             icon={toolsOpen ? 'close' : 'apps'}
             onPress={() => setToolsOpen((v) => !v)}
-            accent={!toolsOpen && !!sinicaLayer}
+            accent={!toolsOpen && (!!sinicaLayer || !!nlscLayer)}
           />
 
           {toolsOpen ? (
@@ -605,9 +919,9 @@ export default function MapScreen() {
               <FabRow icon="locate" label="定位" onPress={handleLocateMe} accent />
               <FabRow
                 icon="albums-outline"
-                label={sinicaLayer ? '圖層 (已疊圖)' : '圖層'}
+                label={sinicaLayer || nlscLayer ? '圖層 (已疊圖)' : '圖層'}
                 onPress={handleOpenLayers}
-                accent={!!sinicaLayer}
+                accent={!!sinicaLayer || !!nlscLayer}
               />
               <FabRow icon="create-outline" label="繪製地理樣區" onPress={handlePickDrawMode} />
               <FabRow
@@ -654,16 +968,56 @@ export default function MapScreen() {
         </View>
       ) : null}
 
-      <SinicaLayerSheet
+      {/* Edit-geometry toolbar (drag the marker, then save). */}
+      {editMode ? (
+        <View className="absolute left-3 right-3" style={{ top: insets.top + 60 }}>
+          <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
+            <Pressable onPress={cancelPlotEdit} hitSlop={8} className="px-2">
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">取消</Text>
+            </Pressable>
+            <Text className="flex-1 text-center text-xs text-gray-700 dark:text-gray-300">
+              {editMode === 'track' ? '編輯軌跡 · 拖動/點頂點刪除' : '編輯位置 · 拖動標記'}
+            </Text>
+            <Pressable
+              onPress={savePlotEdit}
+              hitSlop={8}
+              className="ml-1 rounded-full bg-blue-500 px-3 py-1 active:bg-blue-600"
+            >
+              <Text className="text-xs font-semibold text-white">儲存</Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
+      <LayerSheet
         visible={layersSheetOpen}
-        selectedId={sinicaLayer}
-        opacity={sinicaOpacity}
         onClose={() => setLayersSheetOpen(false)}
-        onSelect={(id) => {
-          setSinicaLayer(id);
-          if (id) toast('已疊圖');
-        }}
-        onOpacityChange={setSinicaOpacity}
+        sources={[
+          {
+            key: 'nlsc',
+            label: '國土測繪中心',
+            layers: NLSC_LAYERS,
+            selectedId: nlscLayer,
+            opacity: nlscOpacity,
+            onSelect: (id) => {
+              setNlscLayer(id);
+              if (id) toast('已疊圖');
+            },
+            onOpacityChange: setNlscOpacity,
+          },
+          {
+            key: 'sinica',
+            label: '中研院',
+            layers: SINICA_LAYERS,
+            selectedId: sinicaLayer,
+            opacity: sinicaOpacity,
+            onSelect: (id) => {
+              setSinicaLayer(id);
+              if (id) toast('已疊圖');
+            },
+            onOpacityChange: setSinicaOpacity,
+          },
+        ]}
       />
 
       {drawMode ? (
