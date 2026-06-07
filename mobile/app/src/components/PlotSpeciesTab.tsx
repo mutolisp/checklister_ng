@@ -544,6 +544,12 @@ export function PlotSpeciesTab({
           lng={modal.mode === 'edit' ? modal.record.lng : undefined}
           accuracy={modal.mode === 'edit' ? modal.record.accuracy : undefined}
           onSaveLocation={modal.mode === 'edit' ? handleSaveModalLocation : undefined}
+          plotGeo={{
+            lat: plot.decimal_latitude,
+            lng: plot.decimal_longitude,
+            trackGeojson: plot.track_geojson,
+            radiusM: plot.point_radius_m,
+          }}
           photoUris={
             modal.mode === 'edit' ? parsePhotoPaths(modal.record.photo_paths) : undefined
           }

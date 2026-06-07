@@ -1,4 +1,5 @@
-import { Stack, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { Stack, useRouter, type Href } from 'expo-router';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -104,6 +105,18 @@ export default function SettingsScreen() {
             ]}
             onChange={(v) => settings.set('ai_geomodel_filter', v === 'on')}
           />
+        </Section>
+        <Section title="調查">
+          <Pressable
+            onPress={() => router.push('/surveyors' as Href)}
+            className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <View>
+              <Text className="text-base text-gray-900 dark:text-gray-100">調查者</Text>
+              <Text className="text-xs text-gray-500 dark:text-gray-400">常用調查者清單，可設預設自動帶入</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </Pressable>
         </Section>
         <Section title="資料">
           <Pressable

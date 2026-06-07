@@ -1,9 +1,12 @@
 import { getUserDb, getTaicolDb } from './init';
+import { generateUuid } from './plots';
 
 export type ChecklistRecord = {
   id: number;
   session_id: number;
   taxon_id: string;
+  /** DwC occurrenceID — stable v4 uuid assigned at insert. */
+  occurrence_id: string;
   observed_at: number;
   notes: string | null;
   photo_paths: string | null;
@@ -63,12 +66,13 @@ export function addRecord(input: CreateRecordInput): number {
   const db = getUserDb();
   const res = db.executeSync(
     `INSERT INTO checklist_records
-       (session_id, taxon_id, observed_at, notes, lat, lng,
+       (session_id, taxon_id, occurrence_id, observed_at, notes, lat, lng,
         organism_quantity, organism_quantity_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.session_id,
       input.taxon_id,
+      generateUuid(),
       Date.now(),
       input.notes ?? null,
       input.lat ?? null,
@@ -160,7 +164,7 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   const taicolDb = getTaicolDb();
 
   const recordsRes = userDb.executeSync(
-    `SELECT id, session_id, taxon_id, observed_at, notes, photo_paths, lat, lng, accuracy,
+    `SELECT id, session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths, lat, lng, accuracy,
             sex, life_stage, reproductive_condition, leaf_phenology,
             organism_quantity, organism_quantity_type
      FROM checklist_records WHERE session_id = ? ORDER BY observed_at ASC`,

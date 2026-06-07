@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Modal, Pressable, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettings } from '~/stores/settings';
+import type { ConservationField } from '~/lib/markdown';
 
 type Props = {
   visible: boolean;
@@ -23,10 +24,29 @@ const GEO_OPTIONS: Array<{ value: GeoFormat; label: string; hint: string }> = [
   { value: 'geojson', label: 'GeoJSON', hint: 'QGIS / GIS / mapping tools' },
 ];
 
+const LEVEL_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'kingdom', label: '界' },
+  { value: 'phylum', label: '門' },
+  { value: 'class_name', label: '綱' },
+  { value: 'order', label: '目' },
+  { value: 'family', label: '科' },
+  { value: 'genus', label: '屬' },
+];
+
+const CONSERVATION_OPTIONS: Array<{ value: ConservationField; label: string }> = [
+  { value: 'redlist', label: '臺灣紅皮書' },
+  { value: 'iucn_category', label: 'IUCN' },
+  { value: 'cites', label: 'CITES' },
+  { value: 'protected', label: '保育類 / 珍稀植物' },
+];
+
 export function ExportPreferenceSheet({ visible, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const formats = useSettings((s) => s.export_geo_formats);
   const includePhotos = useSettings((s) => s.export_include_photos);
+  const includeDocx = useSettings((s) => s.export_include_docx);
+  const levels = useSettings((s) => s.export_levels);
+  const conservationFields = useSettings((s) => s.export_conservation_fields);
   const setSetting = useSettings((s) => s.set);
 
   const toggleFormat = (f: GeoFormat) => {
@@ -34,6 +54,20 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
     // Don't let the user disable everything — keep at least one format.
     if (next.length === 0) return;
     setSetting('export_geo_formats', next);
+  };
+
+  const toggleLevel = (l: string) => {
+    // Empty selection is valid — it means "use each taxon group's default".
+    setSetting('export_levels', levels.includes(l) ? levels.filter((x) => x !== l) : [...levels, l]);
+  };
+
+  const toggleConservation = (c: ConservationField) => {
+    setSetting(
+      'export_conservation_fields',
+      conservationFields.includes(c)
+        ? conservationFields.filter((x) => x !== c)
+        : [...conservationFields, c],
+    );
   };
 
   return (
@@ -102,6 +136,67 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
                 value={includePhotos}
                 onValueChange={(v) => setSetting('export_include_photos', v)}
               />
+            </View>
+
+            <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              文件格式
+            </Text>
+            <View className="mb-4 flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 py-3">
+              <View className="flex-1 pr-3">
+                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">包含 Word (docx) 名錄</Text>
+                <Text className="text-xs text-gray-500 dark:text-gray-400">
+                  隨附與 .md 同內容的 Word 檔,方便直接編輯排版。
+                </Text>
+              </View>
+              <Switch
+                value={includeDocx}
+                onValueChange={(v) => setSetting('export_include_docx', v)}
+              />
+            </View>
+
+            <Text className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              分類階層
+            </Text>
+            <Text className="mb-2 text-xs text-gray-500 dark:text-gray-400">
+              {levels.length === 0
+                ? '未選 = 各分類群預設（維管束植物：高階分類群 + 科）'
+                : '名錄依勾選階層分組（順序自動排列）'}
+            </Text>
+            <View className="mb-4 flex-row flex-wrap gap-1.5">
+              {LEVEL_OPTIONS.map((opt) => {
+                const on = levels.includes(opt.value);
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => toggleLevel(opt.value)}
+                    className={`rounded-full border px-3 py-1.5 ${on ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+                  >
+                    <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              保育狀態欄位
+            </Text>
+            <View className="mb-4 flex-row flex-wrap gap-1.5">
+              {CONSERVATION_OPTIONS.map((opt) => {
+                const on = conservationFields.includes(opt.value);
+                return (
+                  <Pressable
+                    key={opt.value}
+                    onPress={() => toggleConservation(opt.value)}
+                    className={`rounded-full border px-3 py-1.5 ${on ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+                  >
+                    <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
 
             <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>

@@ -82,6 +82,7 @@ function ThemedShell() {
             <Stack.Screen name="projects" options={{ title: '專案管理', headerBackTitle: '返回' }} />
             <Stack.Screen name="sites" options={{ title: '樣區管理', headerBackTitle: '返回' }} />
             <Stack.Screen name="settings" options={{ title: '偏好設定', headerBackTitle: '返回' }} />
+            <Stack.Screen name="surveyors" options={{ title: '調查者', headerBackTitle: '返回' }} />
             <Stack.Screen name="about" options={{ title: '關於', headerBackTitle: '返回' }} />
             <Stack.Screen name="favorites" options={{ title: '常用名錄', headerBackTitle: '返回' }} />
             <Stack.Screen name="backup" options={{ title: '備份', headerBackTitle: '返回' }} />

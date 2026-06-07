@@ -1,4 +1,5 @@
 import { getUserDb, getTaicolDb } from './init';
+import { defaultSurveyorString } from './surveyors';
 
 /** Fixed-plot vertical layers (vegetation profile, semantic labels). */
 export type FixedLayer = 'E1' | 'E2' | 'E3' | 'E4' | 'E5' | 'E6';
@@ -129,6 +130,8 @@ export type PlotSpeciesRecord = {
   id: number;
   plot_survey_id: number;
   taxon_id: string;
+  /** DwC occurrenceID — stable v4 uuid assigned at insert. */
+  occurrence_id: string;
   layer: Layer;
   bb_value: string | null;
   percent: number | null;
@@ -172,6 +175,11 @@ export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & {
   phylum: string;
   order: string;
   genus: string;
+  // Conservation status (for checklist export). From TaiCOL.
+  redlist: string;
+  iucn: string;
+  cites: string;
+  protected: string;
 };
 
 export function generateUuid(): string {
@@ -233,7 +241,8 @@ export function createPlotSurvey(input: CreatePlotInput): number {
       input.sampling_protocol ?? null,
       input.sample_size_value ?? null,
       input.sample_size_unit ?? null,
-      input.recorded_by ?? null,
+      // Omitted → auto-fill from default surveyors; explicit null → stays empty.
+      input.recorded_by !== undefined ? input.recorded_by : defaultSurveyorString(),
       now,
       now,
       now,
@@ -632,15 +641,16 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
   const now = Date.now();
   const res = db.executeSync(
     `INSERT INTO plot_species_records
-       (plot_survey_id, taxon_id, layer,
+       (plot_survey_id, taxon_id, occurrence_id, layer,
         organism_quantity, organism_quantity_type,
         notes, sex, life_stage, reproductive_condition, leaf_phenology,
         lat, lng, accuracy, detection_type,
         observed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.plot_survey_id,
       input.taxon_id,
+      generateUuid(),
       input.layer,
       input.organism_quantity ?? null,
       input.organism_quantity_type ?? null,
@@ -776,7 +786,8 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
   const taxaRes = taicolDb.executeSync(
     `SELECT taxon_id, simple_name, name_author, common_name_c,
             family, family_c, rank, is_endemic, alien_type, is_hybrid,
-            kingdom, class, phylum, "order", genus
+            kingdom, class, phylum, "order", genus,
+            redlist, iucn, cites, protected
      FROM taicol_names
      WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
     taxonIds,
@@ -804,6 +815,10 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
       phylum: (t.phylum as string) ?? '',
       order: (t.order as string) ?? '',
       genus: (t.genus as string) ?? '',
+      redlist: (t.redlist as string) ?? '',
+      iucn: (t.iucn as string) ?? '',
+      cites: (t.cites as string) ?? '',
+      protected: (t.protected as string) ?? '',
     };
   });
 }

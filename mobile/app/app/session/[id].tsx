@@ -48,6 +48,7 @@ import { LookupResultSheet } from '~/components/LookupResultSheet';
 import { NotesEditModal } from '~/components/NotesEditModal';
 import { EndSessionModal } from '~/components/EndSessionModal';
 import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
+import { SurveyorAssignSheet } from '~/components/SurveyorAssignSheet';
 import { SiteAssignSheet } from '~/components/SiteAssignSheet';
 import { BatchImportModal } from '~/components/BatchImportModal';
 import { SwipeRow } from '~/components/SwipeRow';
@@ -128,6 +129,7 @@ export default function SessionDetailScreen() {
   const [endModalOpen, setEndModalOpen] = useState(false);
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
   const [siteSheetOpen, setSiteSheetOpen] = useState(false);
+  const [surveyorSheetOpen, setSurveyorSheetOpen] = useState(false);
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [searchPreview, setSearchPreview] = useState<SearchResult | null>(null);
   const [tracking, setTracking] = useState(false);
@@ -683,6 +685,23 @@ export default function SessionDetailScreen() {
                 );
               })()}
             </Pressable>
+            <Pressable
+              onPress={() => setSurveyorSheetOpen(true)}
+              hitSlop={6}
+              className="flex-row items-center active:opacity-70"
+            >
+              <Ionicons
+                name="people-outline"
+                size={14}
+                color={session.recorded_by ? '#2563eb' : '#9ca3af'}
+              />
+              <Text
+                className={`ml-1 text-xs ${session.recorded_by ? 'font-medium text-blue-700 dark:text-blue-300' : 'italic text-gray-500 dark:text-gray-400'}`}
+                numberOfLines={1}
+              >
+                {session.recorded_by || '調查者'}
+              </Text>
+            </Pressable>
           </View>
           {/* Right: count + sort icon + batch icon */}
           <View className="flex-row items-center gap-3">
@@ -857,6 +876,17 @@ export default function SessionDetailScreen() {
         currentProjectId={session.project_id}
         onCancel={() => setProjectSheetOpen(false)}
         onAssign={handleAssignProject}
+      />
+
+      <SurveyorAssignSheet
+        visible={surveyorSheetOpen}
+        current={session.recorded_by ?? ''}
+        onCancel={() => setSurveyorSheetOpen(false)}
+        onAssign={(v) => {
+          updateSession(session.id, { recorded_by: v || null });
+          reload();
+          setSurveyorSheetOpen(false);
+        }}
       />
 
       <SiteAssignSheet

@@ -177,6 +177,9 @@ export default function RecordsListScreen() {
   const selectClear = useRecordSelection((s) => s.clear);
   const geoFormats = useSettings((s) => s.export_geo_formats);
   const includePhotos = useSettings((s) => s.export_include_photos);
+  const includeDocx = useSettings((s) => s.export_include_docx);
+  const levels = useSettings((s) => s.export_levels);
+  const conservationFields = useSettings((s) => s.export_conservation_fields);
 
   const reload = useCallback(() => {
     // Always recompute the top-bar stats from a full listRecords('all') query
@@ -266,8 +269,8 @@ export default function RecordsListScreen() {
     await shareBundle(
       () =>
         item.kind === 'session'
-          ? bundleSession(item.id, { geoFormats, includePhotos, onProgress })
-          : bundlePlot(item.id, { geoFormats, includePhotos, onProgress }),
+          ? bundleSession(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress })
+          : bundlePlot(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
       `${item.title}`,
     );
   };
@@ -298,7 +301,7 @@ export default function RecordsListScreen() {
       if (total > 0) toast(`正在打包...照片 ${done}/${total}`, { durationMs: 60_000 });
     };
     await shareBundle(
-      () => bundleMany(bundleItems, { geoFormats, includePhotos, onProgress }),
+      () => bundleMany(bundleItems, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
       `${bundleItems.length} 筆記錄`,
     );
     selectClear();

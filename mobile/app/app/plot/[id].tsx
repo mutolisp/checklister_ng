@@ -40,6 +40,7 @@ import {
 import { PhotoGrid, PhotoViewerModal } from '~/components/PhotoGrid';
 import { PlotSpeciesTab } from '~/components/PlotSpeciesTab';
 import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
+import { SurveyorAssignSheet } from '~/components/SurveyorAssignSheet';
 import { TransectTrackControl } from '~/components/TransectTrackControl';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -185,6 +186,7 @@ function fmtClock(ts: number): string {
 function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
+  const [surveyorSheetOpen, setSurveyorSheetOpen] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
 
   useEffect(() => {
@@ -210,6 +212,9 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         decimal_latitude: pos.coords.latitude,
         decimal_longitude: pos.coords.longitude,
         coord_uncertainty_m: pos.coords.accuracy ?? null,
+        // Grab altitude (海拔) from the same GPS fix; keep existing value if the
+        // device couldn't resolve altitude (often null indoors / poor signal).
+        elevation_m: pos.coords.altitude != null ? Math.round(pos.coords.altitude) : plot.elevation_m,
         start_ts: plot.start_ts ?? Date.now(),
       });
     } catch (e) {
@@ -255,7 +260,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
             <View className="flex-row items-center">
               <Text className="flex-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-                GPS 座標 + 精度 <Text className="text-red-500">*</Text>
+                GPS 座標 + 精度 + 海拔 <Text className="text-red-500">*</Text>
               </Text>
               <Pressable
                 onPress={captureGps}
@@ -273,6 +278,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 {'  '}
                 <Text className="text-xs text-gray-500 dark:text-gray-400">
                   ±{plot.coord_uncertainty_m?.toFixed(1)} m
+                  {plot.elevation_m != null ? ` · 海拔 ${plot.elevation_m} m` : ''}
                 </Text>
               </Text>
             ) : (
@@ -358,12 +364,23 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
             patch({ total_cover_pct: Number.isFinite(n as number) ? (n as number) : null });
           }}
         />
-        <Field
-          label="調查者 (recordedBy)"
-          value={plot.recorded_by ?? ''}
-          placeholder="例: Cheng-Tao Lin（多人用逗號分隔）"
-          onSave={(v) => patch({ recorded_by: v || null })}
-        />
+        <View className="mb-3">
+          <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+            調查者 (recordedBy)
+          </Text>
+          <Pressable
+            onPress={() => setSurveyorSheetOpen(true)}
+            className="flex-row items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <Text
+              className={`flex-1 text-sm ${plot.recorded_by ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}
+              numberOfLines={1}
+            >
+              {plot.recorded_by || '點選指派調查者…'}
+            </Text>
+            <Ionicons name="people-outline" size={16} color="#9ca3af" />
+          </Pressable>
+        </View>
       </Section>
 
       <Section title="位置資訊">
@@ -457,6 +474,15 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         onAssign={(projectId) => {
           patch({ project_id: projectId });
           setProjectSheetOpen(false);
+        }}
+      />
+      <SurveyorAssignSheet
+        visible={surveyorSheetOpen}
+        current={plot.recorded_by ?? ''}
+        onCancel={() => setSurveyorSheetOpen(false)}
+        onAssign={(v) => {
+          patch({ recorded_by: v || null });
+          setSurveyorSheetOpen(false);
         }}
       />
     </KeyboardAwareScrollView>

@@ -8,6 +8,7 @@ import { perf } from '~/lib/perf';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { useFavorites } from '~/stores/favorites';
+import { useSurveyors } from '~/stores/surveyors';
 import { useSettings } from '~/stores/settings';
 
 type Props = { children: ReactNode };
@@ -19,6 +20,7 @@ export function DBProvider({ children }: Props) {
   const refreshActiveSession = useActiveSession((s) => s.refresh);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
   const refreshFavorites = useFavorites((s) => s.refresh);
+  const refreshSurveyors = useSurveyors((s) => s.refresh);
   const loadSettings = useSettings((s) => s.load);
 
   useEffect(() => {
@@ -44,6 +46,7 @@ export function DBProvider({ children }: Props) {
           refreshActiveSession();
           refreshActivePlot();
           refreshFavorites();
+          refreshSurveyors();
         });
         setProgress('載入分類群...');
         // Kingdom prewarm moved BEFORE setReady. Cost is ~200ms but the user
@@ -95,7 +98,7 @@ export function DBProvider({ children }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [loadSettings, refreshActiveSession, refreshActivePlot, refreshFavorites]);
+  }, [loadSettings, refreshActiveSession, refreshActivePlot, refreshFavorites, refreshSurveyors]);
 
   if (error) {
     return (

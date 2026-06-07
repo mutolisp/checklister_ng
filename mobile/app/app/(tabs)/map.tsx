@@ -313,39 +313,34 @@ export default function MapScreen() {
     }
   };
 
-  const handleSiteTap = (site: SiteWithProject) => {
-    Alert.alert(
-      site.name,
-      `${DRAW_LABEL[site.geometry_type]} · ${site.project_name}${site.notes ? `\n\n${site.notes}` : ''}`,
-      [
-        { text: '關閉', style: 'cancel' },
-        {
-          text: '跳到此地理樣區',
-          onPress: () => {
-            const region = geometryBounds(parseGeometry(site));
-            mapRef.current?.animateToRegion(region, 400);
-          },
-        },
+  const handleSiteTap = async (site: SiteWithProject) => {
+    const idx = await showActionSheet({
+      title: site.name,
+      message: `${DRAW_LABEL[site.geometry_type]} · ${site.project_name}${site.notes ? `\n\n${site.notes}` : ''}`,
+      cancelLabel: '關閉',
+      options: [
+        { label: '跳到此地理樣區' },
+        { label: '刪除', destructive: true },
+      ],
+    });
+    if (idx === 0) {
+      const region = geometryBounds(parseGeometry(site));
+      mapRef.current?.animateToRegion(region, 400);
+    } else if (idx === 1) {
+      // 2-button confirm — Alert.alert is fine here.
+      Alert.alert('刪除地理樣區？', `「${site.name}」會被移除`, [
+        { text: '取消', style: 'cancel' },
         {
           text: '刪除',
           style: 'destructive',
           onPress: () => {
-            Alert.alert('刪除地理樣區？', `「${site.name}」會被移除`, [
-              { text: '取消', style: 'cancel' },
-              {
-                text: '刪除',
-                style: 'destructive',
-                onPress: () => {
-                  deleteSite(site.id);
-                  reloadSites();
-                  toast('已刪除');
-                },
-              },
-            ]);
+            deleteSite(site.id);
+            reloadSites();
+            toast('已刪除');
           },
         },
-      ],
-    );
+      ]);
+    }
   };
 
   const handleSearch = async () => {

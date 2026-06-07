@@ -31,7 +31,8 @@ import {
 } from '~/db';
 import { convertToDwc } from './dwcMapper';
 import { parseMultiAttribute } from './dwcAttributes';
-import { generateMarkdown } from './markdown';
+import { generateMarkdown, type ConservationField } from './markdown';
+import { markdownToDocx } from './docx';
 import { geoJsonToGpx, geoJsonToKml } from './geoSerializers';
 
 /** DwC multi-value convention: pipe-separated. Pulls JSON-array DB cells out
@@ -46,9 +47,23 @@ export type GeoFormat = 'geojson' | 'gpx' | 'kml';
 export type BundleOptions = {
   geoFormats: GeoFormat[];
   includePhotos: boolean;
+  /** Emit a Word (.docx) version of the checklist alongside the .md. */
+  includeDocx: boolean;
+  /** Classification levels override for the checklist; empty = per-group defaults. */
+  levels: string[];
+  /** Conservation-status columns to include in the checklist. */
+  conservationFields: ConservationField[];
   /** Called as each photo is processed. Use for "12/45 張照片..." toast. */
   onProgress?: (done: number, total: number) => void;
 };
+
+/** Canonical ordering for checklist hierarchy levels (mirrors backend
+ *  LEVEL_ORDER). The picker stores tap order; we reorder here so the grouping
+ *  is always taxonomically sensible regardless of how the user clicked. */
+const LEVEL_ORDER = ['kingdom', 'phylum', 'class_name', 'order', 'family', 'genus'];
+function orderLevels(sel: string[]): string[] {
+  return LEVEL_ORDER.filter((l) => sel.includes(l));
+}
 
 export type ExportFile = {
   uri: string;
@@ -94,6 +109,7 @@ function parseGeoJsonSafe(s: string | null): object | null {
 function recordToYamlItem(r: RecordWithTaxon): Record<string, unknown> {
   const fullname = r.name_author ? `${r.simple_name} ${r.name_author}` : r.simple_name;
   const item: Record<string, unknown> = {
+    occurrence_id: r.occurrence_id,
     taxon_id: r.taxon_id,
     name: r.simple_name,
     fullname,
@@ -160,6 +176,36 @@ function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMar
     is_hybrid: r.is_hybrid,
     nomenclature_name: '',
     notes: r.notes,
+  };
+}
+
+/** Map a plot species record to a checklist MarkdownItem (mirrors
+ *  recordToMarkdownItem). Used for the deduped `_checklist.md` per plot. */
+function plotSpeciesToMarkdownItem(
+  r: PlotSpeciesRecordWithTaxon,
+): Parameters<typeof generateMarkdown>[0][number] {
+  const fullname = r.name_author ? `${r.simple_name} ${r.name_author}` : r.simple_name;
+  return {
+    taxon_id: r.taxon_id,
+    name: r.simple_name,
+    fullname,
+    cname: r.common_name_c,
+    family: r.family,
+    family_c: r.family_c,
+    family_cname: r.family_c,
+    kingdom: r.kingdom,
+    phylum: r.phylum,
+    class_name: r.class,
+    order: r.order,
+    rank: r.rank,
+    endemic: r.is_endemic === 'true' ? 1 : 0,
+    source: mapAlienToSource(r.alien_type, r.kingdom),
+    redlist: r.redlist,
+    iucn_category: r.iucn,
+    cites: r.cites,
+    protected: r.protected,
+    is_hybrid: r.is_hybrid,
+    nomenclature_name: '',
   };
 }
 
@@ -241,54 +287,41 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
  *  `verbatimVegetationLayer` is non-standard because there's no DwC term for
  *  a within-event vegetation stratum. */
 function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[], plotType: PlotType): string {
-  // Point count records reuse the 'T' bucket but have no vegetation stratum, so
-  // emit an empty verbatimVegetationLayer for them (transect keeps 'T', which
-  // genuinely means "transect, unstratified").
-  const blankLayer = plotType === 'point_count';
-  const headers = [
-    'taxonID',
-    'scientificName',
-    'scientificNameAuthorship',
-    'vernacularName',
-    'family',
-    'verbatimVegetationLayer',
-    'organismQuantity',
-    'organismQuantityType',
-    'sex',
-    'lifeStage',
-    'reproductiveCondition',
-    'leafPhenology',
-    'detectionType',
-    'decimalLatitude',
-    'decimalLongitude',
-    'coordinateUncertaintyInMeters',
-    'eventDate',
-    'eventRemarks',
+  // verbatimVegetationLayer only carries meaning for fixed plots (E1-E6).
+  // Transect ('T') and point_count have no vegetation stratum, so the column
+  // is omitted entirely for them.
+  const includeLayer = plotType === 'fixed';
+  // leafPhenology (落葉/常綠) only applies to vascular plants; drop the column
+  // when the plot has no vascular taxa (e.g. an all-animal point count).
+  const includeLeaf = species.some((s) => s.phylum === 'Tracheophyta');
+  const cols: Array<{ h: string; v: (r: PlotSpeciesRecordWithTaxon) => unknown }> = [
+    { h: 'occurrenceID', v: (r) => r.occurrence_id },
+    { h: 'taxonID', v: (r) => r.taxon_id },
+    { h: 'scientificName', v: (r) => r.simple_name },
+    { h: 'scientificNameAuthorship', v: (r) => r.name_author },
+    { h: 'vernacularName', v: (r) => r.common_name_c },
+    { h: 'family', v: (r) => r.family },
+    ...(includeLayer
+      ? [{ h: 'verbatimVegetationLayer', v: (r: PlotSpeciesRecordWithTaxon) => r.layer }]
+      : []),
+    { h: 'organismQuantity', v: (r) => r.organism_quantity ?? '' },
+    { h: 'organismQuantityType', v: (r) => r.organism_quantity_type ?? '' },
+    { h: 'sex', v: (r) => r.sex ?? '' },
+    { h: 'lifeStage', v: (r) => r.life_stage ?? '' },
+    { h: 'reproductiveCondition', v: (r) => multiToPipe(r.reproductive_condition) },
+    ...(includeLeaf
+      ? [{ h: 'leafPhenology', v: (r: PlotSpeciesRecordWithTaxon) => multiToPipe(r.leaf_phenology) }]
+      : []),
+    { h: 'detectionType', v: (r) => r.detection_type ?? '' },
+    { h: 'decimalLatitude', v: (r) => r.lat ?? '' },
+    { h: 'decimalLongitude', v: (r) => r.lng ?? '' },
+    { h: 'coordinateUncertaintyInMeters', v: (r) => r.accuracy ?? '' },
+    { h: 'eventDate', v: (r) => (r.observed_at ? new Date(r.observed_at).toISOString() : '') },
+    { h: 'eventRemarks', v: (r) => r.notes ?? '' },
   ];
-  const lines = [headers.join(',')];
+  const lines = [cols.map((c) => c.h).join(',')];
   for (const r of species) {
-    lines.push(
-      [
-        csvEscape(r.taxon_id),
-        csvEscape(r.simple_name),
-        csvEscape(r.name_author),
-        csvEscape(r.common_name_c),
-        csvEscape(r.family),
-        csvEscape(blankLayer ? '' : r.layer),
-        csvEscape(r.organism_quantity ?? ''),
-        csvEscape(r.organism_quantity_type ?? ''),
-        csvEscape(r.sex ?? ''),
-        csvEscape(r.life_stage ?? ''),
-        csvEscape(multiToPipe(r.reproductive_condition)),
-        csvEscape(multiToPipe(r.leaf_phenology)),
-        csvEscape(r.detection_type ?? ''),
-        csvEscape(r.lat ?? ''),
-        csvEscape(r.lng ?? ''),
-        csvEscape(r.accuracy ?? ''),
-        csvEscape(r.observed_at ? new Date(r.observed_at).toISOString() : ''),
-        csvEscape(r.notes ?? ''),
-      ].join(','),
-    );
+    lines.push(cols.map((c) => csvEscape(c.v(r))).join(','));
   }
   return '﻿' + lines.join('\n');
 }
@@ -383,6 +416,7 @@ async function buildSessionEntries(
       eventDate: eventMeta.eventDate,
       startedAt: eventMeta.eventStartedAt,
       ...(eventMeta.eventEndedAt ? { endedAt: eventMeta.eventEndedAt } : {}),
+      ...(session.recorded_by ? { recordedBy: session.recorded_by } : {}),
     },
     checklist: dwcItems,
   };
@@ -402,6 +436,7 @@ async function buildSessionEntries(
   pushEnv('startedAt', eventMeta.eventStartedAt);
   pushEnv('endedAt', eventMeta.eventEndedAt);
   pushEnv('datasetName', eventMeta.datasetName);
+  pushEnv('recordedBy', session.recorded_by);
   pushEnv('eventRemarks', session.notes);
   if (session.start_lat !== null) pushEnv('decimalLatitude', session.start_lat);
   if (session.start_lng !== null) pushEnv('decimalLongitude', session.start_lng);
@@ -424,11 +459,18 @@ async function buildSessionEntries(
   });
 
   // Markdown
-  const md = generateMarkdown(records.map(recordToMarkdownItem), {
-    project: project?.id !== 0 ? project?.name : '',
-    site: '',
-  });
+  const md = generateMarkdown(
+    records.map(recordToMarkdownItem),
+    { project: project?.id !== 0 ? project?.name : '', site: '' },
+    {
+      levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,
+      conservationFields: opts.conservationFields,
+    },
+  );
   entries.push({ name: `${base}/${base}.md`, bytes: strToU8(md) });
+  if (opts.includeDocx) {
+    entries.push({ name: `${base}/${base}.docx`, bytes: markdownToDocx(md) });
+  }
 
   // Geo: per-record GPS points
   const points = buildSessionPoints(records);
@@ -493,11 +535,13 @@ async function buildPlotEntries(
   // the existing organism_quantity convention here.
   const yamlItems = species.map((r) => {
     const item: Record<string, unknown> = {
+      occurrence_id: r.occurrence_id,
       taxon_id: r.taxon_id,
       name: r.simple_name,
       cname: r.common_name_c,
       family: r.family,
-      layer: plot.plot_type === 'point_count' ? null : r.layer,
+      // Vegetation stratum only meaningful for fixed plots.
+      ...(plot.plot_type === 'fixed' ? { layer: r.layer } : {}),
       organism_quantity: r.organism_quantity,
       organism_quantity_type: r.organism_quantity_type,
     };
@@ -519,6 +563,25 @@ async function buildPlotEntries(
     species: yamlItems,
   };
   entries.push({ name: `${base}/${base}.yml`, bytes: strToU8(yaml.dump(yamlData, { lineWidth: -1, noRefs: true })) });
+
+  // ${plotid}_checklist.md — deduped (one row per taxon) human-readable 名錄,
+  // mirrors the session .md. Same dedup feeds the optional .docx below.
+  const uniqueSpecies = [...new Map(species.map((s) => [s.taxon_id, s])).values()];
+  const checklistMd = generateMarkdown(
+    uniqueSpecies.map(plotSpeciesToMarkdownItem),
+    { project: project && project.id !== 0 ? project.name : '', site: plot.plotid },
+    {
+      levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,
+      conservationFields: opts.conservationFields,
+    },
+  );
+  entries.push({ name: `${base}/${plot.plotid}_checklist.md`, bytes: strToU8(checklistMd) });
+  if (opts.includeDocx) {
+    entries.push({
+      name: `${base}/${plot.plotid}_checklist.docx`,
+      bytes: markdownToDocx(checklistMd),
+    });
+  }
 
   // ${plotid}_env.csv — environmental metadata. Tall format (term,value) so
   // we can emit only the fields that were actually filled in, without leaving

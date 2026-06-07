@@ -37,6 +37,7 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   is_marine: 'isMarine',
   alien_status_note: 'establishmentRemarks',
   occurrenceID: 'occurrenceID',
+  occurrence_id: 'occurrenceID',
   eventDate: 'eventDate',
   modified: 'modified',
   // GPS — internal fields → DwC location terms.

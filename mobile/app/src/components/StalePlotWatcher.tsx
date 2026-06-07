@@ -12,7 +12,8 @@
  * The watcher does not auto-stop tracks or plots; it only nudges the user.
  */
 import { useEffect, useRef } from 'react';
-import { Alert, AppState, type AppStateStatus } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
+import { showActionSheet } from './ActionSheet';
 import { useRouter, type Href } from 'expo-router';
 import {
   endPlotSurvey,
@@ -82,25 +83,22 @@ function maybeWarn(
   const minutes = Math.round(idleMs / (60 * 1000));
   const noun =
     plot.plot_type === 'transect' ? '穿越線' : plot.plot_type === 'point_count' ? '定點計數' : '樣區';
-  Alert.alert(
-    `${noun}已閒置 ${minutes} 分鐘`,
-    `「${plot.plotid}」最近一筆記錄已是 ${minutes} 分鐘前。需要結束嗎？`,
-    [
-      { text: '繼續記錄', style: 'cancel' },
-      {
-        text: '結束',
-        style: 'destructive',
-        onPress: () => {
-          // If a track is being recorded for this plot, stop it cleanly first.
-          if (recordingPlotId === plot.id) pauseRecording();
-          endPlotSurvey(plot.id);
-          refreshActivePlot();
-        },
-      },
-      {
-        text: '前往樣區',
-        onPress: () => router.push(`/plot/${plot.id}` as Href),
-      },
+  void showActionSheet({
+    title: `${noun}已閒置 ${minutes} 分鐘`,
+    message: `「${plot.plotid}」最近一筆記錄已是 ${minutes} 分鐘前。需要結束嗎？`,
+    cancelLabel: '繼續記錄',
+    options: [
+      { label: '結束', destructive: true },
+      { label: '前往樣區' },
     ],
-  );
+  }).then((idx) => {
+    if (idx === 0) {
+      // If a track is being recorded for this plot, stop it cleanly first.
+      if (recordingPlotId === plot.id) pauseRecording();
+      endPlotSurvey(plot.id);
+      refreshActivePlot();
+    } else if (idx === 1) {
+      router.push(`/plot/${plot.id}` as Href);
+    }
+  });
 }

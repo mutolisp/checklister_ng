@@ -1,4 +1,5 @@
 import { getUserDb } from './init';
+import { defaultSurveyorString } from './surveyors';
 
 export type Session = {
   id: number;
@@ -18,6 +19,8 @@ export type Session = {
   start_lng: number | null;
   track_geojson: string | null;
   notes: string | null;
+  /** DwC recordedBy — comma-separated surveyor names. NULL = unset. */
+  recorded_by: string | null;
 };
 
 export type SessionWithStats = Session & {
@@ -64,6 +67,9 @@ export type CreateSessionInput = {
   gps_mode?: 'off' | 'single_point' | 'full_track';
   start_lat?: number;
   start_lng?: number;
+  /** DwC recordedBy. Omit to auto-fill from default surveyors; pass null to
+   *  force empty. */
+  recorded_by?: string | null;
 };
 
 /**
@@ -89,8 +95,8 @@ export function createSession(input: CreateSessionInput = {}): number {
     [now, now],
   );
   const res = db.executeSync(
-    `INSERT INTO sessions (name, type, project_id, started_at, gps_mode, start_lat, start_lng)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (name, type, project_id, started_at, gps_mode, start_lat, start_lng, recorded_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.name ?? defaultSessionName(),
       input.type ?? 'checklist',
@@ -99,6 +105,8 @@ export function createSession(input: CreateSessionInput = {}): number {
       input.gps_mode ?? null,
       input.start_lat ?? null,
       input.start_lng ?? null,
+      // Omitted → auto-fill from default surveyors; explicit null → stays empty.
+      input.recorded_by !== undefined ? input.recorded_by : defaultSurveyorString(),
     ],
   );
   return res.insertId ?? 0;

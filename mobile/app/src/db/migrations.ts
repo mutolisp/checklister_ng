@@ -520,6 +520,47 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_added ON favorite_taxa(added_at DESC);`);
     },
   },
+  {
+    // v15: 常用調查者 (surveyors / DwC recordedBy). A curated list of people who
+    // can be auto-filled (is_default) or picked when creating a record. Also
+    // adds sessions.recorded_by (plot_surveys already has it from v5) so quick
+    // checklists carry recordedBy too.
+    version: 15,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS surveyors (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL UNIQUE,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL
+        );
+      `);
+      db.executeSync(`ALTER TABLE sessions ADD COLUMN recorded_by TEXT;`);
+    },
+  },
+  {
+    // v16: DwC occurrenceID (stable v4 uuid) per species occurrence, on both
+    // checklist_records (快速名錄) and plot_species_records (樣區). New rows get
+    // a uuid from generateUuid() at insert; existing rows are backfilled here
+    // with a per-row v4 uuid built from SQLite randomblob (no JS needed, avoids
+    // a migrations→plots import cycle).
+    version: 16,
+    up: (db) => {
+      const uuidExpr = `lower(
+        hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
+        substr(hex(randomblob(2)), 2) || '-' ||
+        substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)), 2) || '-' ||
+        hex(randomblob(6))
+      )`;
+      for (const tbl of ['checklist_records', 'plot_species_records']) {
+        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN occurrence_id TEXT;`);
+        db.executeSync(
+          `UPDATE ${tbl} SET occurrence_id = ${uuidExpr} WHERE occurrence_id IS NULL;`,
+        );
+      }
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

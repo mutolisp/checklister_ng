@@ -6,7 +6,6 @@
  * OR one plot may be active. Attempting to start another while a different
  * kind is active prompts the user to finish / resume the active one first.
  */
-import { Alert } from 'react-native';
 import { router, type Href } from 'expo-router';
 import {
   createPlotSurvey,
@@ -67,35 +66,29 @@ function findActiveConflict(): ActiveConflict | null {
 const NOUN: Record<NewRecordKind, string> = { session: '名錄', plot: '樣區' };
 
 /**
- * Three-button Alert offering: cancel / open existing / end + start new.
- * Resolves true only when the user picks "end + start new" (the only branch
- * that frees up the active slot).
+ * Cross-platform action sheet offering: open existing / end + start new
+ * (+ cancel). Resolves true only when the user picks "end + start new" (the
+ * only branch that frees up the active slot).
  */
-function showConflictAlert(conflict: ActiveConflict, wanted: NewRecordKind): Promise<boolean> {
-  return new Promise<boolean>((resolve) => {
-    Alert.alert(
-      `已有${NOUN[conflict.kind]}記錄中`,
-      `「${conflict.label}」正在進行。要先結束它，再開始新的${NOUN[wanted]}嗎？`,
-      [
-        { text: '取消', style: 'cancel', onPress: () => resolve(false) },
-        {
-          text: `前往${NOUN[conflict.kind]}`,
-          onPress: () => {
-            router.push(conflict.href);
-            resolve(false);
-          },
-        },
-        {
-          text: `結束並開始新${NOUN[wanted]}`,
-          style: 'destructive',
-          onPress: () => {
-            conflict.end();
-            resolve(true);
-          },
-        },
-      ],
-    );
+async function showConflictAlert(conflict: ActiveConflict, wanted: NewRecordKind): Promise<boolean> {
+  const idx = await showActionSheet({
+    title: `已有${NOUN[conflict.kind]}記錄中`,
+    message: `「${conflict.label}」正在進行。要先結束它，再開始新的${NOUN[wanted]}嗎？`,
+    cancelLabel: '取消',
+    options: [
+      { label: `前往${NOUN[conflict.kind]}` },
+      { label: `結束並開始新${NOUN[wanted]}`, destructive: true },
+    ],
   });
+  if (idx === 0) {
+    router.push(conflict.href);
+    return false;
+  }
+  if (idx === 1) {
+    conflict.end();
+    return true;
+  }
+  return false; // cancel
 }
 
 /**

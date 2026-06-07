@@ -24,8 +24,9 @@ import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { showActionSheet } from './ActionSheet';
 import { useColorScheme as useNwColorScheme } from 'nativewind';
 import { useRouter } from 'expo-router';
-import { getKeysForScope, type Layer, type Rank, type IdentificationKey } from '~/db';
+import { getKeysForScope, parseTrackSegments, type Layer, type Rank, type IdentificationKey } from '~/db';
 import { ScientificName } from './ScientificName';
+import { PlotPointPreviewModal } from './PlotPointPreviewModal';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import {
   SpeciesAttributesBlock,
@@ -95,6 +96,14 @@ type Props = {
   accuracy?: number | null;
   /** Persist per-record GPS (edit mode only). Omit to hide the GPS button. */
   onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
+  /** Plot geographic context for the coordinate map preview (centre / track /
+   *  point-count radius). Omit to hide the preview button. */
+  plotGeo?: {
+    lat: number | null;
+    lng: number | null;
+    trackGeojson: string | null;
+    radiusM: number | null;
+  } | null;
   /** Existing photo URIs for the record (edit mode only). */
   photoUris?: string[];
   /** Capture / library handlers for the photo section. Parent owns the
@@ -119,6 +128,7 @@ export function PlotSpeciesValueModal({
   lng,
   accuracy,
   onSaveLocation,
+  plotGeo,
   photoUris,
   onAddPhoto,
   onRemovePhoto,
@@ -138,7 +148,14 @@ export function PlotSpeciesValueModal({
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [detection, setDetection] = useState<string | null>(initial?.detection_type ?? null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  const [mapPreviewOpen, setMapPreviewOpen] = useState(false);
   const router = useRouter();
+
+  // Braun-Blanquet & DBH only apply to vascular plants. In transect /
+  // point_count (layer 'T') hide them for non-vascular taxa (animals etc.).
+  // Fixed plots keep them (bryophytes still get BB cover by layer method).
+  const isVascular = (header?.phylum ?? '') === 'Tracheophyta';
+  const hideBbDbh = layer === 'T' && !isVascular;
 
   // Identification keys defined for the taxon's genus / family ("上一階層"),
   // shown as 鑰匙 chips like the taxonomy tree / SpeciesDetailSheet.
@@ -366,7 +383,11 @@ export function PlotSpeciesValueModal({
               {/* Quantity type picker */}
               <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">豐度單位</Text>
               <View className="flex-row flex-wrap gap-1.5">
-                {QUANTITY_TYPES.map((opt) => {
+                {QUANTITY_TYPES.filter(
+                  (opt) =>
+                    opt.value === qtyType ||
+                    !(hideBbDbh && (opt.kind === 'BB' || opt.kind === 'DBH')),
+                ).map((opt) => {
                   const active = qtyType === opt.value;
                   return (
                     <Pressable
@@ -472,6 +493,7 @@ export function PlotSpeciesValueModal({
               {onSaveLocation ? (
                 <View className="mt-4">
                   <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">座標（選填）</Text>
+                  <View className="flex-row items-center gap-2">
                   <Pressable
                     onPress={async () => {
                       const perm = await Location.requestForegroundPermissionsAsync();
@@ -502,7 +524,7 @@ export function PlotSpeciesValueModal({
                           }
                         : undefined
                     }
-                    className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
+                    className="flex-1 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
                   >
                     <Ionicons
                       name={lat != null ? 'location' : 'location-outline'}
@@ -516,6 +538,16 @@ export function PlotSpeciesValueModal({
                     </Text>
                     <Text className="text-[11px] text-gray-400">{lat != null ? '長按清除' : '點選 GPS'}</Text>
                   </Pressable>
+                  {lat != null && lng != null ? (
+                    <Pressable
+                      onPress={() => setMapPreviewOpen(true)}
+                      hitSlop={8}
+                      className="rounded-lg border border-gray-200 dark:border-gray-700 p-2.5 active:bg-gray-50 dark:active:bg-gray-800"
+                    >
+                      <Ionicons name="map-outline" size={18} color="#2563eb" />
+                    </Pressable>
+                  ) : null}
+                  </View>
                 </View>
               ) : null}
 
@@ -564,6 +596,22 @@ export function PlotSpeciesValueModal({
         index={viewerIndex}
         onClose={() => setViewerIndex(null)}
       />
+
+      {mapPreviewOpen && lat != null && lng != null ? (
+        <PlotPointPreviewModal
+          visible
+          onClose={() => setMapPreviewOpen(false)}
+          title={header?.cname || header?.name || '此物種'}
+          focus={{ lat, lng }}
+          center={
+            plotGeo && plotGeo.lat != null && plotGeo.lng != null
+              ? { lat: plotGeo.lat, lng: plotGeo.lng }
+              : null
+          }
+          segments={parseTrackSegments(plotGeo?.trackGeojson ?? null)}
+          radiusM={plotGeo?.radiusM ?? null}
+        />
+      ) : null}
     </Modal>
   );
 }

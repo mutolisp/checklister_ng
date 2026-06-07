@@ -23,7 +23,7 @@ import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addPlotSpecies,
   addRecord,
@@ -212,6 +212,7 @@ function buildLeadPreview(
 export default function KeyRunnerScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const keyId = Number(id);
 
   // ── Load key + couplets + caches once, in effect ─────────────────────
@@ -606,7 +607,10 @@ export default function KeyRunnerScreen() {
       </ScrollView>
 
       {!state.terminal && state.path.length > 1 ? (
-        <View className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <View
+          className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          style={{ paddingBottom: insets.bottom }}
+        >
           <Pressable
             onPress={goBack}
             className="flex-row items-center justify-center py-3 active:bg-gray-100 dark:active:bg-gray-700"

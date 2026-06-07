@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { getUserDb } from '~/db';
 import type { TaxonGroup } from '~/db/types';
+import type { ConservationField } from '~/lib/markdown';
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type CardDensity = 'compact' | 'comfortable';
@@ -83,6 +84,14 @@ type SettingsValues = {
   /** Whether photos referenced by records get packed into the bundle's
    *  `photos/` folder. Off = text-only export (much smaller, faster). */
   export_include_photos: boolean;
+  /** Whether to emit a Word (.docx) version of the checklist alongside .md. */
+  export_include_docx: boolean;
+  /** Classification levels to group the exported checklist by. Empty = use each
+   *  taxon group's default (vascular = 高階分類群 + 科, birds = 目 + 科, …).
+   *  Non-empty = global override, applied in LEVEL_ORDER. */
+  export_levels: string[];
+  /** Conservation-status columns to include in the exported checklist. */
+  export_conservation_fields: ConservationField[];
 };
 
 const DEFAULTS: SettingsValues = {
@@ -101,6 +110,9 @@ const DEFAULTS: SettingsValues = {
   ai_geomodel_filter: true,
   export_geo_formats: ['kml'],
   export_include_photos: true,
+  export_include_docx: true,
+  export_levels: [],
+  export_conservation_fields: ['redlist'],
 };
 
 type SettingsState = SettingsValues & {
@@ -180,7 +192,44 @@ function readAll(): SettingsValues {
       map.get('export_include_photos') == null
         ? DEFAULTS.export_include_photos
         : map.get('export_include_photos') === 'true',
+    export_include_docx:
+      map.get('export_include_docx') == null
+        ? DEFAULTS.export_include_docx
+        : map.get('export_include_docx') === 'true',
+    export_levels: parseLevels(map.get('export_levels')),
+    export_conservation_fields: parseConservationFields(map.get('export_conservation_fields')),
   };
+}
+
+const LEVEL_KEYS = new Set(['kingdom', 'phylum', 'class_name', 'order', 'family', 'genus']);
+function parseLevels(raw: string | undefined): string[] {
+  if (raw == null) return DEFAULTS.export_levels;
+  try {
+    const parsed = JSON.parse(raw);
+    // Empty array is a valid, meaningful value (= per-group defaults).
+    if (Array.isArray(parsed)) {
+      return parsed.filter((v): v is string => typeof v === 'string' && LEVEL_KEYS.has(v));
+    }
+  } catch {
+    // ignore corrupt setting
+  }
+  return DEFAULTS.export_levels;
+}
+
+const CONSERVATION_KEYS = new Set(['redlist', 'iucn_category', 'cites', 'protected']);
+function parseConservationFields(raw: string | undefined): ConservationField[] {
+  if (raw == null) return DEFAULTS.export_conservation_fields;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (v): v is ConservationField => typeof v === 'string' && CONSERVATION_KEYS.has(v),
+      );
+    }
+  } catch {
+    // ignore corrupt setting
+  }
+  return DEFAULTS.export_conservation_fields;
 }
 
 function parseSearchGroups(raw: string | undefined): TaxonGroup[] {
