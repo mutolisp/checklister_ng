@@ -1,20 +1,25 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, FlatList, Keyboard, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addPlotSpecies,
   deletePlotSpecies,
   getActiveLayers,
   getPlotLayers,
+  getSubplotLayers,
   isStratified,
   layerIndexOf,
   layerKeyForIndex,
   listPlotSpecies,
+  listSubplots,
   parsePhotoPaths,
+  updateSubplotLayer,
   type FixedLayer,
   type Layer,
   type PlotLayer,
+  type Subplot,
+  type SubplotLayer,
   type PlotSpeciesRecordWithTaxon,
   type PlotSurvey,
   type SearchResult,
@@ -85,8 +90,41 @@ export function PlotSpeciesTab({
       setLayer(activeLayers[0]);
     }
   }, [activeLayers, layer, stratified]);
-  const [records, setRecords] = useState<PlotSpeciesRecordWithTaxon[]>([]);
+  const [allRecords, setAllRecords] = useState<PlotSpeciesRecordWithTaxon[]>([]);
   const [modal, setModal] = useState<ValueModalState | null>(null);
+
+  // Subplots (小區, fixed plots only). When ≥1 subplot exists the species tab
+  // is scoped to the active subplot; otherwise it behaves as before (flat plot).
+  const [subplots, setSubplots] = useState<Subplot[]>([]);
+  useMemo(() => {
+    setSubplots(stratified ? listSubplots(plot.id) : []);
+    return null;
+  }, [plot.id, stratified]);
+  const subplotMode = subplots.length > 0;
+  const [activeSubplotId, setActiveSubplotId] = useState<number | null>(null);
+  useEffect(() => {
+    if (!subplotMode) {
+      setActiveSubplotId(null);
+      return;
+    }
+    if (activeSubplotId == null || !subplots.some((s) => s.id === activeSubplotId)) {
+      setActiveSubplotId(subplots[0].id);
+    }
+  }, [subplotMode, subplots, activeSubplotId]);
+
+  // Displayed records = scoped to the active subplot in subplot mode.
+  const records = useMemo(
+    () => (subplotMode ? allRecords.filter((r) => r.subplot_id === activeSubplotId) : allRecords),
+    [allRecords, subplotMode, activeSubplotId],
+  );
+  // Per-subplot species counts for the switcher badges.
+  const subplotCounts = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const r of allRecords) {
+      if (r.subplot_id != null) m.set(r.subplot_id, (m.get(r.subplot_id) ?? 0) + 1);
+    }
+    return m;
+  }, [allRecords]);
   // Per-layer method config from plot_survey_layers (used for default
   // abundance unit when opening the modal). Lazy-loaded; refreshed on plot.id.
   const [plotLayers, setPlotLayers] = useState<PlotLayer[]>([]);
@@ -103,7 +141,7 @@ export function PlotSpeciesTab({
   const setSetting = useSettings((s) => s.set);
 
   const reload = useCallback(() => {
-    setRecords(listPlotSpecies(plot.id));
+    setAllRecords(listPlotSpecies(plot.id));
   }, [plot.id]);
 
   // Reload on first mount + when plot changes
@@ -191,6 +229,7 @@ export function PlotSpeciesTab({
       addPlotSpecies({
         plot_survey_id: plot.id,
         taxon_id: modal.taxon.taxon_id,
+        subplot_id: subplotMode ? activeSubplotId : null,
         layer: modal.layer,
         organism_quantity: v.organism_quantity,
         organism_quantity_type: v.organism_quantity_type,
@@ -409,6 +448,45 @@ export function PlotSpeciesTab({
 
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
+      {/* Subplot switcher (小區) — scopes the whole species tab to one subplot. */}
+      {subplotMode ? (
+        <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+          >
+            {subplots.map((s) => {
+              const on = s.id === activeSubplotId;
+              const n = subplotCounts.get(s.id) ?? 0;
+              return (
+                <Pressable
+                  key={s.id}
+                  onPress={() => setActiveSubplotId(s.id)}
+                  className={`items-center justify-center rounded-lg px-3 py-1.5 ${on ? 'bg-blue-500' : 'bg-gray-100 dark:bg-gray-800'}`}
+                  style={{ minWidth: 48 }}
+                >
+                  <Text
+                    className={`text-sm font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                  >
+                    {s.label}
+                    {n > 0 ? ` (${n})` : ''}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {activeSubplotId != null ? (
+            <SubplotLayerInputs
+              subplotId={activeSubplotId}
+              activeLayers={activeLayers}
+              plotLayers={plotLayers}
+              onChanged={onChanged}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Layer focus chips (fixed plots only) */}
       <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
         <View className="mb-2 flex-row items-center justify-end">
@@ -693,6 +771,110 @@ function ValueBadge({
   return (
     <View className={`rounded-md px-2.5 py-1.5 ${tone.bg}`}>
       <Text className={`text-sm font-semibold ${tone.text}`}>{badge}</Text>
+    </View>
+  );
+}
+
+/** Compact numeric input for the per-subplot cover/height rows. */
+function MiniNum({
+  value,
+  placeholder,
+  suffix,
+  onSave,
+}: {
+  value: number | null | undefined;
+  placeholder?: string;
+  suffix?: string;
+  onSave: (n: number | null) => void;
+}) {
+  const [draft, setDraft] = useState(value == null ? '' : String(value));
+  useEffect(() => {
+    setDraft(value == null ? '' : String(value));
+  }, [value]);
+  return (
+    <View className="flex-1 flex-row items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2">
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        onBlur={() => {
+          const t = draft.trim();
+          if (t === '') return onSave(null);
+          const n = Number(t);
+          onSave(Number.isFinite(n) ? n : null);
+        }}
+        placeholder={placeholder}
+        placeholderTextColor="#9ca3af"
+        keyboardType="decimal-pad"
+        className="flex-1 py-1.5 text-sm text-gray-900 dark:text-gray-100"
+      />
+      {suffix ? <Text className="ml-1 text-[11px] text-gray-500 dark:text-gray-400">{suffix}</Text> : null}
+    </View>
+  );
+}
+
+/** Per-subplot cover/height for each active layer (collapsible). Layer method /
+ *  height unit come from the shared plot-level config (plotLayers). */
+function SubplotLayerInputs({
+  subplotId,
+  activeLayers,
+  plotLayers,
+  onChanged,
+}: {
+  subplotId: number;
+  activeLayers: FixedLayer[];
+  plotLayers: PlotLayer[];
+  onChanged: () => void;
+}) {
+  const [rows, setRows] = useState<SubplotLayer[]>([]);
+  const reload = useCallback(() => setRows(getSubplotLayers(subplotId)), [subplotId]);
+  useEffect(() => reload(), [reload]);
+  const [open, setOpen] = useState(false);
+  if (activeLayers.length === 0) return null;
+  return (
+    <View className="mt-2">
+      <Pressable onPress={() => setOpen((o) => !o)} className="flex-row items-center py-1" hitSlop={6}>
+        <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} color="#6b7280" />
+        <Text className="ml-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+          本小區各層覆蓋 / 高度
+        </Text>
+      </Pressable>
+      {open
+        ? activeLayers.map((l) => {
+            const idx = layerIndexOf(l);
+            const cfg = plotLayers.find((p) => p.layer_index === idx);
+            const unit = cfg?.height_unit ?? 'cm';
+            const row = rows.find((r) => r.layer_index === idx);
+            const heightDisplay =
+              row?.height_cm == null ? null : unit === 'm' ? row.height_cm / 100 : row.height_cm;
+            return (
+              <View key={l} className="mb-1.5 flex-row items-center gap-2">
+                <Text className="w-7 text-xs font-bold text-gray-700 dark:text-gray-300">{l}</Text>
+                <MiniNum
+                  value={row?.cover_pct ?? null}
+                  placeholder="覆蓋"
+                  suffix="%"
+                  onSave={(n) => {
+                    updateSubplotLayer(subplotId, idx, { cover_pct: n });
+                    reload();
+                    onChanged();
+                  }}
+                />
+                <MiniNum
+                  value={heightDisplay}
+                  placeholder="高"
+                  suffix={unit}
+                  onSave={(n) => {
+                    updateSubplotLayer(subplotId, idx, {
+                      height_cm: n == null ? null : unit === 'm' ? n * 100 : n,
+                    });
+                    reload();
+                    onChanged();
+                  }}
+                />
+              </View>
+            );
+          })
+        : null}
     </View>
   );
 }

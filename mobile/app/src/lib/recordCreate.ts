@@ -7,10 +7,14 @@
  * kind is active prompts the user to finish / resume the active one first.
  */
 import { router, type Href } from 'expo-router';
+import { Alert } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   createPlotSurvey,
   endPlotSurvey,
   endSession,
+  getPlotSurveyByUuid,
+  importPlotSurvey,
   type PlotType,
 } from '~/db';
 import { useActivePlot } from '~/stores/activePlot';
@@ -18,6 +22,7 @@ import { useActiveSession } from '~/stores/activeSession';
 import { pauseRecording as pauseTrackRecording, useTrackRecorder } from '~/lib/trackRecorder';
 import { promptText } from '~/components/TextPromptModal';
 import { showActionSheet } from '~/components/ActionSheet';
+import { readPlotImport } from '~/lib/plotImport';
 
 type NewRecordKind = 'session' | 'plot';
 
@@ -150,21 +155,71 @@ async function promptPlotid(plotType: PlotType): Promise<void> {
 }
 
 /**
- * Show a type chooser (固定樣區 / 穿越線 / 定點計數法), then prompt for plotid
- * and create. Guards against a conflicting active record first.
+ * Show a type chooser (固定樣區 / 穿越線 / 定點計數法 / 匯入), then prompt for
+ * plotid and create. Guards against a conflicting active record before creating
+ * a NEW plot; import skips the guard (imported plots land as status='done' and
+ * never become the active record).
  */
 export async function createPlotPromptAndOpen(): Promise<void> {
-  const ok = await ensureNoConflictingActive('plot');
-  if (!ok) return;
   const idx = await showActionSheet({
-    title: '樣區類型',
+    title: '樣區',
     options: [
       { label: '固定樣區(分層植群)' },
       { label: '穿越線(單層、含軌跡)' },
       { label: '定點計數法(鳥類/動物，含半徑)' },
+      { label: '匯入樣區(.yml / .zip)' },
     ],
   });
-  if (idx === 0) promptPlotid('fixed');
-  else if (idx === 1) promptPlotid('transect');
-  else if (idx === 2) promptPlotid('point_count');
+  if (idx === 3) {
+    await importPlotPromptAndOpen();
+    return;
+  }
+  if (idx < 0 || idx > 2) return;
+  const ok = await ensureNoConflictingActive('plot');
+  if (!ok) return;
+  const type: PlotType = idx === 0 ? 'fixed' : idx === 1 ? 'transect' : 'point_count';
+  await promptPlotid(type);
+}
+
+/**
+ * Pick an exported `.yml`/`.zip` and re-import it as a plot survey. On a uuid
+ * clash, ask the user to overwrite or save as a new copy. The imported plot
+ * lands as status='done' so it doesn't disturb the single-active record.
+ */
+export async function importPlotPromptAndOpen(): Promise<void> {
+  const picked = await DocumentPicker.getDocumentAsync({
+    copyToCacheDirectory: true,
+    type: '*/*',
+  });
+  if (picked.canceled || !picked.assets?.[0]) return;
+
+  let data;
+  try {
+    data = await readPlotImport(picked.assets[0].uri);
+  } catch (e) {
+    Alert.alert('匯入失敗', e instanceof Error ? e.message : String(e));
+    return;
+  }
+
+  let newUuid = false;
+  if (getPlotSurveyByUuid(data.uuid)) {
+    const choice = await showActionSheet({
+      title: '樣區已存在',
+      message: `「${data.plotid}」已在裝置中。要覆蓋更新，還是另存成新副本？`,
+      cancelLabel: '取消',
+      options: [{ label: '覆蓋更新', destructive: true }, { label: '另存新副本' }],
+    });
+    if (choice === 0) newUuid = false;
+    else if (choice === 1) newUuid = true;
+    else return; // cancel
+  }
+
+  try {
+    const { plotId } = importPlotSurvey(data, { newUuid });
+    // Imported plot is status='done'; refresh stores so lists pick it up.
+    useActivePlot.getState().refresh();
+    router.push(`/plot/${plotId}` as Href);
+  } catch (e) {
+    Alert.alert('匯入失敗', e instanceof Error ? e.message : String(e));
+  }
 }

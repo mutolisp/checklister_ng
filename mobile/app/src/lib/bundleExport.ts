@@ -16,6 +16,8 @@ import { strToU8, zipSync, type Zippable } from 'fflate';
 import {
   getActiveLayers,
   getPlotLayers,
+  getSubplotLayers,
+  listSubplots,
   getProject,
   getSession,
   getSite,
@@ -26,6 +28,7 @@ import {
   parseEnvPhotos,
   type FixedLayer,
   type PlotType,
+  type PlotSurvey,
   type RecordWithTaxon,
   type PlotSpeciesRecordWithTaxon,
 } from '~/db';
@@ -44,6 +47,13 @@ function multiToPipe(raw: string | null | undefined): string {
 
 export type GeoFormat = 'geojson' | 'gpx' | 'kml';
 
+/** Structured progress update for the export overlay. `done`/`total` (when
+ *  present) drive a progress bar; `label` is the current stage caption. */
+export type ExportProgress = { label: string; done?: number; total?: number };
+
+/** Internal cumulative photo-progress context threaded through the builders. */
+type ProgressCtx = { done: number; total: number; onProgress?: (p: ExportProgress) => void };
+
 export type BundleOptions = {
   geoFormats: GeoFormat[];
   includePhotos: boolean;
@@ -53,8 +63,8 @@ export type BundleOptions = {
   levels: string[];
   /** Conservation-status columns to include in the checklist. */
   conservationFields: ConservationField[];
-  /** Called as each photo is processed. Use for "12/45 張照片..." toast. */
-  onProgress?: (done: number, total: number) => void;
+  /** Reports export progress (stage + optional done/total). */
+  onProgress?: (p: ExportProgress) => void;
 };
 
 /** Canonical ordering for checklist hierarchy levels (mirrors backend
@@ -302,7 +312,12 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
 /** Build the species CSV body for a plot. Columns are DwC terms — only
  *  `verbatimVegetationLayer` is non-standard because there's no DwC term for
  *  a within-event vegetation stratum. */
-function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[], plotType: PlotType): string {
+function buildPlotSpeciesCsv(
+  species: PlotSpeciesRecordWithTaxon[],
+  plotType: PlotType,
+  plotid: string,
+  subplotLabelById: Map<number, string>,
+): string {
   // verbatimVegetationLayer only carries meaning for fixed plots (E1-E6).
   // Transect ('T') and point_count have no vegetation stratum, so the column
   // is omitted entirely for them.
@@ -310,8 +325,16 @@ function buildPlotSpeciesCsv(species: PlotSpeciesRecordWithTaxon[], plotType: Pl
   // leafPhenology (落葉/常綠) only applies to vascular plants; drop the column
   // when the plot has no vascular taxa (e.g. an all-animal point count).
   const includeLeaf = species.some((s) => s.phylum === 'Tracheophyta');
+  // DwC event hierarchy: subplot record → eventID=plotid-label, parentEventID=plotid.
+  const hasSubplots = species.some((s) => s.subplot_id != null);
+  const eventIdOf = (r: PlotSpeciesRecordWithTaxon) =>
+    r.subplot_id != null ? `${plotid}-${subplotLabelById.get(r.subplot_id) ?? r.subplot_id}` : plotid;
   const cols: Array<{ h: string; v: (r: PlotSpeciesRecordWithTaxon) => unknown }> = [
     { h: 'occurrenceID', v: (r) => r.occurrence_id },
+    { h: 'eventID', v: eventIdOf },
+    ...(hasSubplots
+      ? [{ h: 'parentEventID', v: (r: PlotSpeciesRecordWithTaxon) => (r.subplot_id != null ? plotid : '') }]
+      : []),
     { h: 'taxonID', v: (r) => r.taxon_id },
     { h: 'scientificName', v: (r) => r.simple_name },
     { h: 'scientificNameAuthorship', v: (r) => r.name_author },
@@ -400,7 +423,7 @@ export type BuiltZipEntry = { name: string; bytes: Uint8Array };
 async function buildSessionEntries(
   sessionId: number,
   opts: BundleOptions,
-  progressCtx: { done: number; total: number; onProgress?: (d: number, t: number) => void },
+  progressCtx: ProgressCtx,
 ): Promise<{ entries: BuiltZipEntry[]; folderName: string }> {
   const session = getSession(sessionId);
   if (!session) throw new Error(`記錄 ${sessionId} 不存在`);
@@ -535,12 +558,16 @@ async function buildSessionEntries(
 async function buildPlotEntries(
   plotId: number,
   opts: BundleOptions,
-  progressCtx: { done: number; total: number; onProgress?: (d: number, t: number) => void },
+  progressCtx: ProgressCtx,
 ): Promise<{ entries: BuiltZipEntry[]; folderName: string }> {
   const plot = getPlotSurvey(plotId);
   if (!plot) throw new Error(`樣區 ${plotId} 不存在`);
   const project = plot.project_id !== null ? getProject(plot.project_id) : null;
   const species = listPlotSpecies(plotId);
+  // Loaded once and reused by the yml round-trip block + sp.csv + subplots.csv.
+  const subplots = listSubplots(plot.id);
+  const subplotLabelById = new Map(subplots.map((s) => [s.id, s.label]));
+  const plotLayers = plot.plot_type === 'fixed' ? getPlotLayers(plotId) : [];
 
   const base = sanitizeFilename(`${plot.plotid}_${project?.name ?? 'plot'}`);
   const entries: BuiltZipEntry[] = [];
@@ -561,6 +588,10 @@ async function buildPlotEntries(
       organism_quantity: r.organism_quantity,
       organism_quantity_type: r.organism_quantity_type,
     };
+    // Round-trip: which subplot this record belongs to (by label).
+    if (r.subplot_id != null && subplotLabelById.has(r.subplot_id)) {
+      item.subplot = subplotLabelById.get(r.subplot_id);
+    }
     if (r.notes) item.notes = r.notes;
     if (r.sex) item.sex = r.sex;
     if (r.life_stage) item.life_stage = r.life_stage;
@@ -572,12 +603,56 @@ async function buildPlotEntries(
     if (r.lat !== null) item.lat = r.lat;
     if (r.lng !== null) item.lng = r.lng;
     if (r.accuracy !== null) item.accuracy = r.accuracy;
+    item.observed_at = r.observed_at;
     return item;
   });
-  const yamlData: Record<string, unknown> = {
-    plot: { plotid: plot.plotid, type: plot.plot_type, project: project?.name ?? '' },
-    species: yamlItems,
+
+  // Full plot block — every field needed to losslessly re-import the survey.
+  // null/empty fields are dropped to keep the yml tidy; import treats missing
+  // keys as null. `uuid` is the stable round-trip key.
+  const plotBlock: Record<string, unknown> = {
+    uuid: plot.uuid,
+    plotid: plot.plotid,
+    plot_type: plot.plot_type,
+    project: project?.name ?? '',
+    layer_count: plot.layer_count,
   };
+  const plotNumOrStr: Array<keyof PlotSurvey> = [
+    'start_ts', 'stop_ts', 'recorded_by', 'locality', 'field_note', 'sampling_protocol',
+    'sample_size_value', 'sample_size_unit', 'decimal_latitude', 'decimal_longitude',
+    'coord_uncertainty_m', 'elevation_m', 'slope_deg', 'aspect_deg', 'terrain_position',
+    'total_cover_pct', 'rock_cover_pct', 'gravel_cover_pct', 'bareland_cover_pct',
+    'point_radius_m', 'track_geojson',
+  ];
+  for (const k of plotNumOrStr) {
+    const v = plot[k];
+    if (v !== null && v !== undefined && v !== '') plotBlock[k] = v;
+  }
+
+  const yamlData: Record<string, unknown> = { plot: plotBlock };
+  if (plot.plot_type === 'fixed') {
+    yamlData.layers = plotLayers.map((l) => ({
+      layer_index: l.layer_index,
+      cover_pct: l.cover_pct,
+      height_cm: l.height_cm,
+      height_unit: l.height_unit,
+      method: l.method,
+    }));
+    if (subplots.length > 0) {
+      yamlData.subplots = subplots.map((s) => ({
+        idx: s.idx,
+        label: s.label,
+        width_m: s.width_m,
+        length_m: s.length_m,
+        layers: getSubplotLayers(s.id).map((sl) => ({
+          layer_index: sl.layer_index,
+          cover_pct: sl.cover_pct,
+          height_cm: sl.height_cm,
+        })),
+      }));
+    }
+  }
+  yamlData.species = yamlItems;
   entries.push({ name: `${base}/${base}.yml`, bytes: strToU8(yaml.dump(yamlData, { lineWidth: -1, noRefs: true })) });
 
   // ${plotid}_checklist.md — deduped (one row per taxon) human-readable 名錄,
@@ -614,8 +689,48 @@ async function buildPlotEntries(
   // vernacularName, organismQuantity, organismQuantityType, family, taxonID).
   // Layer kept as a non-standard column since there is no DwC term for a
   // vegetation stratum within an event.
-  const spCsv = buildPlotSpeciesCsv(species, plot.plot_type);
+  const spCsv = buildPlotSpeciesCsv(species, plot.plot_type, plot.plotid, subplotLabelById);
   entries.push({ name: `${base}/${plot.plotid}_sp.csv`, bytes: strToU8(spCsv) });
+
+  // ${plotid}_subplots.csv — per-subplot dimensions + per-layer cover/height
+  // (only when the plot is split into subplots). Layer method/unit are shared.
+  if (subplots.length > 0) {
+    const aLayers = getActiveLayers(plot.layer_count);
+    const pLayers = getPlotLayers(plot.id);
+    const unitFor = (idx: number) =>
+      pLayers.find((l) => l.layer_index === idx)?.height_unit === 'm' ? 'm' : 'cm';
+    const header = [
+      'subplotLabel',
+      'eventID',
+      'parentEventID',
+      'widthM',
+      'lengthM',
+      ...aLayers.flatMap((l) => {
+        const u = unitFor(layerIndexOf(l));
+        return [`${l.toLowerCase()}CoverPct`, `${l.toLowerCase()}Height${u === 'm' ? 'M' : 'Cm'}`];
+      }),
+    ];
+    const lines = [header.join(',')];
+    for (const s of subplots) {
+      const sl = getSubplotLayers(s.id);
+      const cells: unknown[] = [
+        s.label,
+        `${plot.plotid}-${s.label}`,
+        plot.plotid,
+        s.width_m ?? '',
+        s.length_m ?? '',
+        ...aLayers.flatMap((l) => {
+          const idx = layerIndexOf(l);
+          const row = sl.find((r) => r.layer_index === idx);
+          const inM = unitFor(idx) === 'm';
+          const h = row?.height_cm == null ? '' : inM ? row.height_cm / 100 : row.height_cm;
+          return [row?.cover_pct ?? '', h];
+        }),
+      ];
+      lines.push(cells.map(csvEscape).join(','));
+    }
+    entries.push({ name: `${base}/${plot.plotid}_subplots.csv`, bytes: strToU8('﻿' + lines.join('\n')) });
+  }
 
   // Geo: per-record species points (v13 — present when observations carry
   // their own GPS; most common for transect / point count).
@@ -674,6 +789,7 @@ async function buildPlotEntries(
   const manifest = buildManifest({
     kind: 'plot',
     id: plotId,
+    uuid: plot.uuid,
     name: plot.plotid,
     project_name: project?.name ?? '',
     record_count: species.length,
@@ -802,7 +918,7 @@ export async function ensurePhotosReadAccess(): Promise<void> {
 async function collectPhotos(
   records: RecordWithTaxon[],
   folder: string,
-  ctx: { done: number; total: number; onProgress?: (d: number, t: number) => void },
+  ctx: ProgressCtx,
 ): Promise<BuiltZipEntry[]> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
@@ -812,7 +928,7 @@ async function collectPhotos(
       const uri = uris[i];
       const fileUri = await resolveAssetUri(uri);
       ctx.done += 1;
-      ctx.onProgress?.(ctx.done, ctx.total);
+      ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
       if (!fileUri) continue;
       try {
         const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
@@ -840,7 +956,7 @@ async function collectEnvPhotos(
   folder: string,
   plotid: string,
   dateStr: string,
-  ctx: { done: number; total: number; onProgress?: (d: number, t: number) => void },
+  ctx: ProgressCtx,
 ): Promise<BuiltZipEntry[]> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
@@ -849,7 +965,7 @@ async function collectEnvPhotos(
     const uri = uris[i];
     const fileUri = await resolveAssetUri(uri);
     ctx.done += 1;
-    ctx.onProgress?.(ctx.done, ctx.total);
+    ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
     if (!fileUri) continue;
     try {
       const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
@@ -878,7 +994,7 @@ function ymdString(ts: number): string {
 async function collectPhotosPlot(
   species: PlotSpeciesRecordWithTaxon[],
   folder: string,
-  ctx: { done: number; total: number; onProgress?: (d: number, t: number) => void },
+  ctx: ProgressCtx,
 ): Promise<BuiltZipEntry[]> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
@@ -888,7 +1004,7 @@ async function collectPhotosPlot(
       const uri = uris[i];
       const fileUri = await resolveAssetUri(uri);
       ctx.done += 1;
-      ctx.onProgress?.(ctx.done, ctx.total);
+      ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
       if (!fileUri) continue;
       try {
         const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
@@ -928,6 +1044,8 @@ export function base64ToBytes(b64: string): Uint8Array {
 function buildManifest(meta: {
   kind: 'session' | 'plot' | 'bundle';
   id?: number;
+  /** Plot survey uuid (plot_surveys.uuid) — the stable round-trip key. */
+  uuid?: string;
   name?: string;
   project_name?: string;
   record_count?: number;
@@ -937,7 +1055,7 @@ function buildManifest(meta: {
 }): object {
   return {
     app: 'checklister-ng-mobile',
-    schema_version: 1,
+    schema_version: 2,
     created_at: new Date().toISOString(),
     ...meta,
   };
@@ -963,6 +1081,14 @@ function countPhotosPlotWithEnv(plotId: number): number {
   return countPhotosPlot(species) + (plot ? parseEnvPhotos(plot.env_photos_json).length : 0);
 }
 
+/** Announce the (synchronous, UI-blocking) zip step and yield one frame so the
+ *  overlay can paint "壓縮中…" before zipSync freezes the JS thread. */
+async function reportZipStage(onProgress?: (p: ExportProgress) => void): Promise<void> {
+  if (!onProgress) return;
+  onProgress({ label: '壓縮中…' });
+  await new Promise((r) => setTimeout(r, 0));
+}
+
 export async function bundleSession(
   sessionId: number,
   opts: BundleOptions,
@@ -970,8 +1096,9 @@ export async function bundleSession(
   const records = listSessionRecords(sessionId);
   const total = opts.includePhotos ? countPhotosSession(records) : 0;
   const ctx = { done: 0, total, onProgress: opts.onProgress };
-  if (total > 0) opts.onProgress?.(0, total);
+  opts.onProgress?.(total > 0 ? { label: '處理照片', done: 0, total } : { label: '準備中…' });
   const { entries, folderName } = await buildSessionEntries(sessionId, opts, ctx);
+  await reportZipStage(opts.onProgress);
   return finalizeZip(entries, folderName);
 }
 
@@ -981,8 +1108,9 @@ export async function bundlePlot(
 ): Promise<ExportFile> {
   const total = opts.includePhotos ? countPhotosPlotWithEnv(plotId) : 0;
   const ctx = { done: 0, total, onProgress: opts.onProgress };
-  if (total > 0) opts.onProgress?.(0, total);
+  opts.onProgress?.(total > 0 ? { label: '處理照片', done: 0, total } : { label: '準備中…' });
   const { entries, folderName } = await buildPlotEntries(plotId, opts, ctx);
+  await reportZipStage(opts.onProgress);
   return finalizeZip(entries, folderName);
 }
 
@@ -999,11 +1127,15 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
     }
   }
   const ctx = { done: 0, total: totalPhotos, onProgress: opts.onProgress };
-  if (totalPhotos > 0) opts.onProgress?.(0, totalPhotos);
+  opts.onProgress?.({ label: '準備中…' });
 
   const allEntries: BuiltZipEntry[] = [];
   const itemMeta: Array<Record<string, unknown>> = [];
-  for (const it of items) {
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    // Per-record progress so the user sees movement across a multi-record batch
+    // even before photo reads kick in (photos report their own 處理照片 x/y).
+    opts.onProgress?.({ label: `處理記錄 ${i + 1}/${items.length}`, done: i, total: items.length });
     try {
       if (it.kind === 'session') {
         const { entries, folderName } = await buildSessionEntries(it.id, opts, ctx);
@@ -1012,7 +1144,7 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
       } else {
         const { entries, folderName } = await buildPlotEntries(it.id, opts, ctx);
         allEntries.push(...entries);
-        itemMeta.push({ kind: 'plot', id: it.id, folder: folderName });
+        itemMeta.push({ kind: 'plot', id: it.id, uuid: getPlotSurvey(it.id)?.uuid, folder: folderName });
       }
     } catch (e) {
       // Skip a record that fails (e.g. empty) but record it in the bundle manifest.
@@ -1042,6 +1174,7 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
     .toISOString()
     .replace(/[:.]/g, '-')
     .slice(0, 19);
+  await reportZipStage(opts.onProgress);
   return finalizeZip(allEntries, `checklister_bundle_${ts}`);
 }
 

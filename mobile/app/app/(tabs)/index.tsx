@@ -19,7 +19,9 @@ import {
   bundlePlot,
   bundleSession,
   type BundleItem,
+  type ExportProgress,
 } from '~/lib/bundleExport';
+import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { estimateBundleSize, formatBytes } from '~/lib/exportSize';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -169,6 +171,7 @@ export default function RecordsListScreen() {
   const [counts, setCounts] = useState({ all: 0, session: 0, plot: 0 });
   const [prefOpen, setPrefOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 
   const selectMode = useRecordSelection((s) => s.active);
   const selected = useRecordSelection((s) => s.selected);
@@ -233,13 +236,17 @@ export default function RecordsListScreen() {
 
   const shareBundle = async (
     bundleFn: () => Promise<{ uri: string; filename: string; mimeType: string }>,
-    progressLabel: string,
   ) => {
     if (exportBusy) return;
     setExportBusy(true);
+    setExportProgress({ label: '準備中…' });
     try {
-      toast(`正在打包...${progressLabel}`, { durationMs: 60_000 });
       const file = await bundleFn();
+      // Dismiss the progress Modal AND wait for it to finish animating out.
+      // iOS can't present the native share sheet on top of a Modal that is
+      // still on screen / mid-dismiss, so the sheet would silently never show.
+      setExportProgress(null);
+      await new Promise((r) => setTimeout(r, 450));
       const ok = await Sharing.isAvailableAsync();
       if (!ok) {
         Alert.alert('分享不可用', `已產生檔案：${file.uri}`);
@@ -253,6 +260,7 @@ export default function RecordsListScreen() {
     } catch (e) {
       Alert.alert('匯出失敗', e instanceof Error ? e.message : String(e));
     } finally {
+      setExportProgress(null);
       setExportBusy(false);
     }
   };
@@ -263,15 +271,11 @@ export default function RecordsListScreen() {
     const proceed = await confirmIfLarge(est.totalBytes);
     if (!proceed) return;
 
-    const onProgress = (done: number, total: number) => {
-      if (total > 0) toast(`正在打包...照片 ${done}/${total}`, { durationMs: 60_000 });
-    };
-    await shareBundle(
-      () =>
-        item.kind === 'session'
-          ? bundleSession(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress })
-          : bundlePlot(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
-      `${item.title}`,
+    const onProgress = (p: ExportProgress) => setExportProgress(p);
+    await shareBundle(() =>
+      item.kind === 'session'
+        ? bundleSession(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress })
+        : bundlePlot(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
     );
   };
 
@@ -297,12 +301,9 @@ export default function RecordsListScreen() {
     const proceed = await confirmIfLarge(est.totalBytes);
     if (!proceed) return;
 
-    const onProgress = (done: number, total: number) => {
-      if (total > 0) toast(`正在打包...照片 ${done}/${total}`, { durationMs: 60_000 });
-    };
-    await shareBundle(
-      () => bundleMany(bundleItems, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
-      `${bundleItems.length} 筆記錄`,
+    const onProgress = (p: ExportProgress) => setExportProgress(p);
+    await shareBundle(() =>
+      bundleMany(bundleItems, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
     );
     selectClear();
   };
@@ -392,6 +393,7 @@ export default function RecordsListScreen() {
 
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
+      <ExportProgressOverlay progress={exportProgress} />
       <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-4">
         {selectMode ? (
           <View className="flex-row items-center justify-between">

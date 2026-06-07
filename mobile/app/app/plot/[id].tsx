@@ -29,6 +29,10 @@ import {
   updatePlotEnvPhotos,
   updatePlotLayer,
   updatePlotSurvey,
+  listSubplots,
+  setSubplotCount,
+  updateSubplot,
+  type Subplot,
   type AbundanceMethod,
   type HeightUnit,
   type FixedLayer,
@@ -404,6 +408,10 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         <LayerSection plot={plot} onUpdated={onUpdated} />
       ) : null}
 
+      {plot.plot_type === 'fixed' ? (
+        <SubplotSection plot={plot} onUpdated={onUpdated} />
+      ) : null}
+
       <EnvPhotoSection plot={plot} onUpdated={onUpdated} />
 
       <Pressable
@@ -511,6 +519,84 @@ function Section({
       ) : null}
       {children}
     </View>
+  );
+}
+
+function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const [subplots, setSubplots] = useState<Subplot[]>([]);
+  const reload = useCallback(() => setSubplots(listSubplots(plot.id)), [plot.id]);
+  useEffect(() => reload(), [reload]);
+
+  const count = subplots.length;
+  const setCount = (n: number) => {
+    if (n < 0) return;
+    setSubplotCount(plot.id, n);
+    reload();
+    onUpdated();
+  };
+
+  return (
+    <Section title="小區劃分 (subplots)">
+      <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
+        切分後在「物種」分頁可逐小區記錄物種、豐度與各層 cover/height（分層設定共用）。0 = 不切分。
+      </Text>
+      <View className="mb-3 flex-row items-center">
+        <Pressable
+          onPress={() => setCount(count - 1)}
+          disabled={count <= 0}
+          className={`h-9 w-9 items-center justify-center rounded-full ${count <= 0 ? 'bg-gray-100 dark:bg-gray-800' : 'bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600'}`}
+        >
+          <Ionicons name="remove" size={18} color={count <= 0 ? '#9ca3af' : '#374151'} />
+        </Pressable>
+        <Text className="mx-4 min-w-[24px] text-center text-lg font-semibold text-gray-900 dark:text-gray-100">
+          {count}
+        </Text>
+        <Pressable
+          onPress={() => setCount(count + 1)}
+          className="h-9 w-9 items-center justify-center rounded-full bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600"
+        >
+          <Ionicons name="add" size={18} color="#374151" />
+        </Pressable>
+        <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">小區數量</Text>
+      </View>
+      {subplots.map((s) => (
+        <View
+          key={s.id}
+          className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2"
+        >
+          <Field
+            label={`小區 ${s.idx} 名稱`}
+            value={s.label}
+            onSave={(v) => {
+              updateSubplot(s.id, { label: v });
+              reload();
+            }}
+          />
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <NumField
+                label="寬 (m)"
+                value={s.width_m}
+                onSave={(n) => {
+                  updateSubplot(s.id, { width_m: n });
+                  reload();
+                }}
+              />
+            </View>
+            <View className="flex-1">
+              <NumField
+                label="長 (m)"
+                value={s.length_m}
+                onSave={(n) => {
+                  updateSubplot(s.id, { length_m: n });
+                  reload();
+                }}
+              />
+            </View>
+          </View>
+        </View>
+      ))}
+    </Section>
   );
 }
 

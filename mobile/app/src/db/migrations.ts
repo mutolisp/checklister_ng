@@ -572,6 +572,50 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    // v18: fixed-plot subplots (小區). A fixed plot can be split into N subplots;
+    // each subplot records its own per-layer cover/height (subplot_layers) and
+    // its own species (plot_species_records.subplot_id). The layer DEFINITION
+    // (layer_count + per-layer method + height_unit) stays shared at plot level
+    // in plot_survey_layers. subplot_id NULL = un-split plot (legacy behaviour).
+    version: 18,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS plot_subplots (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plot_survey_id INTEGER NOT NULL,
+          idx INTEGER NOT NULL,
+          label TEXT NOT NULL,
+          width_m REAL,
+          length_m REAL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (plot_survey_id) REFERENCES plot_surveys(id) ON DELETE CASCADE,
+          UNIQUE(plot_survey_id, idx)
+        );
+      `);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_subplots_plot ON plot_subplots(plot_survey_id);`,
+      );
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS subplot_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          subplot_id INTEGER NOT NULL,
+          layer_index INTEGER NOT NULL CHECK (layer_index BETWEEN 1 AND 6),
+          cover_pct REAL,
+          height_cm REAL,
+          FOREIGN KEY (subplot_id) REFERENCES plot_subplots(id) ON DELETE CASCADE,
+          UNIQUE(subplot_id, layer_index)
+        );
+      `);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_subplot_layers_subplot ON subplot_layers(subplot_id);`,
+      );
+      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN subplot_id INTEGER;`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_subplot ON plot_species_records(subplot_id);`,
+      );
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

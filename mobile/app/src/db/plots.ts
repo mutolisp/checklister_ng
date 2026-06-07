@@ -137,6 +137,8 @@ export type PlotSpeciesRecord = {
   taxon_id: string;
   /** DwC occurrenceID — stable v4 uuid assigned at insert. */
   occurrence_id: string;
+  /** Subplot this record belongs to (v18); NULL on un-split plots. */
+  subplot_id: number | null;
   layer: Layer;
   bb_value: string | null;
   percent: number | null;
@@ -397,6 +399,121 @@ export function setPlotLayerCount(plotId: number, count: number): void {
   ]);
 }
 
+// ── Subplots 小區 (v18, fixed plots only) ──────────────────────────────────
+// Layer DEFINITION (count + method + height_unit) stays shared at plot level
+// (plot_survey_layers). A subplot only carries per-layer cover/height
+// (subplot_layers) + its own species (plot_species_records.subplot_id).
+
+export type Subplot = {
+  id: number;
+  plot_survey_id: number;
+  idx: number;
+  label: string;
+  width_m: number | null;
+  length_m: number | null;
+  created_at: number;
+};
+
+export type SubplotLayer = {
+  id: number;
+  subplot_id: number;
+  layer_index: number;
+  cover_pct: number | null;
+  height_cm: number | null;
+};
+
+export function listSubplots(plotId: number): Subplot[] {
+  const res = getUserDb().executeSync(
+    `SELECT * FROM plot_subplots WHERE plot_survey_id = ? ORDER BY idx ASC`,
+    [plotId],
+  );
+  return (res.rows ?? []) as unknown as Subplot[];
+}
+
+/** Grow/shrink to exactly `count` subplots (S1..S{count}). 0 = un-split. When
+ *  shrinking, surplus subplots' species are kept (subplot_id reset to NULL) so
+ *  no observation is silently lost; their cover/height rows cascade-delete. */
+export function setSubplotCount(plotId: number, count: number): void {
+  const db = getUserDb();
+  const clamped = Math.max(0, Math.min(50, Math.round(count)));
+  const existing = listSubplots(plotId);
+  const now = Date.now();
+  for (let i = 1; i <= clamped; i++) {
+    if (!existing.find((s) => s.idx === i)) {
+      db.executeSync(
+        `INSERT INTO plot_subplots (plot_survey_id, idx, label, created_at) VALUES (?, ?, ?, ?)`,
+        [plotId, i, `S${i}`, now],
+      );
+    }
+  }
+  for (const s of existing) {
+    if (s.idx > clamped) {
+      db.executeSync(`UPDATE plot_species_records SET subplot_id = NULL WHERE subplot_id = ?`, [s.id]);
+      db.executeSync(`DELETE FROM plot_subplots WHERE id = ?`, [s.id]);
+    }
+  }
+  db.executeSync(`UPDATE plot_surveys SET updated_at = ? WHERE id = ?`, [now, plotId]);
+}
+
+export function updateSubplot(
+  id: number,
+  patch: { label?: string; width_m?: number | null; length_m?: number | null },
+): void {
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+  if (patch.label !== undefined && patch.label.trim()) {
+    sets.push('label = ?');
+    args.push(patch.label.trim());
+  }
+  if ('width_m' in patch) {
+    sets.push('width_m = ?');
+    args.push(patch.width_m ?? null);
+  }
+  if ('length_m' in patch) {
+    sets.push('length_m = ?');
+    args.push(patch.length_m ?? null);
+  }
+  if (sets.length === 0) return;
+  args.push(id);
+  getUserDb().executeSync(`UPDATE plot_subplots SET ${sets.join(', ')} WHERE id = ?`, args);
+}
+
+export function getSubplotLayers(subplotId: number): SubplotLayer[] {
+  const res = getUserDb().executeSync(
+    `SELECT * FROM subplot_layers WHERE subplot_id = ? ORDER BY layer_index ASC`,
+    [subplotId],
+  );
+  return (res.rows ?? []) as unknown as SubplotLayer[];
+}
+
+export function updateSubplotLayer(
+  subplotId: number,
+  layerIndex: number,
+  patch: { cover_pct?: number | null; height_cm?: number | null },
+): void {
+  const db = getUserDb();
+  db.executeSync(`INSERT OR IGNORE INTO subplot_layers (subplot_id, layer_index) VALUES (?, ?)`, [
+    subplotId,
+    layerIndex,
+  ]);
+  const sets: string[] = [];
+  const args: (number | null)[] = [];
+  if ('cover_pct' in patch) {
+    sets.push('cover_pct = ?');
+    args.push(patch.cover_pct ?? null);
+  }
+  if ('height_cm' in patch) {
+    sets.push('height_cm = ?');
+    args.push(patch.height_cm ?? null);
+  }
+  if (sets.length === 0) return;
+  args.push(subplotId, layerIndex);
+  db.executeSync(
+    `UPDATE subplot_layers SET ${sets.join(', ')} WHERE subplot_id = ? AND layer_index = ?`,
+    args,
+  );
+}
+
 export function listPlotSurveys(): PlotSurvey[] {
   const db = getUserDb();
   const res = db.executeSync(
@@ -635,6 +752,8 @@ export function plotMethodForLayer(plot: PlotSurvey, layer: Layer): AbundanceMet
 export type AddPlotSpeciesInput = {
   plot_survey_id: number;
   taxon_id: string;
+  /** Subplot id (v18); omit / null for un-split plots. */
+  subplot_id?: number | null;
   layer: Layer;
   /** New DwC fields (v9). */
   organism_quantity?: string | null;
@@ -657,16 +776,17 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
   const now = Date.now();
   const res = db.executeSync(
     `INSERT INTO plot_species_records
-       (plot_survey_id, taxon_id, occurrence_id, layer,
+       (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
         organism_quantity, organism_quantity_type,
         notes, sex, life_stage, reproductive_condition, leaf_phenology,
         lat, lng, accuracy, detection_type,
         observed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.plot_survey_id,
       input.taxon_id,
       generateUuid(),
+      input.subplot_id ?? null,
       input.layer,
       input.organism_quantity ?? null,
       input.organism_quantity_type ?? null,
@@ -786,14 +906,25 @@ export function latestPlotActivityAt(plotSurveyId: number): number | null {
   return row.m ?? null;
 }
 
-export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxon[] {
+export function listPlotSpecies(
+  plotSurveyId: number,
+  subplotId?: number | null,
+): PlotSpeciesRecordWithTaxon[] {
   const userDb = getUserDb();
   const taicolDb = getTaicolDb();
 
-  const recordsRes = userDb.executeSync(
-    `SELECT * FROM plot_species_records WHERE plot_survey_id = ? ORDER BY observed_at ASC`,
-    [plotSurveyId],
-  );
+  // subplotId === undefined → all records (export / un-split). A number scopes
+  // to that subplot (per-subplot recording UI).
+  const recordsRes =
+    subplotId === undefined
+      ? userDb.executeSync(
+          `SELECT * FROM plot_species_records WHERE plot_survey_id = ? ORDER BY observed_at ASC`,
+          [plotSurveyId],
+        )
+      : userDb.executeSync(
+          `SELECT * FROM plot_species_records WHERE plot_survey_id = ? AND subplot_id IS ? ORDER BY observed_at ASC`,
+          [plotSurveyId, subplotId],
+        );
   const records = (recordsRes.rows ?? []) as unknown as PlotSpeciesRecord[];
   if (records.length === 0) return [];
 
@@ -842,4 +973,212 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
       protected: (t.protected as string) ?? '',
     };
   });
+}
+
+// ── Plot round-trip import (v18+) ──────────────────────────────────────────
+// Re-create a plot survey from an exported yml. `uuid` is the stable key; the
+// imported plot lands as status='done' so it never hijacks the single-active
+// record. reproductive_condition / leaf_phenology are expected pre-serialized
+// to the DB JSON-array format by the caller (plotImport.ts).
+
+export type ImportedPlotLayer = {
+  layer_index: number;
+  cover_pct: number | null;
+  height_cm: number | null;
+  height_unit?: HeightUnit;
+  method?: AbundanceMethod;
+};
+
+export type ImportedSubplot = {
+  idx: number;
+  label: string;
+  width_m: number | null;
+  length_m: number | null;
+  layers: Array<{ layer_index: number; cover_pct: number | null; height_cm: number | null }>;
+};
+
+export type ImportedPlotSpecies = {
+  occurrence_id?: string | null;
+  taxon_id: string;
+  subplot?: string | null; // subplot label
+  layer?: string | null;
+  organism_quantity?: string | null;
+  organism_quantity_type?: string | null;
+  notes?: string | null;
+  sex?: string | null;
+  life_stage?: string | null;
+  reproductive_condition?: string | null;
+  leaf_phenology?: string | null;
+  detection_type?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  accuracy?: number | null;
+  observed_at?: number | null;
+};
+
+export type ImportedPlot = {
+  uuid: string;
+  plotid: string;
+  plot_type: PlotType;
+  project_name?: string | null;
+  layer_count?: number | null;
+  start_ts?: number | null;
+  stop_ts?: number | null;
+  recorded_by?: string | null;
+  locality?: string | null;
+  field_note?: string | null;
+  sampling_protocol?: string | null;
+  sample_size_value?: number | null;
+  sample_size_unit?: string | null;
+  decimal_latitude?: number | null;
+  decimal_longitude?: number | null;
+  coord_uncertainty_m?: number | null;
+  elevation_m?: number | null;
+  slope_deg?: number | null;
+  aspect_deg?: number | null;
+  terrain_position?: string | null;
+  total_cover_pct?: number | null;
+  rock_cover_pct?: number | null;
+  gravel_cover_pct?: number | null;
+  bareland_cover_pct?: number | null;
+  point_radius_m?: number | null;
+  track_geojson?: string | null;
+  layers?: ImportedPlotLayer[];
+  subplots?: ImportedSubplot[];
+  species: ImportedPlotSpecies[];
+};
+
+export function getPlotSurveyByUuid(uuid: string): PlotSurvey | null {
+  const res = getUserDb().executeSync(`SELECT * FROM plot_surveys WHERE uuid = ? LIMIT 1`, [uuid]);
+  return (res.rows?.[0] as unknown as PlotSurvey) ?? null;
+}
+
+export function importPlotSurvey(
+  data: ImportedPlot,
+  opts: { newUuid: boolean },
+): { plotId: number; plotid: string } {
+  const db = getUserDb();
+  const now = Date.now();
+  const uuid = opts.newUuid ? generateUuid() : data.uuid;
+
+  // Overwrite mode: drop any existing plot with this uuid first; the FK
+  // cascades remove its layers / subplots / subplot_layers / species.
+  if (!opts.newUuid) {
+    db.executeSync(`DELETE FROM plot_surveys WHERE uuid = ?`, [uuid]);
+  }
+
+  // Resolve project by name; unknown → 0 (未指定).
+  let projectId = 0;
+  if (data.project_name) {
+    const pr = db.executeSync(`SELECT id FROM projects WHERE name = ? LIMIT 1`, [data.project_name]);
+    const row = pr.rows?.[0] as { id?: number } | undefined;
+    if (row?.id != null) projectId = row.id;
+  }
+
+  const res = db.executeSync(
+    `INSERT INTO plot_surveys (
+       uuid, plotid, plot_type, project_id, status, track_geojson, track_finalized,
+       start_ts, stop_ts, decimal_latitude, decimal_longitude, coord_uncertainty_m, point_radius_m,
+       sample_size_value, sample_size_unit, sampling_protocol, total_cover_pct,
+       recorded_by, locality, field_note,
+       elevation_m, slope_deg, aspect_deg, terrain_position,
+       rock_cover_pct, gravel_cover_pct, bareland_cover_pct,
+       layer_count, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uuid,
+      data.plotid,
+      data.plot_type,
+      projectId,
+      data.track_geojson ?? null,
+      data.track_geojson ? 1 : 0,
+      data.start_ts ?? null,
+      data.stop_ts ?? null,
+      data.decimal_latitude ?? null,
+      data.decimal_longitude ?? null,
+      data.coord_uncertainty_m ?? null,
+      data.point_radius_m ?? null,
+      data.sample_size_value ?? null,
+      data.sample_size_unit ?? null,
+      data.sampling_protocol ?? null,
+      data.total_cover_pct ?? null,
+      data.recorded_by ?? null,
+      data.locality ?? null,
+      data.field_note ?? null,
+      data.elevation_m ?? null,
+      data.slope_deg ?? null,
+      data.aspect_deg ?? null,
+      data.terrain_position ?? null,
+      data.rock_cover_pct ?? null,
+      data.gravel_cover_pct ?? null,
+      data.bareland_cover_pct ?? null,
+      data.layer_count ?? DEFAULT_LAYER_COUNT,
+      now,
+      now,
+    ],
+  );
+  const plotId = res.insertId ?? 0;
+  if (plotId === 0) throw new Error('匯入樣區失敗：無法建立記錄');
+
+  if (data.plot_type === 'fixed') {
+    for (const l of data.layers ?? []) {
+      db.executeSync(
+        `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, cover_pct, height_cm, height_unit, method)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [plotId, l.layer_index, l.cover_pct ?? null, l.height_cm ?? null, l.height_unit ?? 'cm', l.method ?? 'BB'],
+      );
+    }
+  }
+
+  const subplotIdByLabel = new Map<string, number>();
+  for (const s of data.subplots ?? []) {
+    const sres = db.executeSync(
+      `INSERT INTO plot_subplots (plot_survey_id, idx, label, width_m, length_m, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [plotId, s.idx, s.label, s.width_m ?? null, s.length_m ?? null, now],
+    );
+    const subplotId = sres.insertId ?? 0;
+    subplotIdByLabel.set(s.label, subplotId);
+    for (const sl of s.layers ?? []) {
+      db.executeSync(
+        `INSERT INTO subplot_layers (subplot_id, layer_index, cover_pct, height_cm) VALUES (?, ?, ?, ?)`,
+        [subplotId, sl.layer_index, sl.cover_pct ?? null, sl.height_cm ?? null],
+      );
+    }
+  }
+
+  const fallbackLayer = data.plot_type === 'fixed' ? 'E1' : 'T';
+  for (const sp of data.species ?? []) {
+    const subplotId = sp.subplot ? subplotIdByLabel.get(sp.subplot) ?? null : null;
+    db.executeSync(
+      `INSERT INTO plot_species_records (
+         plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
+         organism_quantity, organism_quantity_type, notes, sex, life_stage,
+         reproductive_condition, leaf_phenology, lat, lng, accuracy, detection_type,
+         observed_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        plotId,
+        sp.taxon_id,
+        sp.occurrence_id ?? generateUuid(),
+        subplotId,
+        sp.layer ?? fallbackLayer,
+        sp.organism_quantity ?? null,
+        sp.organism_quantity_type ?? null,
+        sp.notes ?? null,
+        sp.sex ?? null,
+        sp.life_stage ?? null,
+        sp.reproductive_condition ?? null,
+        sp.leaf_phenology ?? null,
+        sp.lat ?? null,
+        sp.lng ?? null,
+        sp.accuracy ?? null,
+        sp.detection_type ?? null,
+        sp.observed_at ?? now,
+        now,
+      ],
+    );
+  }
+
+  return { plotId, plotid: data.plotid };
 }
