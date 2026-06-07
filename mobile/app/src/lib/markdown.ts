@@ -348,7 +348,7 @@ export function generateMarkdown(
     : new Map<string, number>();
 
   const lines: string[] = [];
-  const title = metadata.project || '物種名錄';
+  const title = metadata.project ? `${metadata.project}物種名錄` : '物種名錄';
   lines.push(`# ${title}`);
   if (metadata.site) lines.push(`**樣區：** ${metadata.site}`);
   lines.push('');

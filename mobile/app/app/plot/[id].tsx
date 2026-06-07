@@ -30,6 +30,7 @@ import {
   updatePlotLayer,
   updatePlotSurvey,
   type AbundanceMethod,
+  type HeightUnit,
   type FixedLayer,
   type PlotLayer,
   type PlotSurvey,
@@ -613,7 +614,12 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
 
   const patchLayer = (
     layerIdx: number,
-    fields: { cover_pct?: number | null; height_cm?: number | null; method?: AbundanceMethod },
+    fields: {
+      cover_pct?: number | null;
+      height_cm?: number | null;
+      height_unit?: HeightUnit;
+      method?: AbundanceMethod;
+    },
   ) => {
     updatePlotLayer(plot.id, layerIdx, fields);
     setLayers(getPlotLayers(plot.id));
@@ -695,12 +701,43 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
                 />
               </View>
               <View className="flex-1">
-                <NumField
-                  label="Height"
-                  suffix="cm"
-                  value={row?.height_cm ?? null}
-                  onSave={(n) => patchLayer(idx, { height_cm: n })}
-                />
+                {(() => {
+                  const unit: HeightUnit = row?.height_unit ?? 'cm';
+                  const display =
+                    row?.height_cm == null ? null : unit === 'm' ? row.height_cm / 100 : row.height_cm;
+                  return (
+                    <>
+                      <NumField
+                        label="Height"
+                        suffix={unit}
+                        value={display}
+                        onSave={(n) =>
+                          patchLayer(idx, {
+                            height_cm: n == null ? null : unit === 'm' ? n * 100 : n,
+                          })
+                        }
+                      />
+                      <View className="-mt-1 flex-row gap-1">
+                        {(['cm', 'm'] as HeightUnit[]).map((u) => {
+                          const on = unit === u;
+                          return (
+                            <Pressable
+                              key={u}
+                              onPress={() => patchLayer(idx, { height_unit: u })}
+                              className={`rounded px-2 py-0.5 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
+                            >
+                              <Text
+                                className={`text-[11px] font-medium ${on ? 'text-white' : 'text-gray-600 dark:text-gray-300'}`}
+                              >
+                                {u}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </>
+                  );
+                })()}
               </View>
             </View>
             <Text className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-400">

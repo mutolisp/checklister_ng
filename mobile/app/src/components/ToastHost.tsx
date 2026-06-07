@@ -46,12 +46,13 @@ export function ToastHost() {
     });
 
   return (
-    <SafeAreaView edges={['top']} pointerEvents="box-none" className="absolute inset-x-0 top-0 items-center">
+    <SafeAreaView edges={['top']} pointerEvents="box-none" className="absolute inset-x-0 top-0">
       <GestureDetector gesture={pan}>
-        {/* Animated.View carries only transform/opacity; visual styling stays
-            on a plain View so it doesn't depend on NativeWind mapping
-            Animated.View. */}
-        <Animated.View style={animatedStyle}>
+        {/* Animated.View carries transform/opacity + an explicit full width (so
+            the inner flex-1 message text doesn't collapse to 0); visual styling
+            stays on the plain inner View so it doesn't depend on NativeWind
+            mapping Animated.View. */}
+        <Animated.View style={[animatedStyle, { width: '100%' }]}>
           <View className="mx-4 mt-2 flex-row items-center rounded-lg bg-gray-900 px-4 py-3 shadow-lg">
             <Text className="flex-1 text-sm text-white">{current.message}</Text>
             {current.action ? (

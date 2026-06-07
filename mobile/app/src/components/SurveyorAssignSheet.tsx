@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSurveyors } from '~/stores/surveyors';
 
@@ -61,21 +62,25 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
     onAssign(rows.filter((n) => selected.includes(n)).join(', '));
   };
 
+  // Bottom-sheet structure mirrors PlotSpeciesValueModal (KAV flex-1 justify-end
+  // + KeyboardAwareScrollView) so the inline "新增調查者" input stays anchored
+  // above the keyboard and survives IME switches — the previous absolute-bottom
+  // + KAV combo broke both.
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onCancel}>
-      <View className="flex-1">
+      <KeyboardAvoidingView behavior="padding" className="flex-1 justify-end">
         <Pressable
           onPress={onCancel}
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}
         />
-        <KeyboardAvoidingView
-          behavior="padding"
-          style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}
+        <View
+          style={{ marginTop: insets.top + 16 }}
+          className="flex-1 rounded-t-2xl bg-white dark:bg-gray-900"
         >
-          <View
-            style={{ paddingBottom: insets.bottom + 8 }}
-            className="rounded-t-2xl bg-white dark:bg-gray-900"
-          >
+          <SafeAreaView edges={['bottom']} className="flex-1">
+            <View className="items-center pt-2">
+              <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
+            </View>
             <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
               <View className="flex-1">
                 <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指派調查者</Text>
@@ -88,35 +93,39 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
               </Pressable>
             </View>
 
-            {adding ? (
-              <View className="flex-row items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-                <TextInput
-                  className="flex-1 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
-                  value={newName}
-                  onChangeText={setNewName}
-                  placeholder="調查者姓名"
-                  placeholderTextColor="#9ca3af"
-                  autoFocus
-                  returnKeyType="done"
-                  onSubmitEditing={handleAddSubmit}
-                />
-                <Pressable onPress={handleAddSubmit} hitSlop={6} className="px-2 py-1">
-                  <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">加入</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <Pressable
-                onPress={() => setAdding(true)}
-                className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 active:bg-blue-100 dark:active:bg-blue-900/60"
-              >
-                <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-blue-500">
-                  <Ionicons name="add" size={20} color="white" />
+            <KeyboardAwareScrollView
+              className="flex-1"
+              keyboardShouldPersistTaps="handled"
+              bottomOffset={24}
+            >
+              {adding ? (
+                <View className="flex-row items-center gap-2 border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+                  <TextInput
+                    className="flex-1 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+                    value={newName}
+                    onChangeText={setNewName}
+                    placeholder="調查者姓名"
+                    placeholderTextColor="#9ca3af"
+                    autoFocus
+                    returnKeyType="done"
+                    onSubmitEditing={handleAddSubmit}
+                  />
+                  <Pressable onPress={handleAddSubmit} hitSlop={6} className="px-2 py-1">
+                    <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">加入</Text>
+                  </Pressable>
                 </View>
-                <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新增調查者</Text>
-              </Pressable>
-            )}
+              ) : (
+                <Pressable
+                  onPress={() => setAdding(true)}
+                  className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 active:bg-blue-100 dark:active:bg-blue-900/60"
+                >
+                  <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-blue-500">
+                    <Ionicons name="add" size={20} color="white" />
+                  </View>
+                  <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新增調查者</Text>
+                </Pressable>
+              )}
 
-            <ScrollView className="max-h-96">
               {rows.length === 0 ? (
                 <View className="px-4 py-8">
                   <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
@@ -143,10 +152,10 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
                   );
                 })
               )}
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </View>
+            </KeyboardAwareScrollView>
+          </SafeAreaView>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

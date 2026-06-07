@@ -41,10 +41,15 @@ export type RecordWithTaxon = ChecklistRecord & {
   protected: string;
   is_hybrid: string;
   kingdom: string;
+  kingdom_c: string;
   phylum: string;
+  phylum_c: string;
   class: string;
+  class_c: string;
   order: string;
+  order_c: string;
   genus: string;
+  genus_c: string;
   is_terrestrial: string;
   is_freshwater: string;
   is_brackish: string;
@@ -179,7 +184,7 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
     `SELECT taxon_id, simple_name, name_author, common_name_c, alternative_name_c,
             family, family_c, rank,
             is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
-            kingdom, phylum, class, "order", genus,
+            kingdom, kingdom_c, phylum, phylum_c, class, class_c, "order", order_c, genus, genus_c,
             is_terrestrial, is_freshwater, is_brackish, is_marine, is_fossil
      FROM taicol_names
      WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
@@ -209,10 +214,15 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
       protected: (t.protected as string) ?? '',
       is_hybrid: (t.is_hybrid as string) ?? '',
       kingdom: (t.kingdom as string) ?? '',
+      kingdom_c: (t.kingdom_c as string) ?? '',
       phylum: (t.phylum as string) ?? '',
+      phylum_c: (t.phylum_c as string) ?? '',
       class: (t.class as string) ?? '',
+      class_c: (t.class_c as string) ?? '',
       order: (t.order as string) ?? '',
+      order_c: (t.order_c as string) ?? '',
       genus: (t.genus as string) ?? '',
+      genus_c: (t.genus_c as string) ?? '',
       is_terrestrial: (t.is_terrestrial as string) ?? '',
       is_freshwater: (t.is_freshwater as string) ?? '',
       is_brackish: (t.is_brackish as string) ?? '',

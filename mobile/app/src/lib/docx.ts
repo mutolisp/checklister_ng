@@ -70,6 +70,27 @@ function runXml(r: Run, sizeHalfPts: number | null): string {
 // Heading font sizes (half-points): h1=32→16pt, h2=28, h3=26, h4=24.
 const HEADING_SIZE: Record<number, number> = { 1: 32, 2: 28, 3: 26, 4: 24 };
 
+// Left indent per hierarchy level (twips); ~1 CJK char ≈ 240.
+const INDENT_STEP = 240;
+
+/** Visual hierarchy depth for indentation, inferred from the Markdown line:
+ *   ## / ### / #### heading → 0 / 1 / 2 (top group/order flush, sub-ranks deeper)
+ *   **N. 科** bold family line → 1
+ *   "N. " species line       → 2
+ *   title / intro / stats    → 0 */
+function indentLevel(line: string): number {
+  const h = /^(#{1,4})\s/.exec(line);
+  if (h) return Math.max(0, h[1].length - 2);
+  if (line.startsWith('**')) return 1;
+  if (/^\d+\.\s/.test(line)) return 2;
+  return 0;
+}
+
+function indXml(line: string): string {
+  const lvl = indentLevel(line);
+  return lvl > 0 ? `<w:ind w:left="${lvl * INDENT_STEP}"/>` : '';
+}
+
 /** Render one Markdown line to an OOXML paragraph, or '' to skip it. Blank
  *  lines are dropped (headings carry their own spacing) so the doc isn't full
  *  of empty paragraphs. */
@@ -82,13 +103,13 @@ function paragraphXml(line: string): string {
     const size = HEADING_SIZE[level] ?? 24;
     const runs = parseRuns(headingMatch[2], true);
     const body = runs.map((r) => runXml(r, size)).join('');
-    return `<w:p><w:pPr><w:spacing w:before="200" w:after="60"/></w:pPr>${body}</w:p>`;
+    return `<w:p><w:pPr><w:spacing w:before="200" w:after="60"/>${indXml(line)}</w:pPr>${body}</w:p>`;
   }
 
   const runs = parseRuns(line, false);
   const body = runs.map((r) => runXml(r, null)).join('');
   // Compact list lines: no extra space after each species row.
-  return `<w:p><w:pPr><w:spacing w:after="0"/></w:pPr>${body}</w:p>`;
+  return `<w:p><w:pPr><w:spacing w:after="0"/>${indXml(line)}</w:pPr>${body}</w:p>`;
 }
 
 const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>

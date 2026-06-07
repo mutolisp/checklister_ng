@@ -116,13 +116,18 @@ export type PlotSurvey = {
   updated_at: number;
 };
 
+/** Display/export unit for a layer's height; height_cm is always stored in cm. */
+export type HeightUnit = 'cm' | 'm';
+
 /** Normalized per-layer environmental data (v12 schema). */
 export type PlotLayer = {
   id: number;
   plot_survey_id: number;
   layer_index: number;
   cover_pct: number | null;
+  /** Canonical height, always stored in cm regardless of height_unit. */
   height_cm: number | null;
+  height_unit: HeightUnit;
   method: AbundanceMethod;
 };
 
@@ -170,11 +175,16 @@ export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & {
   alien_type: string;
   is_hybrid: string;
   kingdom: string;
+  kingdom_c: string;
   /** Class name from TaiCOL (used by life-stage UI for animals). */
   class: string;
+  class_c: string;
   phylum: string;
+  phylum_c: string;
   order: string;
+  order_c: string;
   genus: string;
+  genus_c: string;
   // Conservation status (for checklist export). From TaiCOL.
   redlist: string;
   iucn: string;
@@ -303,7 +313,9 @@ export function getOrCreatePlotLayer(plotId: number, layerIndex: number): PlotLa
   return reread.rows![0] as unknown as PlotLayer;
 }
 
-export type UpdatePlotLayerPatch = Partial<Pick<PlotLayer, 'cover_pct' | 'height_cm' | 'method'>>;
+export type UpdatePlotLayerPatch = Partial<
+  Pick<PlotLayer, 'cover_pct' | 'height_cm' | 'height_unit' | 'method'>
+>;
 
 export function updatePlotLayer(
   plotId: number,
@@ -319,6 +331,10 @@ export function updatePlotLayer(
   if ('height_cm' in patch) {
     sets.push('height_cm = ?');
     args.push(patch.height_cm ?? null);
+  }
+  if ('height_unit' in patch && patch.height_unit) {
+    sets.push('height_unit = ?');
+    args.push(patch.height_unit);
   }
   if ('method' in patch && patch.method) {
     sets.push('method = ?');
@@ -786,7 +802,7 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
   const taxaRes = taicolDb.executeSync(
     `SELECT taxon_id, simple_name, name_author, common_name_c,
             family, family_c, rank, is_endemic, alien_type, is_hybrid,
-            kingdom, class, phylum, "order", genus,
+            kingdom, kingdom_c, class, class_c, phylum, phylum_c, "order", order_c, genus, genus_c,
             redlist, iucn, cites, protected
      FROM taicol_names
      WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
@@ -811,10 +827,15 @@ export function listPlotSpecies(plotSurveyId: number): PlotSpeciesRecordWithTaxo
       alien_type: (t.alien_type as string) ?? '',
       is_hybrid: (t.is_hybrid as string) ?? '',
       kingdom: (t.kingdom as string) ?? '',
+      kingdom_c: (t.kingdom_c as string) ?? '',
       class: (t.class as string) ?? '',
+      class_c: (t.class_c as string) ?? '',
       phylum: (t.phylum as string) ?? '',
+      phylum_c: (t.phylum_c as string) ?? '',
       order: (t.order as string) ?? '',
+      order_c: (t.order_c as string) ?? '',
       genus: (t.genus as string) ?? '',
+      genus_c: (t.genus_c as string) ?? '',
       redlist: (t.redlist as string) ?? '',
       iucn: (t.iucn as string) ?? '',
       cites: (t.cites as string) ?? '',

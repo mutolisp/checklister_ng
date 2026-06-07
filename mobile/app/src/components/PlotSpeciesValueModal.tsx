@@ -310,11 +310,11 @@ export function PlotSpeciesValueModal({
                     className="text-sm text-gray-700 dark:text-gray-300"
                   />
                 ) : null}
-                {layer === 'T' ? (
-                  // Non-stratified plot (transect / point count): show the full
-                  // classification path (each rank tappable → taxonomy tree)
-                  // plus any identification-key chips, instead of a bare layer.
-                  header ? (
+                {/* Classification path (each rank tappable → taxonomy tree) +
+                    identification-key chips. Shown for ALL plot types so fixed
+                    plots also get the jump links; fixed plots additionally show
+                    their vegetation layer below. */}
+                {header ? (
                     <View className="mt-2 flex-row flex-wrap items-center" style={{ gap: 6 }}>
                       {(
                         [
@@ -375,10 +375,10 @@ export function PlotSpeciesValueModal({
                         </Pressable>
                       ))}
                     </View>
-                  ) : null
-                ) : (
-                  <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
-                )}
+                  ) : null}
+                {layer !== 'T' ? (
+                  <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
+                ) : null}
               </View>
               {/* Quantity type picker */}
               <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">豐度單位</Text>

@@ -163,9 +163,15 @@ function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMar
     family_c: r.family_c,
     family_cname: r.family_c,
     kingdom: r.kingdom,
+    kingdom_c: r.kingdom_c,
     phylum: r.phylum,
+    phylum_c: r.phylum_c,
     class_name: r.class,
+    class_c: r.class_c,
     order: r.order,
+    order_c: r.order_c,
+    genus: r.genus,
+    genus_c: r.genus_c,
     rank: r.rank,
     endemic: r.is_endemic === 'true' ? 1 : 0,
     source: mapAlienToSource(r.alien_type, r.kingdom),
@@ -194,9 +200,15 @@ function plotSpeciesToMarkdownItem(
     family_c: r.family_c,
     family_cname: r.family_c,
     kingdom: r.kingdom,
+    kingdom_c: r.kingdom_c,
     phylum: r.phylum,
+    phylum_c: r.phylum_c,
     class_name: r.class,
+    class_c: r.class_c,
     order: r.order,
+    order_c: r.order_c,
+    genus: r.genus,
+    genus_c: r.genus_c,
     rank: r.rank,
     endemic: r.is_endemic === 'true' ? 1 : 0,
     source: mapAlienToSource(r.alien_type, r.kingdom),
@@ -275,7 +287,11 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
       const row = layers.find((l) => l.layer_index === idx);
       if (!row) continue;
       push(`${layerKey.toLowerCase()}CoverPct`, row.cover_pct);
-      push(`${layerKey.toLowerCase()}HeightCm`, row.height_cm);
+      // Emit height in the layer's chosen unit; height_cm is stored in cm.
+      const inM = row.height_unit === 'm';
+      const heightVal =
+        row.height_cm == null ? null : inM ? row.height_cm / 100 : row.height_cm;
+      push(`${layerKey.toLowerCase()}Height${inM ? 'M' : 'Cm'}`, heightVal);
       push(`${layerKey.toLowerCase()}Method`, row.method);
     }
   }

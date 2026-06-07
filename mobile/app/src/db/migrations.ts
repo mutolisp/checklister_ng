@@ -561,6 +561,17 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    // v17: per-layer height unit (cm / m). height_cm stays the canonical stored
+    // value (always cm); height_unit only controls how it is displayed in the
+    // env tab and which column name + value the export emits.
+    version: 17,
+    up: (db) => {
+      db.executeSync(
+        `ALTER TABLE plot_survey_layers ADD COLUMN height_unit TEXT NOT NULL DEFAULT 'cm';`,
+      );
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses
