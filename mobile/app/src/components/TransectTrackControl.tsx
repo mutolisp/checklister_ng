@@ -39,21 +39,21 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
   const finalized = plot.track_finalized === 1;
   const plotDone = plot.status === 'done';
 
-  const recordingPlotId = useTrackRecorder((s) => s.recordingPlotId);
+  const recordingTarget = useTrackRecorder((s) => s.recordingTarget);
   const livePoints = useTrackRecorder((s) => s.livePoints);
-  const recording = recordingPlotId === plot.id;
+  const recording = recordingTarget?.kind === 'plot' && recordingTarget.id === plot.id;
 
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleStart = async () => {
     if (plotDone || finalized) return;
-    // Block double-recording if some other plot is already capturing.
-    if (recordingPlotId != null && recordingPlotId !== plot.id) {
-      Alert.alert('已有樣區正在記錄', '請先停止或暫停其他樣區的軌跡');
+    // Block double-recording if some other record is already capturing.
+    if (recordingTarget && !(recordingTarget.kind === 'plot' && recordingTarget.id === plot.id)) {
+      Alert.alert('已有記錄正在錄製軌跡', '請先停止或暫停其他記錄的軌跡');
       return;
     }
     try {
-      await startRecording(plot);
+      await startRecording({ kind: 'plot', id: plot.id });
       // Refresh upstream so plot.start_ts (just stamped by startRecording)
       // reaches plotCanAcceptSpecies and unblocks the species tab.
       onUpdated();

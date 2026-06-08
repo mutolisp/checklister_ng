@@ -49,6 +49,7 @@ import { PlotSpeciesTab } from '~/components/PlotSpeciesTab';
 import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { SurveyorAssignSheet } from '~/components/SurveyorAssignSheet';
 import { TransectTrackControl } from '~/components/TransectTrackControl';
+import { isRecordingTarget, pauseIfNot, pauseRecording } from '~/lib/trackRecorder';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { captureEnvPhoto, pickPhotos } from '~/lib/photoCapture';
@@ -98,6 +99,9 @@ export default function PlotDetailScreen() {
             <Pressable
               onPress={() => {
                 if (plot.status === 'done') {
+                  // Reopen force-ends any other active record DB-side; stop a
+                  // GPS watch that belongs to something other than this plot.
+                  pauseIfNot({ kind: 'plot', id: plot.id });
                   reopenPlotSurvey(plot.id);
                   // Reopen force-ends any active session DB-side too; refresh
                   // both stores so the UI bars + watchers reflect reality.
@@ -110,6 +114,7 @@ export default function PlotDetailScreen() {
                     {
                       text: '結束',
                       onPress: () => {
+                        if (isRecordingTarget({ kind: 'plot', id: plot.id })) pauseRecording();
                         endPlotSurvey(plot.id);
                         reload();
                       },

@@ -19,7 +19,7 @@ import {
 } from '~/db';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
-import { pauseRecording as pauseTrackRecording, useTrackRecorder } from '~/lib/trackRecorder';
+import { isRecordingTarget, pauseRecording as pauseTrackRecording } from '~/lib/trackRecorder';
 import { promptText } from '~/components/TextPromptModal';
 import { showActionSheet } from '~/components/ActionSheet';
 import { readPlotImport } from '~/lib/plotImport';
@@ -46,8 +46,7 @@ function findActiveConflict(): ActiveConflict | null {
       label: plot.plotid || '樣區',
       href: `/plot/${plot.id}` as Href,
       end: () => {
-        const recording = useTrackRecorder.getState().recordingPlotId;
-        if (recording === plot.id) pauseTrackRecording();
+        if (isRecordingTarget({ kind: 'plot', id: plot.id })) pauseTrackRecording();
         endPlotSurvey(plot.id);
         useActivePlot.getState().refresh();
       },
@@ -60,6 +59,7 @@ function findActiveConflict(): ActiveConflict | null {
       label: session.name,
       href: `/session/${session.id}` as Href,
       end: () => {
+        if (isRecordingTarget({ kind: 'session', id: session.id })) pauseTrackRecording();
         endSession(session.id);
         useActiveSession.getState().refresh();
       },

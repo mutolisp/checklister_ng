@@ -3,6 +3,7 @@ import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { endSession, latestSessionActivityAt } from '~/db';
 import { useActiveSession } from '~/stores/activeSession';
+import { isRecordingTarget, pauseRecording } from '~/lib/trackRecorder';
 
 const STALE_THRESHOLD_MS = 12 * 60 * 60 * 1000; // 12 hours
 
@@ -51,6 +52,7 @@ export function StaleSessionWatcher() {
           text: '結束',
           style: 'destructive',
           onPress: () => {
+            if (isRecordingTarget({ kind: 'session', id: session.id })) pauseRecording();
             endSession(session.id);
             refresh();
           },

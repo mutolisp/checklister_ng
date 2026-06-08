@@ -515,6 +515,14 @@ async function buildSessionEntries(
   const points = buildSessionPoints(records);
   if (points) addGeoEntries(entries, base, 'points', points, opts.geoFormats);
 
+  // Geo: session track (full_track mode). Old data is a bare LineString; tracks
+  // recorded with the unified recorder are MultiLineString — both parse through
+  // parseGeoJsonSafe and serialize via addGeoEntries, same as the plot path.
+  if (session.track_geojson) {
+    const track = parseGeoJsonSafe(session.track_geojson);
+    if (track) addGeoEntries(entries, base, 'track', track as never, opts.geoFormats);
+  }
+
   // Geo: bound site geometry (if any)
   if (session.site_id !== null) {
     const site = getSite(session.site_id);

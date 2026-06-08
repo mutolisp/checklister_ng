@@ -52,7 +52,7 @@ import {
   type SiteWithProject,
 } from '~/db';
 import { useActiveSession } from '~/stores/activeSession';
-import { useTrackRecorder } from '~/lib/trackRecorder';
+import { isRecordingTarget } from '~/lib/trackRecorder';
 import { useSettings, type MapBasemap } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 
@@ -458,7 +458,7 @@ export default function MapScreen() {
     if (usesTrack(plot)) {
       // Block editing a transect that's actively recording — trackRecorder
       // flushes writePlotTrack every few points and would clobber the edit.
-      if (useTrackRecorder.getState().recordingPlotId === plot.id) {
+      if (isRecordingTarget({ kind: 'plot', id: plot.id })) {
         Alert.alert('此穿越線正在錄製中', '請先暫停軌跡錄製再編輯');
         return;
       }

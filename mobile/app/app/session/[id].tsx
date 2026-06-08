@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { BackHeaderLeft, goBackOrHome } from '~/lib/goBack';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -28,6 +28,7 @@ import {
   getSite,
   isTaxonInSession,
   listSessionRecords,
+  parseTrackSegments,
   reopenSession,
   updateRecordAttributes,
   updateRecordLocation,
@@ -57,6 +58,13 @@ import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 import { useActivePlot } from '~/stores/activePlot';
 import { useFavorites } from '~/stores/favorites';
+import {
+  isRecordingTarget,
+  pauseIfNot,
+  pauseRecording,
+  startRecording,
+  useTrackRecorder,
+} from '~/lib/trackRecorder';
 
 const SORT_LABEL: Record<RecordSort, string> = {
   observed: '加入順序',
@@ -132,10 +140,18 @@ export default function SessionDetailScreen() {
   const [surveyorSheetOpen, setSurveyorSheetOpen] = useState(false);
   const [batchImportOpen, setBatchImportOpen] = useState(false);
   const [searchPreview, setSearchPreview] = useState<SearchResult | null>(null);
-  const [tracking, setTracking] = useState(false);
-  const [trackCount, setTrackCount] = useState(0);
-  const trackSubRef = useRef<Location.LocationSubscription | null>(null);
-  const trackPointsRef = useRef<[number, number][]>([]);
+  // Track recording lives in the module-level recorder (src/lib/trackRecorder.ts)
+  // so it survives leaving this screen for the map/species tabs. Read live
+  // state from the store instead of component refs.
+  const recordingTarget = useTrackRecorder((s) => s.recordingTarget);
+  const livePoints = useTrackRecorder((s) => s.livePoints);
+  const tracking = recordingTarget?.kind === 'session' && recordingTarget.id === sessionId;
+  const persistedSegs = useMemo(
+    () => parseTrackSegments(session?.track_geojson ?? null),
+    [session?.track_geojson],
+  );
+  const trackCount =
+    persistedSegs.reduce((n, s) => n + s.length, 0) + (tracking ? livePoints.length : 0);
   const sortOrder = useSettings((s) => s.last_record_sort);
   const sortDir = useSettings((s) => s.last_record_sort_dir);
   const setSetting = useSettings((s) => s.set);
@@ -325,58 +341,18 @@ export default function SessionDetailScreen() {
     }
   };
 
-  const buildTrackGeoJSON = (pts: [number, number][]): string => {
-    if (pts.length === 0) return '';
-    return JSON.stringify({ type: 'LineString', coordinates: pts });
-  };
-
-  const parseTrackGeoJSON = (s: string | null): [number, number][] => {
-    if (!s) return [];
-    try {
-      const g = JSON.parse(s);
-      if (g?.type === 'LineString' && Array.isArray(g.coordinates)) return g.coordinates;
-    } catch {
-      // ignore
-    }
-    return [];
-  };
-
-  const persistTrack = useCallback(
-    (sessionId: number) => {
-      updateSession(sessionId, {
-        track_geojson: buildTrackGeoJSON(trackPointsRef.current),
-        gps_mode: 'full_track',
-      });
-    },
-    [],
-  );
-
   const handleStartTrack = async () => {
     if (!session) return;
-    const ok = await ensureForegroundPermission();
-    if (!ok) return;
-    // Resume from existing track if present.
-    trackPointsRef.current = parseTrackGeoJSON(session.track_geojson);
-    setTrackCount(trackPointsRef.current.length);
+    // Single recorder: block if another record is already recording. The
+    // recorder owns permission prompting (throws '需要定位權限').
+    if (recordingTarget && !(recordingTarget.kind === 'session' && recordingTarget.id === session.id)) {
+      Alert.alert('已有記錄正在錄製軌跡', '請先停止其他記錄的軌跡再開始');
+      return;
+    }
     try {
-      const sub = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 5, // meters
-          timeInterval: 4000,
-        },
-        (loc) => {
-          const next: [number, number] = [loc.coords.longitude, loc.coords.latitude];
-          trackPointsRef.current.push(next);
-          setTrackCount(trackPointsRef.current.length);
-          // Persist every ~5 points to limit DB writes.
-          if (trackPointsRef.current.length % 5 === 0) {
-            persistTrack(session.id);
-          }
-        },
-      );
-      trackSubRef.current = sub;
-      setTracking(true);
+      // Resume (if a track already exists) is handled inside the recorder,
+      // which loads prior segments and appends a new one.
+      await startRecording({ kind: 'session', id: session.id });
       toast('開始軌跡錄製');
     } catch (e) {
       Alert.alert('無法啟動軌跡', e instanceof Error ? e.message : String(e));
@@ -384,27 +360,12 @@ export default function SessionDetailScreen() {
   };
 
   const handleStopTrack = useCallback(() => {
-    if (trackSubRef.current) {
-      trackSubRef.current.remove();
-      trackSubRef.current = null;
+    if (isRecordingTarget({ kind: 'session', id: sessionId })) {
+      pauseRecording(); // commits the in-progress segment
     }
-    setTracking(false);
-    if (session) {
-      persistTrack(session.id);
-      reload();
-      toast(`軌跡已存檔（${trackPointsRef.current.length} 點）`);
-    }
-  }, [session, persistTrack, reload, toast]);
-
-  // Stop tracking when this screen unmounts to avoid leak.
-  useEffect(() => {
-    return () => {
-      if (trackSubRef.current) {
-        trackSubRef.current.remove();
-        trackSubRef.current = null;
-      }
-    };
-  }, []);
+    reload();
+    toast('軌跡已存檔');
+  }, [sessionId, reload, toast]);
 
   const handleClearGps = () => {
     if (!session) return;
@@ -414,9 +375,9 @@ export default function SessionDetailScreen() {
         text: '清除',
         style: 'destructive',
         onPress: () => {
-          if (tracking) handleStopTrack();
-          trackPointsRef.current = [];
-          setTrackCount(0);
+          // Tear down the watch first so it can't re-write the row after we
+          // null it out below.
+          if (tracking) pauseRecording();
           updateSession(session.id, {
             site_id: null,
             start_lat: null,
@@ -510,6 +471,10 @@ export default function SessionDetailScreen() {
     if (!session) return;
     const otherActive = getActiveSession();
     const proceed = () => {
+      // Reopen force-ends any other active record DB-side; stop a GPS watch
+      // that belongs to something other than this session so it can't keep
+      // writing to a now-ended record.
+      pauseIfNot({ kind: 'session', id: session.id });
       reopenSession(session.id);
       // Reopen force-ends any active plot DB-side too, so refresh both stores
       // — otherwise activePlot store keeps the stale plot reference and the

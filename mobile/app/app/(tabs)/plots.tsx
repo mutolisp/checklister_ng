@@ -11,6 +11,7 @@ import {
   type PlotSurvey,
 } from '~/db';
 import { promptText } from '~/components/TextPromptModal';
+import { pauseIfNot } from '~/lib/trackRecorder';
 
 function formatTime(ts: number | null): string {
   if (!ts) return '';
@@ -42,6 +43,9 @@ export default function PlotsListScreen() {
     });
     const plotid = raw?.trim();
     if (!plotid) return;
+    // createPlotSurvey force-ends any active record DB-side; stop any GPS watch
+    // first so it can't keep writing to the record we're about to end.
+    pauseIfNot(null);
     const id = createPlotSurvey({ plotid });
     router.push(`/plot/${id}` as Href);
   };

@@ -29,7 +29,9 @@ const CHECK_INTERVAL_MS = 60 * 1000;
 export function StalePlotWatcher() {
   const plot = useActivePlot((s) => s.plot);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
-  const recordingPlotId = useTrackRecorder((s) => s.recordingPlotId);
+  const recordingPlotId = useTrackRecorder((s) =>
+    s.recordingTarget?.kind === 'plot' ? s.recordingTarget.id : null,
+  );
   const router = useRouter();
   // Don't repeatedly nag the same idle session — remember which check we already prompted.
   const lastPromptKeyRef = useRef<string | null>(null);
