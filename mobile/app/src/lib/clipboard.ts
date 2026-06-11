@@ -1,3 +1,4 @@
+import i18n from '~/i18n';
 /**
  * Clipboard helpers — write text to system clipboard + show a confirmation
  * toast. The text builders here generate the actual copy payloads from a
@@ -14,7 +15,8 @@ import type { TaxonNode } from '~/db/taxonomy';
 export async function copyToClipboard(text: string, label?: string): Promise<void> {
   await Clipboard.setStringAsync(text);
   const toast = useToast.getState().show;
-  toast(label ? `已複製：${label}` : '已複製到剪貼簿');
+  const short = (label ?? '').replace(/^(複製|Copy)\s*/i, '').trim();
+  toast(short ? i18n.t('clipboard.copied', { label: short }) : i18n.t('clipboard.copiedPlain'));
 }
 
 export type SpeciesCopyMode = 'sciname' | 'cname' | 'both' | 'full';
@@ -117,10 +119,10 @@ export type SpeciesActionLabel = { label: string; mode: SpeciesCopyMode };
 export function speciesCopyActions(sp: SpeciesLike): SpeciesActionLabel[] {
   const has = (m: SpeciesCopyMode) => buildSpeciesCopyText(sp, m).length > 0;
   const out: SpeciesActionLabel[] = [];
-  if (has('sciname')) out.push({ label: '複製學名', mode: 'sciname' });
-  if (speciesCname(sp)) out.push({ label: '複製俗名', mode: 'cname' });
-  if (speciesCname(sp) && speciesSciname(sp)) out.push({ label: '複製俗名 + 學名', mode: 'both' });
-  out.push({ label: '複製完整資訊', mode: 'full' });
+  if (has('sciname')) out.push({ label: i18n.t('clipboard.copySciname'), mode: 'sciname' });
+  if (speciesCname(sp)) out.push({ label: i18n.t('clipboard.copyCname'), mode: 'cname' });
+  if (speciesCname(sp) && speciesSciname(sp)) out.push({ label: i18n.t('clipboard.copyBoth'), mode: 'both' });
+  out.push({ label: i18n.t('clipboard.copyFull'), mode: 'full' });
   return out;
 }
 
@@ -143,10 +145,10 @@ export function buildTaxonCopyText(
 
 export function taxonCopyActions(node: { name: string; name_c?: string }): Array<{ label: string; mode: TaxonCopyMode }> {
   const out: Array<{ label: string; mode: TaxonCopyMode }> = [];
-  out.push({ label: '複製學名', mode: 'sciname' });
+  out.push({ label: i18n.t('clipboard.copySciname'), mode: 'sciname' });
   if (node.name_c) {
-    out.push({ label: '複製俗名', mode: 'cname' });
-    out.push({ label: '複製俗名 + 學名', mode: 'both' });
+    out.push({ label: i18n.t('clipboard.copyCname'), mode: 'cname' });
+    out.push({ label: i18n.t('clipboard.copyBoth'), mode: 'both' });
   }
   return out;
 }

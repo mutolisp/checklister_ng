@@ -1138,3 +1138,35 @@ eas submit --platform ios
 - Free tier EAS 每月 30 build 額度
 - `production` profile 的 auto increment build number 會在 EAS server 上計算（appVersionSource: remote）
 
+---
+
+## Sprint：區域名錄（Regional Checklist）— 日本 YList 整合
+
+**目標**：以臺灣 TaiCOL 為基底，偏好設定可開啟其他國家/區域名錄（先做日本）。日本調查時可用片假名搜尋日本物種、瀏覽日本分類樹、加入記錄與匯出；同學名共有種同時顯示/匯出中文俗名 + 日文和名。**JP 關閉（預設）時行為與匯出 byte-identical，零回歸。**
+
+### 資料來源與後端管線
+- 來源 = 使用者親爬的 `dao_jp_ylist`（20,103 筆，ylist.info）。`plant_type` 為本表自有對照：0蘚苔/1蕨類/2裸子/3雙子葉/4單子葉。
+- `backend/services/ylist_import.py`（新增 CLI）：SQL 轉換 `dao_jp_ylist → ylist_names`（欄位對齊 taicol_names + region），含：
+  - genus = 學名第一 token（解析失敗 0 筆）。
+  - phylum/class/order 由 family 經 **GBIF backbone** 回填（`references/YList/ylist_family_backbone.csv`，421 科全覆蓋；class 把 Liliopsida→Magnoliopsida 對齊 TaiCOL 慣例，單/雙子葉在 order 層區分）。
+  - taxon_id = `y`+pad、name_id = 90000000+id（避免與 taicol 撞）。
+  - 同檔建 `species_xref(taxon_id,region,sci_norm)` 交叉表 + `all_names` view（taicol ∪ ylist）。
+  - 與 TaiCOL 共有種 5,411。
+- `build_mobile_fuzzy_index.py` 加建 `cname_fuzzy_index_jp`（和名 19,135；無 pinyin）。`make mobile-db` 已串起整條管線。
+
+### Mobile 架構（核心：`src/db/regions.ts`）
+- `getEnabledRegions()`（直讀 settings 表，預設 `['TW']`）/ `jpEnabled()` / `isJpTaxonId()` / `normalizeSci()` / `crossRegionVernacular()` / `composeVernacular()` / `endemicTagLabel()`。
+- **偏好**：`settings.ts` 加 `enabled_regions`；`app/settings.tsx`「區域名錄」section（Japan 開關，切換清 `clearTaxonomyCache()`）。
+- **搜尋**（`search.ts`/`fuzzy.ts`）：JP 開啟時併查 `ylist_names` + `cname_fuzzy_index_jp`，依 sci_norm 去重、共有種附另區俗名；JP 關閉走原路徑。`searchByTaxonId` 對 `y…` 走 `all_names`。
+- **分類樹**（`taxonomy.ts`）：`regionScope()` → JP 開啟查 `all_names`（`region='JP'` 放行 Taiwan gate）；`getSpeciesUnder` 共有種去重(優先 TW)+合併俗名；kingdom 快取依 region 失效。
+- **名稱解析核心**（`records.ts:listSessionRecords` / `plots.ts:listPlotSpecies`）：含 `y…` 時 join 改 `all_names`（無 y… 走原 taicol_names 保效能）；JP 開啟時 `composeVernacular` 把合併俗名 bake 進 `common_name_c` → 所有顯示點 + **匯出（bundleExport 直接讀 common_name_c）自動帶出**。
+- **狀態標籤**：JP 的 `is_endemic`=日本特有，詳情頁標籤改 `endemicTagLabel`（JP→「日本特有」、TW 不動）；保育欄 JP 為 NULL 自然不顯示。
+
+### 驗證
+- 後端 audit：ylist_names 20,103；genus/order 缺漏 0；共有種 5,411。
+- bundle DB 實測 app SQL：cross-region（`Abelia chinensis` → 糯米條 / タイワンツクバネウツギ）、all_names 解析 y…、tree JP scope（Plantae 25,097、日本特有科 Sciadopityaceae 出現）、片假名搜尋。
+- `tsc --noEmit` 0 error、eslint 0 error。
+- 回歸：JP 關閉時 tree Plantae=10,323（原值不變）、`taicol_names`=251,540（未污染）。
+
+**TODO（後續可選）**：romaji 諧音層（語音）、匯出 DwC `vernacularName` 多語格式微調、JP fuzzy prewarm、tree 共有種 species_count 統計去重。
+

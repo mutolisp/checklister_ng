@@ -7,6 +7,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Circle, Marker, Polyline, type Region } from 'react-native-maps';
@@ -37,6 +38,7 @@ export function PlotPointPreviewModal({
   segments = [],
   radiusM,
 }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
 
   const region = useMemo<Region>(() => {
@@ -109,7 +111,7 @@ export function PlotPointPreviewModal({
               <Marker
                 coordinate={{ latitude: center.lat, longitude: center.lng }}
                 pinColor="blue"
-                title="樣區中心"
+                title={t('plotPoint.center')}
               />
             ) : null}
             <Marker

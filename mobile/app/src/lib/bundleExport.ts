@@ -116,6 +116,46 @@ function parseGeoJsonSafe(s: string | null): object | null {
 
 // ---- DwC helpers (mirror exporters.ts shape) ------------------------------
 
+/** Format a millisecond timestamp as ISO 8601 in the device's *local* timezone
+ *  with offset (e.g. `2026-06-11T14:30:00+08:00`). Preserves the instant while
+ *  showing local wall-clock time instead of UTC ('…Z'), which is what field
+ *  recorders expect to see for observation / event times. */
+function localIso(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const off = -d.getTimezoneOffset(); // minutes east of UTC
+  const sign = off >= 0 ? '+' : '-';
+  const oh = p(Math.floor(Math.abs(off) / 60));
+  const om = p(Math.abs(off) % 60);
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+    `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`
+  );
+}
+
+/** Compare two taxon-bearing rows by full taxonomic hierarchy, then scientific
+ *  name — kingdom → phylum → class → order → family → genus → species (all
+ *  alphabetical). Used to order exported CSV rows. */
+type TaxonSortable = {
+  kingdom: string;
+  phylum: string;
+  class: string;
+  order: string;
+  family: string;
+  genus: string;
+  simple_name: string;
+};
+function taxonSortCompare(a: TaxonSortable, b: TaxonSortable): number {
+  const fields: (keyof TaxonSortable)[] = [
+    'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'simple_name',
+  ];
+  for (const f of fields) {
+    const c = (a[f] ?? '').localeCompare(b[f] ?? '');
+    if (c !== 0) return c;
+  }
+  return 0;
+}
+
 function recordToYamlItem(r: RecordWithTaxon): Record<string, unknown> {
   const fullname = r.name_author ? `${r.simple_name} ${r.name_author}` : r.simple_name;
   const item: Record<string, unknown> = {
@@ -136,7 +176,7 @@ function recordToYamlItem(r: RecordWithTaxon): Record<string, unknown> {
     protected: r.protected,
     endemic: r.is_endemic === 'true' ? 1 : 0,
     is_hybrid: r.is_hybrid,
-    eventDate: new Date(r.observed_at).toISOString(),
+    eventDate: localIso(r.observed_at),
   };
   if (r.lat !== null) item.lat = r.lat;
   if (r.lng !== null) item.lng = r.lng;
@@ -260,8 +300,8 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
   push('eventType', plot.plot_type); // fixed | transect | point_count
   if (projectName) push('datasetName', projectName);
   if (plot.start_ts !== null) {
-    const startIso = new Date(plot.start_ts).toISOString();
-    const endIso = plot.stop_ts !== null ? new Date(plot.stop_ts).toISOString() : null;
+    const startIso = localIso(plot.start_ts);
+    const endIso = plot.stop_ts !== null ? localIso(plot.stop_ts) : null;
     push('eventDate', endIso ? `${startIso}/${endIso}` : startIso);
   }
   push('samplingProtocol', plot.sampling_protocol);
@@ -355,7 +395,7 @@ function buildPlotSpeciesCsv(
     { h: 'decimalLatitude', v: (r) => r.lat ?? '' },
     { h: 'decimalLongitude', v: (r) => r.lng ?? '' },
     { h: 'coordinateUncertaintyInMeters', v: (r) => r.accuracy ?? '' },
-    { h: 'eventDate', v: (r) => (r.observed_at ? new Date(r.observed_at).toISOString() : '') },
+    { h: 'eventDate', v: (r) => (r.observed_at ? localIso(r.observed_at) : '') },
     { h: 'eventRemarks', v: (r) => r.notes ?? '' },
   ];
   const lines = [cols.map((c) => c.h).join(',')];
@@ -384,7 +424,7 @@ function buildSessionPoints(records: RecordWithTaxon[]): { type: 'FeatureCollect
         name: r.common_name_c || r.simple_name,
         description: r.simple_name + (r.name_author ? ` ${r.name_author}` : ''),
         taxon_id: r.taxon_id,
-        observed_at: new Date(r.observed_at).toISOString(),
+        observed_at: localIso(r.observed_at),
       },
     });
   }
@@ -408,7 +448,7 @@ function buildPlotPoints(records: PlotSpeciesRecordWithTaxon[]): { type: 'Featur
         organismQuantity: r.organism_quantity ?? '',
         organismQuantityType: r.organism_quantity_type ?? '',
         detectionType: r.detection_type ?? '',
-        observed_at: new Date(r.observed_at).toISOString(),
+        observed_at: localIso(r.observed_at),
       },
     });
   }
@@ -436,8 +476,8 @@ async function buildSessionEntries(
 
   // Session-level event metadata, used by both the yml header and the
   // tall-format env CSV. Shared between formats so they don't drift.
-  const startIso = new Date(session.started_at).toISOString();
-  const endIso = session.ended_at !== null ? new Date(session.ended_at).toISOString() : null;
+  const startIso = localIso(session.started_at);
+  const endIso = session.ended_at !== null ? localIso(session.ended_at) : null;
   const eventDate = endIso ? `${startIso}/${endIso}` : startIso;
   const eventMeta = {
     eventID: session.name,
@@ -486,11 +526,16 @@ async function buildSessionEntries(
   });
 
   // ${session.name}_sp.csv — DwC species records (was the old `${base}.csv`).
+  // CSV rows are ordered taxonomically (kingdom→…→genus→species); the yml
+  // checklist above stays in observation order.
+  const csvItems = [...records]
+    .sort(taxonSortCompare)
+    .map((r) => convertToDwc(recordToYamlItem(r)));
   const allKeys = new Set<string>();
   for (const row of dwcItems) for (const k of Object.keys(row)) allKeys.add(k);
   const keys = Array.from(allKeys);
   const csvLines = [keys.join(',')];
-  for (const row of dwcItems) csvLines.push(keys.map((k) => csvEscape(row[k])).join(','));
+  for (const row of csvItems) csvLines.push(keys.map((k) => csvEscape(row[k])).join(','));
   const csv = '﻿' + csvLines.join('\n');
   entries.push({
     name: `${base}/${sanitizeFilename(session.name)}_sp.csv`,
@@ -697,7 +742,14 @@ async function buildPlotEntries(
   // vernacularName, organismQuantity, organismQuantityType, family, taxonID).
   // Layer kept as a non-standard column since there is no DwC term for a
   // vegetation stratum within an event.
-  const spCsv = buildPlotSpeciesCsv(species, plot.plot_type, plot.plotid, subplotLabelById);
+  // CSV rows ordered taxonomically (kingdom→…→genus→species); the yml above
+  // keeps observation/subplot order for round-trip fidelity.
+  const spCsv = buildPlotSpeciesCsv(
+    [...species].sort(taxonSortCompare),
+    plot.plot_type,
+    plot.plotid,
+    subplotLabelById,
+  );
   entries.push({ name: `${base}/${plot.plotid}_sp.csv`, bytes: strToU8(spCsv) });
 
   // ${plotid}_subplots.csv — per-subplot dimensions + per-layer cover/height

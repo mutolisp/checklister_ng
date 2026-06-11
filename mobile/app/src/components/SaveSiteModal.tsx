@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Platform,
@@ -27,9 +28,9 @@ type Props = {
 };
 
 const TYPE_LABEL: Record<Props['geometryType'], string> = {
-  Point: '點位',
-  LineString: '路線',
-  Polygon: '範圍',
+  Point: 'sites.typePoint',
+  LineString: 'sites.typeLineString',
+  Polygon: 'sites.typePolygon',
 };
 
 export function SaveSiteModal({
@@ -39,10 +40,12 @@ export function SaveSiteModal({
   defaultNotes = '',
   geometryType,
   vertexCount,
-  title = '儲存地理樣區',
+  title,
   onCancel,
   onConfirm,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t('sheets.saveSite');
   const insets = useSafeAreaInsets();
   const [name, setName] = useState(defaultName);
   const [projectId, setProjectId] = useState(defaultProjectId);
@@ -58,10 +61,10 @@ export function SaveSiteModal({
     setShowProjectPicker(false);
     await new Promise((r) => setTimeout(r, 350));
     const name = await promptText({
-      title: '新建專案',
-      message: '輸入專案名稱（其他欄位可之後在「專案管理」頁編輯）',
-      placeholder: '專案名稱',
-      confirmText: '建立',
+      title: t('sheets.newProject'),
+      message: t('sheets.newProjectMsg'),
+      placeholder: t('sheets.projectNamePlaceholder'),
+      confirmText: t('surveyors.create'),
     });
     const trimmed = (name ?? '').trim();
     if (!trimmed) return;
@@ -95,9 +98,9 @@ export function SaveSiteModal({
       >
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={onCancel} hitSlop={8}>
-            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{resolvedTitle}</Text>
           <Pressable
             onPress={() => {
               if (!canSave) return;
@@ -106,7 +109,7 @@ export function SaveSiteModal({
             hitSlop={8}
           >
             <Text className={`text-base font-semibold ${canSave ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300'}`}>
-              儲存
+              {t('common.save')}
             </Text>
           </Pressable>
         </View>
@@ -114,39 +117,39 @@ export function SaveSiteModal({
           <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
             <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3">
               <Text className="text-sm text-blue-900 dark:text-blue-100">
-                類型：<Text className="font-bold">{TYPE_LABEL[geometryType]}</Text> · {vertexCount} 個頂點
+                {t('sheets.siteTypeVertices', { type: t(TYPE_LABEL[geometryType]), count: vertexCount })}
               </Text>
             </View>
 
-            <Field label="名稱">
+            <Field label={t('endSession.name')}>
               <TextInput
                 value={name}
                 onChangeText={setName}
                 autoFocus
                 className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
-                placeholder="例：A 地理樣區"
+                placeholder={t('sheets.siteNameEx')}
                 placeholderTextColor="#9ca3af"
               />
             </Field>
 
-            <Field label="專案">
+            <Field label={t('plot.project')}>
               <Pressable
                 onPress={() => setShowProjectPicker(true)}
                 className="flex-row items-center justify-between rounded border border-gray-300 dark:border-gray-600 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
               >
-                <Text className="text-base text-gray-900 dark:text-gray-100">{currentProject?.name ?? '未分類'}</Text>
+                <Text className="text-base text-gray-900 dark:text-gray-100">{currentProject?.name ?? t('plot.uncategorized')}</Text>
                 <Ionicons name="chevron-down" size={16} color="#6b7280" />
               </Pressable>
             </Field>
 
-            <Field label="備註（選填）">
+            <Field label={t('endSession.notesOptional')}>
               <TextInput
                 value={notes}
                 onChangeText={setNotes}
                 multiline
                 className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
                 style={{ minHeight: 100, textAlignVertical: 'top' }}
-                placeholder="描述地點、海拔、植被等"
+                placeholder={t('sheets.siteNotesEx')}
                 placeholderTextColor="#9ca3af"
               />
             </Field>
@@ -177,7 +180,7 @@ export function SaveSiteModal({
             className="rounded-t-2xl bg-white dark:bg-gray-900"
           >
             <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">選擇專案</Text>
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('endSession.selectProject')}</Text>
             </View>
             <Pressable
               onPress={handleCreateProjectInline}
@@ -186,7 +189,7 @@ export function SaveSiteModal({
               <View className="mr-3 h-7 w-7 items-center justify-center rounded-full bg-blue-500">
                 <Ionicons name="add" size={18} color="white" />
               </View>
-              <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新建專案</Text>
+              <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">{t('sheets.newProject')}</Text>
             </Pressable>
             <ScrollView className="max-h-96">
               {projects.map((p) => {

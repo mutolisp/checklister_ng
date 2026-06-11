@@ -6,6 +6,7 @@
  * Persisted to settings, so the next swipe-export uses the same choices.
  */
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, Switch, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettings } from '~/stores/settings';
@@ -25,22 +26,23 @@ const GEO_OPTIONS: Array<{ value: GeoFormat; label: string; hint: string }> = [
 ];
 
 const LEVEL_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'kingdom', label: '界' },
-  { value: 'phylum', label: '門' },
-  { value: 'class_name', label: '綱' },
-  { value: 'order', label: '目' },
-  { value: 'family', label: '科' },
-  { value: 'genus', label: '屬' },
+  { value: 'kingdom', label: 'rank.kingdom' },
+  { value: 'phylum', label: 'rank.phylum' },
+  { value: 'class_name', label: 'rank.class' },
+  { value: 'order', label: 'rank.order' },
+  { value: 'family', label: 'rank.family' },
+  { value: 'genus', label: 'rank.genus' },
 ];
 
 const CONSERVATION_OPTIONS: Array<{ value: ConservationField; label: string }> = [
-  { value: 'redlist', label: '臺灣紅皮書' },
+  { value: 'redlist', label: 'exportPref.consRedlist' },
   { value: 'iucn_category', label: 'IUCN' },
   { value: 'cites', label: 'CITES' },
-  { value: 'protected', label: '保育類 / 珍稀植物' },
+  { value: 'protected', label: 'exportPref.consProtected' },
 ];
 
 export function ExportPreferenceSheet({ visible, onClose }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const formats = useSettings((s) => s.export_geo_formats);
   const includePhotos = useSettings((s) => s.export_include_photos);
@@ -87,17 +89,17 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
             </View>
 
             <View className="flex-row items-center justify-between pt-3 pb-2">
-              <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">匯出偏好</Text>
+              <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('exportPref.title')}</Text>
               <Pressable onPress={onClose} hitSlop={8}>
                 <Ionicons name="close" size={22} color="#6b7280" />
               </Pressable>
             </View>
 
             <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              地理檔案格式
+              {t('exportPref.geoFormats')}
             </Text>
             <Text className="mb-2 text-xs text-gray-500 dark:text-gray-400">
-              至少選一種；勾選的格式都會包進 zip。
+              {t('exportPref.geoFormatsHint')}
             </Text>
             <View className="mb-4">
               {GEO_OPTIONS.map((opt) => {
@@ -123,13 +125,13 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
             </View>
 
             <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              照片
+              {t('exportPref.photo')}
             </Text>
             <View className="mb-4 flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 py-3">
               <View className="flex-1 pr-3">
-                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">包含照片</Text>
+                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('exportPref.includePhotos')}</Text>
                 <Text className="text-xs text-gray-500 dark:text-gray-400">
-                  關閉可大幅減小檔案大小；資料量大時建議先關閉。
+                  {t('exportPref.includePhotosHint')}
                 </Text>
               </View>
               <Switch
@@ -139,13 +141,13 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
             </View>
 
             <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              文件格式
+              {t('exportPref.docFormat')}
             </Text>
             <View className="mb-4 flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 py-3">
               <View className="flex-1 pr-3">
-                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">包含 Word (docx) 名錄</Text>
+                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('exportPref.includeDocx')}</Text>
                 <Text className="text-xs text-gray-500 dark:text-gray-400">
-                  隨附與 .md 同內容的 Word 檔,方便直接編輯排版。
+                  {t('exportPref.includeDocxHint')}
                 </Text>
               </View>
               <Switch
@@ -155,12 +157,12 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
             </View>
 
             <Text className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              分類階層
+              {t('exportPref.levels')}
             </Text>
             <Text className="mb-2 text-xs text-gray-500 dark:text-gray-400">
               {levels.length === 0
-                ? '未選 = 各分類群預設（維管束植物：高階分類群 + 科）'
-                : '名錄依勾選階層分組（順序自動排列）'}
+                ? t('exportPref.levelsHintDefault')
+                : t('exportPref.levelsHintCustom')}
             </Text>
             <View className="mb-4 flex-row flex-wrap gap-1.5">
               {LEVEL_OPTIONS.map((opt) => {
@@ -172,7 +174,7 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
                     className={`rounded-full border px-3 py-1.5 ${on ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
                   >
                     <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {opt.label}
+                      {t(opt.label)}
                     </Text>
                   </Pressable>
                 );
@@ -180,7 +182,7 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
             </View>
 
             <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              保育狀態欄位
+              {t('exportPref.consFields')}
             </Text>
             <View className="mb-4 flex-row flex-wrap gap-1.5">
               {CONSERVATION_OPTIONS.map((opt) => {
@@ -192,7 +194,7 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
                     className={`rounded-full border px-3 py-1.5 ${on ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
                   >
                     <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {opt.label}
+                      {t(opt.label)}
                     </Text>
                   </Pressable>
                 );
@@ -204,7 +206,7 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
                 onPress={onClose}
                 className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"
               >
-                <Text className="text-sm font-medium text-white">完成</Text>
+                <Text className="text-sm font-medium text-white">{t('common.done')}</Text>
               </Pressable>
             </View>
           </SafeAreaView>

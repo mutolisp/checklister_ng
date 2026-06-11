@@ -6,6 +6,16 @@ import type { ConservationField } from '~/lib/markdown';
 export type Theme = 'light' | 'dark' | 'auto';
 export type CardDensity = 'compact' | 'comfortable';
 
+/** UI language. 'system' follows the device locale; others force that language.
+ *  Only 'en' and 'zh-TW' ship locale files today (see `~/i18n`); 'ja'/'ko' are
+ *  reserved so the picker + stored values are forward-compatible. */
+export type Language = 'system' | 'en' | 'zh-TW' | 'ja' | 'ko';
+
+/** Enabled regional checklist databases. Taiwan (TaiCOL) is the always-on base;
+ *  others (Japan/YList, …) are opt-in overlays that widen search/tree/export and
+ *  merge vernacular names for shared species. See `~/db/regions`. */
+export type RegionCode = 'TW' | 'JP';
+
 export type RecordSort = 'observed' | 'cname' | 'name' | 'family';
 export type SortDirection = 'asc' | 'desc';
 export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
@@ -98,6 +108,11 @@ type SettingsValues = {
   export_levels: string[];
   /** Conservation-status columns to include in the exported checklist. */
   export_conservation_fields: ConservationField[];
+  /** Enabled regional name databases. Always contains 'TW'; 'JP' is opt-in.
+   *  When only ['TW'] the app behaves byte-identically to before this feature. */
+  enabled_regions: RegionCode[];
+  /** UI language; 'system' follows the device locale. */
+  language: Language;
 };
 
 const DEFAULTS: SettingsValues = {
@@ -119,6 +134,8 @@ const DEFAULTS: SettingsValues = {
   export_include_docx: true,
   export_levels: [],
   export_conservation_fields: ['redlist'],
+  enabled_regions: ['TW'],
+  language: 'system',
 };
 
 type SettingsState = SettingsValues & {
@@ -204,7 +221,35 @@ function readAll(): SettingsValues {
         : map.get('export_include_docx') === 'true',
     export_levels: parseLevels(map.get('export_levels')),
     export_conservation_fields: parseConservationFields(map.get('export_conservation_fields')),
+    enabled_regions: parseRegions(map.get('enabled_regions')),
+    language: parseLanguage(map.get('language')),
   };
+}
+
+const LANGUAGE_KEYS = new Set<Language>(['system', 'en', 'zh-TW', 'ja', 'ko']);
+function parseLanguage(raw: string | undefined): Language {
+  return raw != null && LANGUAGE_KEYS.has(raw as Language)
+    ? (raw as Language)
+    : DEFAULTS.language;
+}
+
+const REGION_KEYS = new Set<RegionCode>(['TW', 'JP']);
+function parseRegions(raw: string | undefined): RegionCode[] {
+  if (raw == null) return DEFAULTS.enabled_regions;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      const filtered = parsed.filter(
+        (v): v is RegionCode => typeof v === 'string' && REGION_KEYS.has(v as RegionCode),
+      );
+      // 'TW' is the base and must always be present.
+      if (!filtered.includes('TW')) filtered.unshift('TW');
+      return filtered;
+    }
+  } catch {
+    // ignore corrupt setting
+  }
+  return DEFAULTS.enabled_regions;
 }
 
 const LEVEL_KEYS = new Set(['kingdom', 'phylum', 'class_name', 'order', 'family', 'genus']);

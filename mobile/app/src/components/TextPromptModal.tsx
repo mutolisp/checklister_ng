@@ -16,6 +16,7 @@
  * the navigation tree so the modal can render above all screens.
  */
 import { useEffect, useState } from 'react';
+import i18n from '~/i18n';
 import {
   Modal,
   Platform,
@@ -128,7 +129,7 @@ export function TextPromptHost() {
                 onPress={handleCancel}
                 className="flex-1 items-center justify-center border-r border-gray-100 dark:border-gray-800 py-3 active:bg-gray-50 dark:active:bg-gray-800"
               >
-                <Text className="text-base text-gray-700 dark:text-gray-300">{pending.cancelText ?? '取消'}</Text>
+                <Text className="text-base text-gray-700 dark:text-gray-300">{pending.cancelText ?? i18n.t('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 onPress={canConfirm ? handleConfirm : undefined}
@@ -138,7 +139,7 @@ export function TextPromptHost() {
                 <Text
                   className={`text-base font-semibold ${canConfirm ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'}`}
                 >
-                  {pending.confirmText ?? '確定'}
+                  {pending.confirmText ?? i18n.t('common.ok')}
                 </Text>
               </Pressable>
             </View>

@@ -12,12 +12,13 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
 import {
   hasAttributes,
-  LEAF_PHENOLOGY_OPTIONS,
-  REPRODUCTIVE_OPTIONS,
-  SEX_OPTIONS,
+  leafPhenologyOptions,
+  reproductiveOptions,
+  sexOptions,
   lifeStageOptions,
   toggleMultiValue,
 } from '~/lib/dwcAttributes';
@@ -50,6 +51,7 @@ export function SpeciesAttributesBlock({
   onChange,
   defaultOpen,
 }: Props) {
+  const { t } = useTranslation();
   const initial = defaultOpen ?? hasAttributes(value);
   const [open, setOpen] = useState(initial);
 
@@ -78,10 +80,10 @@ export function SpeciesAttributesBlock({
       >
         <View className="flex-row items-center">
           <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} color="#4b5563" />
-          <Text className="ml-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">進階（物種屬性）</Text>
+          <Text className="ml-1.5 text-xs font-medium text-gray-700 dark:text-gray-300">{t('attr.advanced')}</Text>
           {filledCount > 0 ? (
             <View className="ml-2 rounded-full bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5">
-              <Text className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{filledCount} 項</Text>
+              <Text className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">{t('attr.filledCount', { count: filledCount })}</Text>
             </View>
           ) : null}
         </View>
@@ -89,16 +91,16 @@ export function SpeciesAttributesBlock({
 
       {open ? (
         <View className="mt-2 gap-3">
-          <FieldRow label="性別 (sex)">
+          <FieldRow label={t('attr.sexLabel')}>
             <SingleChipGroup
-              options={SEX_OPTIONS}
+              options={sexOptions()}
               value={value.sex}
               onChange={(v) => setSingle('sex', v)}
             />
           </FieldRow>
 
           {isAnimal ? (
-            <FieldRow label="生命階段 (lifeStage)">
+            <FieldRow label={t('attr.lifeStageLabel')}>
               <SingleChipGroup
                 options={lifeStageOptions(className)}
                 value={value.life_stage}
@@ -109,16 +111,16 @@ export function SpeciesAttributesBlock({
 
           {isPlant ? (
             <>
-              <FieldRow label="花 / 果 (reproductiveCondition，可複選)">
+              <FieldRow label={t('attr.reproLabel')}>
                 <MultiChipGroup
-                  options={REPRODUCTIVE_OPTIONS}
+                  options={reproductiveOptions()}
                   value={value.reproductive_condition}
                   onToggle={(v) => toggleMulti('reproductive_condition', v)}
                 />
               </FieldRow>
-              <FieldRow label="葉 (leafPhenology，可複選)">
+              <FieldRow label={t('attr.leafLabel')}>
                 <MultiChipGroup
-                  options={LEAF_PHENOLOGY_OPTIONS}
+                  options={leafPhenologyOptions()}
                   value={value.leaf_phenology}
                   onToggle={(v) => toggleMulti('leaf_phenology', v)}
                 />

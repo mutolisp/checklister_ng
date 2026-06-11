@@ -1,3 +1,4 @@
+import i18n from '~/i18n';
 /**
  * DwC organismQuantity / organismQuantityType helpers.
  *
@@ -25,34 +26,19 @@ export type QuantityTypeOption = {
   suffix?: string;
 };
 
-export const QUANTITY_TYPES: QuantityTypeOption[] = [
-  {
-    value: 'individuals',
-    label: '個體數 (individuals)',
-    kind: 'count',
-  },
-  {
-    value: '% cover',
-    label: '覆蓋度 (% cover)',
-    kind: 'percent',
-    suffix: '%',
-  },
-  {
-    value: 'Braun-Blanquet Scale',
-    label: 'Braun-Blanquet',
-    kind: 'BB',
-  },
-  {
-    value: 'DBH (cm)',
-    label: '胸高直徑 (DBH, cm)',
-    kind: 'DBH',
-  },
-];
+export function quantityTypes(): QuantityTypeOption[] {
+  return [
+    { value: 'individuals', label: i18n.t('abundance.individuals'), kind: 'count' },
+    { value: '% cover', label: i18n.t('abundance.cover'), kind: 'percent', suffix: '%' },
+    { value: 'Braun-Blanquet Scale', label: 'Braun-Blanquet', kind: 'BB' },
+    { value: 'DBH (cm)', label: i18n.t('abundance.dbh'), kind: 'DBH' },
+  ];
+}
 
 /** Look up the built-in option matching a stored type string. */
 export function findQuantityType(stored: string | null | undefined): QuantityTypeOption | null {
   if (!stored) return null;
-  return QUANTITY_TYPES.find((q) => q.value === stored) ?? null;
+  return quantityTypes().find((q) => q.value === stored) ?? null;
 }
 
 /** Determine the input kind given a stored type. Custom strings fall back to 'custom'. */
@@ -137,7 +123,7 @@ export function formatQuantityBadge(
   if (opt.kind === 'DBH') {
     const stems = parseDbhArray(quantity);
     if (stems.length === 0) return '–';
-    return `${stems.length} 分枝`;
+    return i18n.t('abundance.stems', { count: stems.length });
   }
   return quantity;
 }

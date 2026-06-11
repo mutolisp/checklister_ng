@@ -28,6 +28,7 @@ import {
 } from '~/lib/trackRecorder';
 import { TrackPreviewModal } from './TrackPreviewModal';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 type Props = {
   plot: PlotSurvey;
@@ -35,6 +36,7 @@ type Props = {
 };
 
 export function TransectTrackControl({ plot, onUpdated }: Props) {
+  const { t } = useTranslation();
   const persistedSegments = parseTrackSegments(plot.track_geojson);
   const finalized = plot.track_finalized === 1;
   const plotDone = plot.status === 'done';
@@ -49,7 +51,7 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
     if (plotDone || finalized) return;
     // Block double-recording if some other record is already capturing.
     if (recordingTarget && !(recordingTarget.kind === 'plot' && recordingTarget.id === plot.id)) {
-      Alert.alert('已有記錄正在錄製軌跡', '請先停止或暫停其他記錄的軌跡');
+      Alert.alert(t('transect.busyTitle'), t('transect.busyMsg'));
       return;
     }
     try {
@@ -58,7 +60,7 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
       // reaches plotCanAcceptSpecies and unblocks the species tab.
       onUpdated();
     } catch (e) {
-      Alert.alert('無法啟動軌跡', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('transect.startFail'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -68,10 +70,10 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
   };
 
   const handleStop = () => {
-    Alert.alert('停止並儲存軌跡？', '停止後將無法再 append 新點，但仍可繼續記錄物種。', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('transect.stopTitle'), t('transect.stopMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '停止',
+        text: t('transect.stop'),
         style: 'destructive',
         onPress: () => {
           pauseRecording();
@@ -96,45 +98,45 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
     <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
       <View className="flex-row items-center justify-between">
         <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">
-          穿越線軌跡 <Text className="text-red-500">*</Text>
+          {t('transect.label')} <Text className="text-red-500">*</Text>
         </Text>
         {recording ? (
           <View className="flex-row items-center">
             <View className="mr-1.5 h-2 w-2 rounded-full bg-red-500" />
-            <Text className="text-xs font-medium text-red-600 dark:text-red-400">記錄中</Text>
+            <Text className="text-xs font-medium text-red-600 dark:text-red-400">{t('records.recording')}</Text>
           </View>
         ) : finalized ? (
-          <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">已停止</Text>
+          <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">{t('transect.stopped')}</Text>
         ) : totalSegments > 0 ? (
-          <Text className="text-xs font-medium text-amber-600">已暫停</Text>
+          <Text className="text-xs font-medium text-amber-600">{t('transect.paused')}</Text>
         ) : null}
       </View>
 
       {totalPoints > 0 ? (
         <Text className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-          {totalSegments} 段 · {totalPoints} 點 · {lengthStr}
+          {t('transect.summary', { segments: totalSegments, points: totalPoints, length: lengthStr })}
         </Text>
       ) : (
-        <Text className="mt-1 text-xs text-gray-400 dark:text-gray-500">尚未開始記錄軌跡（物種輸入需此資料）</Text>
+        <Text className="mt-1 text-xs text-gray-400 dark:text-gray-500">{t('transect.notStarted')}</Text>
       )}
 
       <View className="mt-3 flex-row gap-2">
         {finalized ? null : recording ? (
           <>
-            <ControlButton icon="pause" label="暫停" tone="amber" onPress={handlePause} />
-            <ControlButton icon="stop" label="停止並儲存" tone="red" onPress={handleStop} />
+            <ControlButton icon="pause" label={t('transect.pause')} tone="amber" onPress={handlePause} />
+            <ControlButton icon="stop" label={t('transect.stopSave')} tone="red" onPress={handleStop} />
           </>
         ) : (
           <>
             <ControlButton
               icon="play"
-              label={totalSegments > 0 ? '繼續' : '開始記錄'}
+              label={totalSegments > 0 ? t('transect.resume') : t('transect.start')}
               tone="emerald"
               onPress={handleStart}
               disabled={plotDone}
             />
             {totalSegments > 0 ? (
-              <ControlButton icon="stop" label="停止並儲存" tone="red" onPress={handleStop} />
+              <ControlButton icon="stop" label={t('transect.stopSave')} tone="red" onPress={handleStop} />
             ) : null}
           </>
         )}
@@ -142,7 +144,7 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
         {totalPoints > 0 ? (
           <ControlButton
             icon="map-outline"
-            label="預覽"
+            label={t('transect.preview')}
             tone="gray"
             onPress={() => setPreviewOpen(true)}
           />

@@ -7,18 +7,19 @@
  * Italic rule: latin name italic ONLY when targetRank === 'genus'.
  */
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useRouter } from 'expo-router';
 import { Keyboard, Pressable, Text } from 'react-native';
 import type { Rank } from '~/db';
 import { useTaxonomyJump, type JumpPath } from '~/stores/taxonomyJump';
 
 const RANK_ZH: Record<Rank, string> = {
-  kingdom: '界',
-  phylum: '門',
-  class: '綱',
-  order: '目',
-  family: '科',
-  genus: '屬',
+  kingdom: 'rank.kingdom',
+  phylum: 'rank.phylum',
+  class: 'rank.class',
+  order: 'rank.order',
+  family: 'rank.family',
+  genus: 'rank.genus',
 };
 
 type Lineage = {
@@ -55,6 +56,7 @@ export function TaxonomyJumpChip({
   beforeJump,
   compact = false,
 }: Props) {
+  const { t } = useTranslation();
   const router = useRouter();
   const requestJump = useTaxonomyJump((s) => s.request);
 
@@ -116,7 +118,7 @@ export function TaxonomyJumpChip({
       hitSlop={4}
     >
       <Text className="text-[10px] font-semibold uppercase text-gray-500 dark:text-gray-400">
-        {RANK_ZH[rank]}
+        {t(RANK_ZH[rank])}
       </Text>
       {nameC ? (
         <Text className="ml-1 text-xs text-gray-800 dark:text-gray-200">{nameC}</Text>

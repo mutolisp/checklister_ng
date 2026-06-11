@@ -20,6 +20,7 @@ import {
   readAsStringAsync,
   writeAsStringAsync,
 } from 'expo-file-system/legacy';
+import i18n from '~/i18n';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import piexif from 'piexifjs';
@@ -187,9 +188,9 @@ function embedMetadata(jpegBase64: string, existingExif: piexif.ExifDict, ctx: P
  */
 export async function captureEnvPhoto(): Promise<string | null> {
   const camPerm = await ImagePicker.requestCameraPermissionsAsync();
-  if (camPerm.status !== 'granted') throw new Error('需要相機權限');
+  if (camPerm.status !== 'granted') throw new Error(i18n.t('photo.camPerm'));
   const libPerm = await MediaLibrary.requestPermissionsAsync(true);
-  if (libPerm.status !== 'granted') throw new Error('需要照片庫寫入權限');
+  if (libPerm.status !== 'granted') throw new Error(i18n.t('photo.libPerm'));
   const result = await ImagePicker.launchCameraAsync({
     mediaTypes: ['images'],
     quality: 0.9,
@@ -212,12 +213,12 @@ export async function captureAndSavePhoto(ctx: PhotoSpeciesContext): Promise<str
   // Camera permission
   const camPerm = await ImagePicker.requestCameraPermissionsAsync();
   if (camPerm.status !== 'granted') {
-    throw new Error('需要相機權限');
+    throw new Error(i18n.t('photo.camPerm'));
   }
   // Media library write permission
   const libPerm = await MediaLibrary.requestPermissionsAsync(true);
   if (libPerm.status !== 'granted') {
-    throw new Error('需要照片庫寫入權限');
+    throw new Error(i18n.t('photo.libPerm'));
   }
 
   // quality < 1 forces JPEG on iOS while preserving EXIF

@@ -4,18 +4,22 @@
  * export pipeline maps these straight to DwC terms.
  */
 
+import i18n from '~/i18n';
+
 // ────────── sex ──────────
 
 export type Sex = 'female' | 'male' | 'unknown';
 
-export const SEX_OPTIONS: Array<{ value: Sex; label: string }> = [
-  { value: 'female', label: '雌' },
-  { value: 'male', label: '雄' },
-  { value: 'unknown', label: '無法判斷' },
-];
+export function sexOptions(): Array<{ value: Sex; label: string }> {
+  return [
+    { value: 'female', label: i18n.t('attr.sex.female') },
+    { value: 'male', label: i18n.t('attr.sex.male') },
+    { value: 'unknown', label: i18n.t('attr.sex.unknown') },
+  ];
+}
 
 export function sexLabel(v: string | null | undefined): string {
-  return SEX_OPTIONS.find((o) => o.value === v)?.label ?? '';
+  return v ? i18n.t(`attr.sex.${v}`) : '';
 }
 
 // ────────── detectionType (point count / animal records) ──────────
@@ -25,14 +29,16 @@ export function sexLabel(v: string | null | undefined): string {
  *  to the custom DwC-style term `detectionType`. */
 export type DetectionType = 'seen' | 'heard' | 'flying';
 
-export const DETECTION_OPTIONS: Array<{ value: DetectionType; label: string }> = [
-  { value: 'seen', label: '看到' },
-  { value: 'heard', label: '聽到' },
-  { value: 'flying', label: '飛過' },
-];
+export function detectionOptions(): Array<{ value: DetectionType; label: string }> {
+  return [
+    { value: 'seen', label: i18n.t('attr.detection.seen') },
+    { value: 'heard', label: i18n.t('attr.detection.heard') },
+    { value: 'flying', label: i18n.t('attr.detection.flying') },
+  ];
+}
 
 export function detectionLabel(v: string | null | undefined): string {
-  return DETECTION_OPTIONS.find((o) => o.value === v)?.label ?? '';
+  return v ? i18n.t(`attr.detection.${v}`) : '';
 }
 
 // ────────── lifeStage (per class) ──────────
@@ -46,16 +52,6 @@ export type LifeStage =
   | 'subadult_bird' // 亞成鳥
   | 'adult_bird'; // 成鳥
 
-const STAGE_LABEL: Record<LifeStage, string> = {
-  egg: '卵',
-  larva: '幼體',
-  pupa: '蛹',
-  subadult: '亞成體',
-  adult: '成體',
-  subadult_bird: '亞成鳥',
-  adult_bird: '成鳥',
-};
-
 /**
  * Returns per-class life-stage options. Always lifecycle-ordered. Unknown /
  * unlisted classes fall through to a generic {卵, 亞成體, 成體} set.
@@ -66,44 +62,50 @@ export function lifeStageOptions(
   const c = (className || '').toLowerCase();
   if (c === 'amphibia') {
     return [
-      { value: 'egg', label: '卵' },
-      { value: 'larva', label: '幼體' },
-      { value: 'subadult', label: '亞成體' },
-      { value: 'adult', label: '成體' },
+      { value: 'egg', label: i18n.t('attr.stage.egg') },
+      { value: 'larva', label: i18n.t('attr.stage.larva') },
+      { value: 'subadult', label: i18n.t('attr.stage.subadult') },
+      { value: 'adult', label: i18n.t('attr.stage.adult') },
     ];
   }
   if (c === 'aves') {
     return [
-      { value: 'egg', label: '卵' },
-      { value: 'subadult_bird', label: '亞成鳥' },
-      { value: 'adult_bird', label: '成鳥' },
+      { value: 'egg', label: i18n.t('attr.stage.egg') },
+      { value: 'subadult_bird', label: i18n.t('attr.stage.subadultBird') },
+      { value: 'adult_bird', label: i18n.t('attr.stage.adultBird') },
     ];
   }
   if (c === 'mammalia') {
     return [
-      { value: 'subadult', label: '亞成體' },
-      { value: 'adult', label: '成體' },
+      { value: 'subadult', label: i18n.t('attr.stage.subadult') },
+      { value: 'adult', label: i18n.t('attr.stage.adult') },
     ];
   }
   if (c === 'insecta') {
     return [
-      { value: 'egg', label: '卵' },
-      { value: 'larva', label: '幼蟲' },
-      { value: 'pupa', label: '蛹' },
-      { value: 'adult', label: '成體' },
+      { value: 'egg', label: i18n.t('attr.stage.egg') },
+      { value: 'larva', label: i18n.t('attr.stage.larvaInsect') },
+      { value: 'pupa', label: i18n.t('attr.stage.pupa') },
+      { value: 'adult', label: i18n.t('attr.stage.adult') },
     ];
   }
   // Reptilia, Gastropoda, Bivalvia, Arachnida, Actinopterygii, others
   return [
-    { value: 'egg', label: '卵' },
-    { value: 'subadult', label: '亞成體' },
-    { value: 'adult', label: '成體' },
+    { value: 'egg', label: i18n.t('attr.stage.egg') },
+    { value: 'subadult', label: i18n.t('attr.stage.subadult') },
+    { value: 'adult', label: i18n.t('attr.stage.adult') },
   ];
 }
 
+const STAGE_KEY: Record<string, string> = {
+  egg: 'attr.stage.egg', larva: 'attr.stage.larva', pupa: 'attr.stage.pupa',
+  subadult: 'attr.stage.subadult', adult: 'attr.stage.adult',
+  subadult_bird: 'attr.stage.subadultBird', adult_bird: 'attr.stage.adultBird',
+};
+
 export function lifeStageLabel(v: string | null | undefined): string {
   if (!v) return '';
-  return STAGE_LABEL[v as LifeStage] ?? v;
+  return STAGE_KEY[v] ? i18n.t(STAGE_KEY[v]) : v;
 }
 
 // ────────── reproductiveCondition (植物) ──────────
@@ -115,31 +117,43 @@ export type ReproductiveCondition =
   | 'sporangia'
   | 'cone';
 
-export const REPRODUCTIVE_OPTIONS: Array<{ value: ReproductiveCondition; label: string }> = [
-  { value: 'flowering', label: '開花' },
-  { value: 'budding_flower', label: '花芽' },
-  { value: 'fruiting', label: '結果或種子' },
-  { value: 'sporangia', label: '結孢子囊穗/堆' },
-  { value: 'cone', label: '結毬果' },
-];
+export function reproductiveOptions(): Array<{ value: ReproductiveCondition; label: string }> {
+  return [
+    { value: 'flowering', label: i18n.t('attr.repro.flowering') },
+    { value: 'budding_flower', label: i18n.t('attr.repro.buddingFlower') },
+    { value: 'fruiting', label: i18n.t('attr.repro.fruiting') },
+    { value: 'sporangia', label: i18n.t('attr.repro.sporangia') },
+    { value: 'cone', label: i18n.t('attr.repro.cone') },
+  ];
+}
 
+const REPRO_KEY: Record<string, string> = {
+  flowering: 'attr.repro.flowering', budding_flower: 'attr.repro.buddingFlower',
+  fruiting: 'attr.repro.fruiting', sporangia: 'attr.repro.sporangia', cone: 'attr.repro.cone',
+};
 export function reproductiveLabel(v: string | null | undefined): string {
-  return REPRODUCTIVE_OPTIONS.find((o) => o.value === v)?.label ?? '';
+  return v && REPRO_KEY[v] ? i18n.t(REPRO_KEY[v]) : '';
 }
 
 // ────────── leaf phenology (植物) ──────────
 
 export type LeafPhenology = 'budding_leaf' | 'shedding' | 'green' | 'colored';
 
-export const LEAF_PHENOLOGY_OPTIONS: Array<{ value: LeafPhenology; label: string }> = [
-  { value: 'budding_leaf', label: '開展中的葉芽' },
-  { value: 'shedding', label: '落葉' },
-  { value: 'green', label: '綠葉' },
-  { value: 'colored', label: '有色葉' },
-];
+export function leafPhenologyOptions(): Array<{ value: LeafPhenology; label: string }> {
+  return [
+    { value: 'budding_leaf', label: i18n.t('attr.leaf.buddingLeaf') },
+    { value: 'shedding', label: i18n.t('attr.leaf.shedding') },
+    { value: 'green', label: i18n.t('attr.leaf.green') },
+    { value: 'colored', label: i18n.t('attr.leaf.colored') },
+  ];
+}
 
+const LEAF_KEY: Record<string, string> = {
+  budding_leaf: 'attr.leaf.buddingLeaf', shedding: 'attr.leaf.shedding',
+  green: 'attr.leaf.green', colored: 'attr.leaf.colored',
+};
 export function leafPhenologyLabel(v: string | null | undefined): string {
-  return LEAF_PHENOLOGY_OPTIONS.find((o) => o.value === v)?.label ?? '';
+  return v && LEAF_KEY[v] ? i18n.t(LEAF_KEY[v]) : '';
 }
 
 // ────────── 一次取所有屬性 ──────────

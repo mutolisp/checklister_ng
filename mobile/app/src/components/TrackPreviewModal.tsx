@@ -6,6 +6,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, type LatLng, type Region } from 'react-native-maps';
@@ -21,6 +22,7 @@ type Props = {
 const SEGMENT_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e', '#2563eb', '#9333ea'];
 
 export function TrackPreviewModal({ visible, segments, title, onClose }: Props) {
+  const { t } = useTranslation();
   // SafeAreaView's edges don't propagate inside a sibling <Modal> on iOS;
   // pull the inset value directly and apply paddingTop manually.
   const insets = useSafeAreaInsets();
@@ -87,7 +89,7 @@ export function TrackPreviewModal({ visible, segments, title, onClose }: Props) 
               {title}
             </Text>
             <Text className="text-xs text-gray-300">
-              {segments.length} 段 · {totalPoints} 點 · {lengthStr}
+              {t('transect.summary', { segments: segments.length, points: totalPoints, length: lengthStr })}
             </Text>
           </View>
           <View style={{ width: 44 }} />
@@ -105,12 +107,12 @@ export function TrackPreviewModal({ visible, segments, title, onClose }: Props) 
                   />
                 ) : null,
               )}
-              {startPt ? <Marker coordinate={startPt} pinColor="green" title="起點" /> : null}
-              {endPt ? <Marker coordinate={endPt} pinColor="red" title="終點" /> : null}
+              {startPt ? <Marker coordinate={startPt} pinColor="green" title={t('track.startPoint')} /> : null}
+              {endPt ? <Marker coordinate={endPt} pinColor="red" title={t('track.endPoint')} /> : null}
             </MapView>
           ) : (
             <View className="flex-1 items-center justify-center">
-              <Text className="text-sm text-gray-300">沒有軌跡資料</Text>
+              <Text className="text-sm text-gray-300">{t('track.noData')}</Text>
             </View>
           )}
         </View>

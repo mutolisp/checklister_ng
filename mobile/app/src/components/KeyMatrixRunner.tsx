@@ -29,6 +29,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '~/i18n';
 import {
   Modal,
   Pressable,
@@ -131,11 +133,11 @@ function matchesTaxon(taxon: TaxonRow, selections: Map<number, Selection>): bool
 }
 
 function selectionLabel(sel: Selection | undefined): string {
-  if (!sel) return '未選';
+  if (!sel) return i18n.t('keys.notSelected');
   if (sel.kind === 'categorical') {
-    if (sel.states.length === 0) return '未選';
+    if (sel.states.length === 0) return i18n.t('keys.notSelected');
     if (sel.states.length <= 2) return sel.states.join(' / ');
-    return `${sel.states[0]} 等 ${sel.states.length} 項`;
+    return i18n.t('keys.statesSummary', { state: sel.states[0], count: sel.states.length });
   }
   const lo = sel.min == null ? '–' : String(sel.min);
   const hi = sel.max == null ? '–' : String(sel.max);
@@ -149,6 +151,7 @@ function isSelectionActive(sel: Selection | undefined): boolean {
 }
 
 export function KeyMatrixRunner({ keyId, keyData }: Props) {
+  const { t } = useTranslation();
   const router = useRouter();
   const session = useActiveSession((s) => s.session);
   const startActive = useActiveSession((s) => s.start);
@@ -228,18 +231,18 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
 
   const handleAddToSession = () => {
     if (!activeDetail?.taxon_id) {
-      toast('此物種無 taxon_id');
+      toast(t('addToRecord.noTaxonId'));
       return;
     }
     const target = session ?? startActive();
     if (isTaxonInSession(target.id, activeDetail.taxon_id)) {
-      toast(`已存在：${activeDetail.cname || activeDetail.name}`);
+      toast(t('session.alreadyExists', { name: activeDetail.cname || activeDetail.name }));
       return;
     }
     addRecord({ session_id: target.id, taxon_id: activeDetail.taxon_id });
     refreshActive();
-    toast(`已加入：${activeDetail.cname || activeDetail.name}`, {
-      action: { label: '前往', onPress: () => router.push(`/session/${target.id}` as Href) },
+    toast(t('session.added', { name: activeDetail.cname || activeDetail.name }), {
+      action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}` as Href) },
     });
   };
 
@@ -250,8 +253,8 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
   if (!loaded) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: '檢索表' }} />
-        <Text className="text-sm text-gray-500 dark:text-gray-400">載入中...</Text>
+        <Stack.Screen options={{ title: t('nav.key') }} />
+        <Text className="text-sm text-gray-500 dark:text-gray-400">{t('common.loading')}</Text>
       </SafeAreaView>
     );
   }
@@ -264,7 +267,7 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
       <View style={{ flex: 0.6 }} className="bg-white dark:bg-gray-900">
         <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-2">
           <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-            特徵 ({features.length})
+            {t('keys.features', { count: features.length })}
           </Text>
           <Pressable
             onPress={handleReset}
@@ -272,7 +275,7 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
             hitSlop={6}
             className={`rounded-full px-3 py-1 ${activeCount === 0 ? 'opacity-40' : 'active:bg-gray-100 dark:active:bg-gray-800'}`}
           >
-            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">重置</Text>
+            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">{t('keys.reset')}</Text>
           </Pressable>
         </View>
         <ScrollView>
@@ -293,14 +296,14 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
       {/* Sticky middle bar */}
       <View className="flex-row items-center justify-between border-y border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-4 py-2">
         <Text className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-          剩 {candidates.length} 種
+          {t('keys.remainingSpecies', { count: candidates.length })}
           {activeCount > 0 ? (
-            <Text className="font-normal text-gray-600 dark:text-gray-400">  ·  已選 {activeCount} 條件</Text>
+            <Text className="font-normal text-gray-600 dark:text-gray-400">  ·  {t('keys.selectedConditions', { count: activeCount })}</Text>
           ) : null}
         </Text>
         {activeCount > 0 ? (
           <Pressable onPress={handleReset} hitSlop={6}>
-            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">清空</Text>
+            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">{t('keys.clearAll')}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -312,7 +315,7 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
             <View className="items-center justify-center py-8">
               <Ionicons name="search-outline" size={36} color="#9ca3af" />
               <Text className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                沒有符合條件的物種
+                {t('keys.noMatchSpecies')}
               </Text>
             </View>
           ) : (
@@ -354,6 +357,7 @@ function FeatureRow({
   selection: Selection | undefined;
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const isText = feature.type === 'text';
   const active = isSelectionActive(selection);
   return (
@@ -365,7 +369,7 @@ function FeatureRow({
       <View className="flex-1">
         <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{feature.name}</Text>
         {isText ? (
-          <Text className="text-[11px] text-gray-500 dark:text-gray-400">說明欄位（不參與篩選）</Text>
+          <Text className="text-[11px] text-gray-500 dark:text-gray-400">{t('keys.descFields')}</Text>
         ) : (
           <Text className={`text-xs ${active ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
             {selectionLabel(selection)}
@@ -386,6 +390,7 @@ function CandidateRow({
   features: KeyFeature[];
   onPress: () => void;
 }) {
+  const { t } = useTranslation();
   const info = taxon.info;
   // Show text features inline on candidate card so users still see info like 「分布」
   const textFeatureValues: string[] = [];
@@ -422,7 +427,7 @@ function CandidateRow({
       </View>
       <View className="ml-2 flex-row items-center" style={{ marginTop: 2 }}>
         {info?.is_endemic === 'true' ? (
-          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('species.endemicShort')}</Text>
         ) : null}
         {info?.redlist ? (
           <View className="ml-2">
@@ -447,6 +452,7 @@ function StatePickerSheet({
   onChange: (sel: Selection | null) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   if (!feature) return null;
 
   return (
@@ -467,7 +473,7 @@ function StatePickerSheet({
             <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
               <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{feature.name}</Text>
               <Pressable onPress={onClose} hitSlop={6}>
-                <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">完成</Text>
+                <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{t('common.done')}</Text>
               </Pressable>
             </View>
             {feature.type === 'categorical' ? (
@@ -491,6 +497,7 @@ function CategoricalPicker({
   selection: Selection | undefined;
   onChange: (sel: Selection | null) => void;
 }) {
+  const { t } = useTranslation();
   const values = parseFeatureValues(feature.values_json);
   const selected = selection?.kind === 'categorical' ? selection.states : [];
 
@@ -522,13 +529,13 @@ function CategoricalPicker({
           onPress={() => onChange(null)}
           className="rounded-full px-3 py-2 active:bg-gray-100 dark:active:bg-gray-800"
         >
-          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">不確定 / 清除</Text>
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('keys.uncertainClear')}</Text>
         </Pressable>
         <Pressable
           onPress={() => onChange({ kind: 'categorical', states: [...values] })}
           className="rounded-full px-3 py-2 active:bg-gray-100 dark:active:bg-gray-800"
         >
-          <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">全選</Text>
+          <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{t('keys.selectAll')}</Text>
         </Pressable>
       </View>
     </View>
@@ -546,6 +553,7 @@ function NumericPicker({
   taxa: TaxonRow[];
   onChange: (sel: Selection | null) => void;
 }) {
+  const { t } = useTranslation();
   // Show the observed taxa range as a hint so the user knows the sensible
   // input bounds (e.g. 「現有資料：< 1 ~ 20」for tree-height in metres).
   const allRanges: NumericRange[] = [];
@@ -581,31 +589,31 @@ function NumericPicker({
     <View className="px-4 py-4">
       {dataMin != null || dataMax != null ? (
         <Text className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-          現有資料範圍：{dataMin == null ? '–' : dataMin} ~ {dataMax == null ? '–' : dataMax}
+          {t('keys.dataRange', { min: dataMin == null ? '–' : dataMin, max: dataMax == null ? '–' : dataMax })}
         </Text>
       ) : null}
       <View className="flex-row items-center" style={{ gap: 10 }}>
         <View className="flex-1">
-          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">下限</Text>
+          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">{t('keys.lowerBound')}</Text>
           <TextInput
             value={minStr}
             onChangeText={setMinStr}
             onEndEditing={apply}
             keyboardType="numeric"
-            placeholder="不限"
+            placeholder={t('keys.noLimit')}
             placeholderTextColor="#9ca3af"
             className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
           />
         </View>
         <Text className="text-gray-400 dark:text-gray-500">~</Text>
         <View className="flex-1">
-          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">上限</Text>
+          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">{t('keys.upperBound')}</Text>
           <TextInput
             value={maxStr}
             onChangeText={setMaxStr}
             onEndEditing={apply}
             keyboardType="numeric"
-            placeholder="不限"
+            placeholder={t('keys.noLimit')}
             placeholderTextColor="#9ca3af"
             className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
           />
@@ -620,10 +628,10 @@ function NumericPicker({
           }}
           className="rounded-full px-3 py-2 active:bg-gray-100 dark:active:bg-gray-800"
         >
-          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">不確定 / 清除</Text>
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('keys.uncertainClear')}</Text>
         </Pressable>
         <Pressable onPress={apply} className="rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600">
-          <Text className="text-sm font-medium text-white">套用</Text>
+          <Text className="text-sm font-medium text-white">{t('keys.apply')}</Text>
         </Pressable>
       </View>
     </View>

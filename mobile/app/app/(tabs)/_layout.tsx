@@ -1,4 +1,5 @@
 import { Tabs } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,11 +10,12 @@ import { useSettings } from '~/stores/settings';
 import { showActionSheet } from '~/components/ActionSheet';
 import { createPlotPromptAndOpen, startSessionAndOpen } from '~/lib/recordCreate';
 import { perf } from '~/lib/perf';
+import i18n from '~/i18n';
 
 async function showCreateChooser(): Promise<void> {
   const idx = await showActionSheet({
-    title: '建立新記錄',
-    options: [{ label: '快速名錄' }, { label: '樣區調查' }],
+    title: i18n.t('record.createChooserTitle'),
+    options: [{ label: i18n.t('record.kindSession') }, { label: i18n.t('record.kindPlot') }],
   });
   if (idx === 0) startSessionAndOpen();
   else if (idx === 1) createPlotPromptAndOpen();
@@ -23,14 +25,14 @@ async function showLongPressMenu(): Promise<void> {
   const updateDefault = (v: 'session' | 'plot' | 'ask') =>
     useSettings.getState().set('record_type_default', v);
   const idx = await showActionSheet({
-    title: '建立記錄',
-    message: '選擇一個動作；下方三項是改變 + 鍵的預設行為。',
+    title: i18n.t('record.createMenuTitle'),
+    message: i18n.t('record.createMenuMsg'),
     options: [
-      { label: '快速名錄' },
-      { label: '樣區調查' },
-      { label: '預設：每次詢問' },
-      { label: '預設：快速名錄' },
-      { label: '預設：樣區調查' },
+      { label: i18n.t('record.kindSession') },
+      { label: i18n.t('record.kindPlot') },
+      { label: i18n.t('record.defaultAsk') },
+      { label: i18n.t('record.defaultSession') },
+      { label: i18n.t('record.defaultPlot') },
     ],
   });
   if (idx === 0) startSessionAndOpen();
@@ -67,6 +69,7 @@ function PlusButton() {
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const tint = Colors[colorScheme ?? 'light'].tint;
+  const { t } = useTranslation();
 
   // ActiveSessionBar + status-bar + safe-area spacer + StaleWatchers were
   // lifted to app/_layout.tsx so they persist across stack screens (檢索表
@@ -90,14 +93,14 @@ export default function TabLayout() {
         <Tabs.Screen
           name="menu"
           options={{
-            title: '選單',
+            title: t('tab.menu'),
             tabBarIcon: ({ color }) => <Ionicons name="menu" size={26} color={color} />,
           }}
         />
         <Tabs.Screen
           name="map"
           options={{
-            title: '地圖',
+            title: t('tab.map'),
             tabBarIcon: ({ color }) => <Ionicons name="map-outline" size={24} color={color} />,
           }}
         />
@@ -111,14 +114,14 @@ export default function TabLayout() {
         <Tabs.Screen
           name="index"
           options={{
-            title: '記錄',
+            title: t('tab.records'),
             tabBarIcon: ({ color }) => <Ionicons name="list" size={24} color={color} />,
           }}
         />
         <Tabs.Screen
           name="taxonomy"
           options={{
-            title: '物種',
+            title: t('tab.species'),
             tabBarIcon: ({ color }) => <Ionicons name="leaf-outline" size={24} color={color} />,
             // Eager-mount: taxonomy tree is the heaviest tab (TaxonomySearchBox
             // + segment subtree + cascade hydration of persisted expansion).

@@ -1,3 +1,4 @@
+import i18n from '~/i18n';
 /**
  * IUCN / Taiwan Red List badge colour mapping + alien-status badge helpers.
  *
@@ -74,16 +75,16 @@ export function alienBadge(
   if (t === 'invasive') {
     return {
       kind: 'invasive',
-      shortLabel: '侵',
-      longLabel: '入侵種',
+      shortLabel: i18n.t('conservation.invasiveShort'),
+      longLabel: i18n.t('conservation.invasiveLong'),
       textClass: 'text-red-700 dark:text-red-400',
     };
   }
   if (t === 'naturalized') {
     return {
       kind: 'naturalized',
-      shortLabel: '歸',
-      longLabel: '歸化種',
+      shortLabel: i18n.t('conservation.naturalizedShort'),
+      longLabel: i18n.t('conservation.naturalizedLong'),
       textClass: 'text-rose-500 dark:text-rose-400',
     };
   }
@@ -91,15 +92,15 @@ export function alienBadge(
     if (k === 'Animalia') {
       return {
         kind: 'captive',
-        shortLabel: '圈',
-        longLabel: '圈養',
+        shortLabel: i18n.t('conservation.captiveShort'),
+        longLabel: i18n.t('conservation.captiveLong'),
         textClass: 'text-violet-600 dark:text-violet-400',
       };
     }
     return {
       kind: 'cultivated',
-      shortLabel: '栽',
-      longLabel: '栽培',
+      shortLabel: i18n.t('conservation.cultivatedShort'),
+      longLabel: i18n.t('conservation.cultivatedLong'),
       textClass: 'text-purple-600 dark:text-purple-400',
     };
   }

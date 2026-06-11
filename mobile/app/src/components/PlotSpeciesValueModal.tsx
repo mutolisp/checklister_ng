@@ -7,6 +7,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Modal,
@@ -32,9 +33,9 @@ import {
   SpeciesAttributesBlock,
   type SpeciesAttributesDraft,
 } from './SpeciesAttributesBlock';
-import { EMPTY_DRAFT, DETECTION_OPTIONS } from '~/lib/dwcAttributes';
+import { EMPTY_DRAFT, detectionOptions } from '~/lib/dwcAttributes';
 import {
-  QUANTITY_TYPES,
+  quantityTypes,
   basalArea,
   defaultQuantityTypeFor,
   findQuantityType,
@@ -135,6 +136,7 @@ export function PlotSpeciesValueModal({
   onCancel,
   onSave,
 }: Props) {
+  const { t } = useTranslation();
   const resolvedDefaultType =
     initial?.organism_quantity_type ?? defaultType ?? defaultQuantityTypeFor(kingdom);
 
@@ -305,7 +307,7 @@ export function PlotSpeciesValueModal({
             >
               <View className="mb-3 border-b border-gray-100 dark:border-gray-800 pb-3">
                 <Text className="text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={2}>
-                  {header ? header.cname || '(無中文名)' : title}
+                  {header ? header.cname || t('species.noChineseName') : title}
                 </Text>
                 {header ? (
                   <ScientificName
@@ -375,20 +377,20 @@ export function PlotSpeciesValueModal({
                                 : 'text-emerald-700 dark:text-emerald-300'
                             }`}
                           >
-                            檢索表 ({k.scope_name})
+                            {t('nav.key')} ({k.scope_name})
                           </Text>
                         </Pressable>
                       ))}
                     </View>
                   ) : null}
                 {layer !== 'T' ? (
-                  <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">分層 {layer}</Text>
+                  <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('plotValue.layer', { layer })}</Text>
                 ) : null}
               </View>
               {/* Quantity type picker */}
-              <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">豐度單位</Text>
+              <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.abundanceUnit')}</Text>
               <View className="flex-row flex-wrap gap-1.5">
-                {QUANTITY_TYPES.filter(
+                {quantityTypes().filter(
                   (opt) =>
                     opt.value === qtyType ||
                     !(hideBbDbh && (opt.kind === 'BB' || opt.kind === 'DBH')),
@@ -415,7 +417,7 @@ export function PlotSpeciesValueModal({
                   <Text
                     className={`text-xs font-medium ${currentKind === 'custom' ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
                   >
-                    自定義
+                    {t('plotValue.custom')}
                   </Text>
                 </Pressable>
               </View>
@@ -453,11 +455,11 @@ export function PlotSpeciesValueModal({
               </View>
 
               <View className="mt-4">
-                <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">備註（選填）</Text>
+                <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('endSession.notesOptional')}</Text>
                 <TextInput
                   value={notes}
                   onChangeText={setNotes}
-                  placeholder="觀察補述..."
+                  placeholder={t('plotValue.notesPlaceholder')}
                   placeholderTextColor="#9ca3af"
                   multiline
                   className="min-h-[60px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
@@ -475,9 +477,9 @@ export function PlotSpeciesValueModal({
 
               {showDetection ? (
                 <View className="mt-4">
-                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">偵測方式</Text>
+                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.detectionLabel')}</Text>
                   <View className="flex-row gap-1.5">
-                    {DETECTION_OPTIONS.map((o) => {
+                    {detectionOptions().map((o) => {
                       const on = detection === o.value;
                       return (
                         <Pressable
@@ -497,13 +499,13 @@ export function PlotSpeciesValueModal({
 
               {onSaveLocation ? (
                 <View className="mt-4">
-                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">座標（選填）</Text>
+                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.coordOptional')}</Text>
                   <View className="flex-row items-center gap-2">
                   <Pressable
                     onPress={async () => {
                       const perm = await Location.requestForegroundPermissionsAsync();
                       if (perm.status !== 'granted') {
-                        Alert.alert('需要定位權限', '請到系統設定開啟定位權限');
+                        Alert.alert(t('gps.permTitle'), t('plotValue.permMsg'));
                         return;
                       }
                       try {
@@ -512,16 +514,16 @@ export function PlotSpeciesValueModal({
                         });
                         onSaveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy ?? null);
                       } catch (e) {
-                        Alert.alert('定位失敗', e instanceof Error ? e.message : String(e));
+                        Alert.alert(t('plotValue.locateFailed'), e instanceof Error ? e.message : String(e));
                       }
                     }}
                     onLongPress={
                       lat != null
                         ? () => {
                             Alert.alert('GPS', undefined, [
-                              { text: '取消', style: 'cancel' },
+                              { text: t('common.cancel'), style: 'cancel' },
                               {
-                                text: '清除座標',
+                                text: t('species.clearCoord'),
                                 style: 'destructive',
                                 onPress: () => onSaveLocation(null, null, null),
                               },
@@ -539,9 +541,9 @@ export function PlotSpeciesValueModal({
                     <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
                       {lat != null && lng != null
                         ? `${lat.toFixed(5)}, ${lng.toFixed(5)}${accuracy != null ? ` (±${Math.round(accuracy)}m)` : ''}`
-                        : '定位此物種'}
+                        : t('species.locateSpecies')}
                     </Text>
-                    <Text className="text-[11px] text-gray-400">{lat != null ? '長按清除' : '點選 GPS'}</Text>
+                    <Text className="text-[11px] text-gray-400">{lat != null ? t('species.longPressClear') : t('species.tapGps')}</Text>
                   </Pressable>
                   {lat != null && lng != null ? (
                     <Pressable
@@ -558,14 +560,14 @@ export function PlotSpeciesValueModal({
 
               {onAddPhoto ? (
                 <View className="mt-4">
-                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">照片</Text>
+                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.photo')}</Text>
                   <PhotoGrid
                     photos={photoUris ?? []}
                     onView={(idx) => setViewerIndex(idx)}
                     onAdd={async () => {
                       const idx = await showActionSheet({
-                        title: '加照片',
-                        options: [{ label: '拍照' }, { label: '從相簿選' }],
+                        title: t('species.addPhoto'),
+                        options: [{ label: t('species.takePhoto') }, { label: t('species.pickFromAlbum') }],
                       });
                       if (idx === 0) onAddPhoto('camera');
                       else if (idx === 1) onAddPhoto('library');
@@ -583,13 +585,13 @@ export function PlotSpeciesValueModal({
                 onPress={onCancel}
                 className="flex-1 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 py-3 active:bg-gray-200 dark:active:bg-gray-700"
               >
-                <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">取消</Text>
+                <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
               </Pressable>
               <Pressable
                 onPress={canSave ? handleSave : undefined}
                 className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? 'bg-emerald-500 active:bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
               >
-                <Text className="text-sm font-medium text-white">儲存</Text>
+                <Text className="text-sm font-medium text-white">{t('common.save')}</Text>
               </Pressable>
             </View>
           </SafeAreaView>
@@ -606,7 +608,7 @@ export function PlotSpeciesValueModal({
         <PlotPointPreviewModal
           visible
           onClose={() => setMapPreviewOpen(false)}
-          title={header?.cname || header?.name || '此物種'}
+          title={header?.cname || header?.name || t('plotValue.thisSpecies')}
           focus={{ lat, lng }}
           center={
             plotGeo && plotGeo.lat != null && plotGeo.lng != null
@@ -622,9 +624,10 @@ export function PlotSpeciesValueModal({
 }
 
 function BBInput({ value, onChange }: { value: string | null; onChange: (v: string) => void }) {
+  const { t } = useTranslation();
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">Braun-Blanquet 等級</Text>
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.bbLevel')}</Text>
       <View className="flex-row flex-wrap gap-2">
         {BB_OPTIONS.map((v) => {
           const on = value === v;
@@ -646,9 +649,10 @@ function BBInput({ value, onChange }: { value: string | null; onChange: (v: stri
 }
 
 function PercentInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const { t } = useTranslation();
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">覆蓋度 (%)</Text>
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.coverPct')}</Text>
       <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={value}
@@ -662,11 +666,11 @@ function PercentInput({ value, onChange }: { value: string; onChange: (v: string
         <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">%</Text>
       </View>
       {(() => {
-        const t = value.trim();
-        if (t === '') return null;
-        const n = Number(t);
+        const trimmed = value.trim();
+        if (trimmed === '') return null;
+        const n = Number(trimmed);
         if (Number.isFinite(n) && n > 0 && n <= 100) return null;
-        return <Text className="mt-1 text-xs text-red-500">覆蓋度需大於 0、小於等於 100</Text>;
+        return <Text className="mt-1 text-xs text-red-500">{t('plotValue.coverRange')}</Text>;
       })()}
       <View className="mt-2 flex-row flex-wrap gap-2">
         {[1, 5, 10, 25, 50, 75].map((v) => (
@@ -692,14 +696,15 @@ function CountInput({
   onChange: (v: string) => void;
   suffix: string;
 }) {
+  const { t } = useTranslation();
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">數量 (organismQuantity)</Text>
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.quantity')}</Text>
       <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={value}
           onChangeText={onChange}
-          placeholder="輸入個體數"
+          placeholder={t('plotValue.enterCount')}
           placeholderTextColor="#9ca3af"
           keyboardType="numeric"
           autoFocus
@@ -724,16 +729,17 @@ function DBHInput({
   onAdd: () => void;
   onRemove: (idx: number) => void;
 }) {
+  const { t } = useTranslation();
   const totalBA = basalArea(stems);
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">胸高直徑 (DBH, cm)</Text>
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('abundance.dbh')}</Text>
       <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
         <TextInput
           value={stemDraft}
           onChangeText={setStemDraft}
           onSubmitEditing={onAdd}
-          placeholder="輸入後按 Enter 或 +"
+          placeholder={t('plotValue.dbhPlaceholder')}
           placeholderTextColor="#9ca3af"
           keyboardType="decimal-pad"
           returnKeyType="done"
@@ -755,11 +761,11 @@ function DBHInput({
             ))}
           </View>
           <Text className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-            共 {stems.length} 分枝 · BA ≈ {totalBA.toFixed(1)} cm²
+            {t('plotValue.dbhSummary', { count: stems.length })} · BA ≈ {totalBA.toFixed(1)} cm²
           </Text>
         </>
       ) : (
-        <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">尚未輸入分枝</Text>
+        <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">{t('plotValue.noStems')}</Text>
       )}
     </View>
   );
@@ -793,27 +799,28 @@ function CustomInput({
   quantityValue: string;
   setQuantityValue: (s: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View className="gap-3">
       <View>
         <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-          自訂單位 (organismQuantityType)
+          {t('plotValue.customUnit')}
         </Text>
         <TextInput
           value={typeValue}
           onChangeText={setTypeValue}
-          placeholder="例: 莖節數 / 鳴叫次數 / biomass(g)"
+          placeholder={t('plotValue.customUnitPlaceholder')}
           placeholderTextColor="#9ca3af"
           autoCapitalize="none"
           className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
         />
       </View>
       <View>
-        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">數量 (organismQuantity)</Text>
+        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.quantity')}</Text>
         <TextInput
           value={quantityValue}
           onChangeText={setQuantityValue}
-          placeholder="例: 3 或 1.2 或 abundant"
+          placeholder={t('plotValue.customQtyPlaceholder')}
           placeholderTextColor="#9ca3af"
           className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
         />

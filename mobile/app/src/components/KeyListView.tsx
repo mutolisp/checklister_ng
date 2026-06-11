@@ -23,6 +23,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useRouter, type Href } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '~/i18n';
 import {
   FlatList,
   Platform,
@@ -38,17 +40,12 @@ import { useSettings } from '~/stores/settings';
 import { ScientificName } from './ScientificName';
 import { useThemeColors } from '~/hooks/useThemeColors';
 
-const SCOPE_LABEL: Record<string, string> = {
-  family: '科',
-  genus: '屬',
-  subfamily: '亞科',
-  tribe: '族',
-  order: '目',
-  class: '綱',
-};
-
 function scopeLabel(rank: string): string {
-  return SCOPE_LABEL[rank] ?? rank;
+  const KEY: Record<string, string> = {
+    family: 'rank.family', genus: 'rank.genus', subfamily: 'rank.subfamily',
+    tribe: 'rank.tribe', order: 'rank.order', class: 'rank.class',
+  };
+  return KEY[rank] ? i18n.t(KEY[rank]) : rank;
 }
 
 const ITALIC_RANKS = new Set(['genus', 'subgenus', 'species', 'subspecies', 'variety', 'form']);
@@ -59,8 +56,8 @@ function isItalicRank(rank: string): boolean {
 /** Short chip label for the key's mode. Empty string means no chip — applied
  *  to plain dichotomous keys so existing list rows stay visually unchanged. */
 function modeLabel(mode: string): string {
-  if (mode === 'multi_access') return '多重檢索條件';
-  if (mode === 'both') return '對偶 + 多重檢索條件';
+  if (mode === 'multi_access') return i18n.t('keys.modeMultiAccess');
+  if (mode === 'both') return i18n.t('keys.modeBoth');
   return '';
 }
 
@@ -109,6 +106,7 @@ type Props = {
 };
 
 export function KeyListView({ initialQuery, prefillNonce }: Props = {}) {
+  const { t } = useTranslation();
   const router = useRouter();
   const colors = useThemeColors();
   const recentIds = useSettings((s) => s.key_recent_ids);
@@ -211,10 +209,9 @@ export function KeyListView({ initialQuery, prefillNonce }: Props = {}) {
     return (
       <View className="flex-1 items-center justify-center px-8">
         <Ionicons name="key-outline" size={56} color="#cbd5e1" />
-        <Text className="mt-3 text-base font-medium text-gray-700 dark:text-gray-300">尚無檢索表</Text>
+        <Text className="mt-3 text-base font-medium text-gray-700 dark:text-gray-300">{t('keys.noKeys')}</Text>
         <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-          檢索表由桌面端 Google Sheets / PDF 匯入後同步至 mobile bundle DB。
-          若已匯入仍看不到，請重新 build app。
+          {t('keys.noKeysHint1')}{'\n'}{t('keys.noKeysHint2')}
         </Text>
       </View>
     );
@@ -232,13 +229,13 @@ export function KeyListView({ initialQuery, prefillNonce }: Props = {}) {
           <View className="flex-1 items-center justify-center px-8">
             <Ionicons name="search" size={48} color="#cbd5e1" />
             <Text className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
-              輸入俗名或學名搜尋檢索表{'\n'}或從下方推薦選擇
+              {t('keys.searchHint', { br: '\n' })}
             </Text>
           </View>
         ) : results.length === 0 ? (
           <View className="flex-1 items-center justify-center px-8">
             <Ionicons name="search" size={40} color="#cbd5e1" />
-            <Text className="mt-2 text-sm text-gray-500 dark:text-gray-400">沒有符合的檢索表</Text>
+            <Text className="mt-2 text-sm text-gray-500 dark:text-gray-400">{t('keys.noMatchKeys')}</Text>
           </View>
         ) : (
           <FlatList
@@ -276,7 +273,7 @@ export function KeyListView({ initialQuery, prefillNonce }: Props = {}) {
               <TextInput
                 value={query}
                 onChangeText={setQuery}
-                placeholder="搜尋檢索表（俗名 / 學名）"
+                placeholder={t('keys.searchPlaceholder')}
                 placeholderTextColor={colors.placeholder}
                 autoCorrect={false}
                 returnKeyType="search"

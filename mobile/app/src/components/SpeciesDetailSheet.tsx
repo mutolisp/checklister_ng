@@ -13,8 +13,11 @@ import {
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { showActionSheet } from './ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import { isoDateTime } from '~/lib/datetime';
 import { useRouter } from 'expo-router';
 import {
+  endemicTagLabel,
   getKeysForScope,
   getSynonyms,
   type IdentificationKey,
@@ -88,6 +91,7 @@ export function SpeciesDetailSheet({
   onSaveAttributes,
 }: Props) {
   const router = useRouter();
+  const { t } = useTranslation();
   const [synonyms, setSynonyms] = useState<Synonym[]>([]);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -134,8 +138,7 @@ export function SpeciesDetailSheet({
   const isEndemic = record.is_endemic === 'true';
   const ab = alienBadge(record.alien_type, record.kingdom);
   const links = externalLinks(record);
-  const observed = new Date(record.observed_at);
-  const observedStr = `${observed.getFullYear()}-${String(observed.getMonth() + 1).padStart(2, '0')}-${String(observed.getDate()).padStart(2, '0')} ${String(observed.getHours()).padStart(2, '0')}:${String(observed.getMinutes()).padStart(2, '0')}`;
+  const observedStr = isoDateTime(record.observed_at);
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -155,7 +158,7 @@ export function SpeciesDetailSheet({
             <View className="flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3">
               <View className="flex-1">
                 <Text selectable className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  {record.common_name_c || '(無中文名)'}
+                  {record.common_name_c || t('species.noChineseName')}
                 </Text>
                 <ScientificName
                   name={record.simple_name}
@@ -174,7 +177,7 @@ export function SpeciesDetailSheet({
                   });
                   if (idx >= 0 && idx < actions.length) {
                     const a = actions[idx];
-                    await copyToClipboard(buildSpeciesCopyText(record, a.mode), a.label.replace(/^複製/, ''));
+                    await copyToClipboard(buildSpeciesCopyText(record, a.mode), a.label);
                   }
                 }}
                 hitSlop={8}
@@ -230,7 +233,7 @@ export function SpeciesDetailSheet({
                               : 'text-emerald-700 dark:text-emerald-300'
                           }`}
                         >
-                          檢索表 ({k.scope_name})
+                          {t('nav.key')} ({k.scope_name})
                         </Text>
                       </Pressable>
                     ))}
@@ -239,37 +242,37 @@ export function SpeciesDetailSheet({
               ) : null}
 
               {record.alternative_name_c ? (
-                <Section title="其他俗名">
+                <Section title={t('species.otherNames')}>
                   <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
                     {splitAltNames(record.alternative_name_c).join('、')}
                   </Text>
                 </Section>
               ) : null}
 
-              <Section title="物種狀態">
+              <Section title={t('species.status')}>
                 <View className="flex-row flex-wrap gap-2">
-                  {isEndemic ? <Tag color="emerald" label="特有種" /> : null}
+                  {isEndemic ? <Tag color="emerald" label={endemicTagLabel(record.taxon_id)} /> : null}
                   {ab ? (
                     <Tag
                       color={ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple'}
                       label={ab.longLabel}
                     />
                   ) : null}
-                  {record.is_hybrid === 'true' ? <Tag color="purple" label="雜交" /> : null}
-                  {record.is_terrestrial === 'true' ? <Tag color="blue" label="陸域" /> : null}
-                  {record.is_freshwater === 'true' ? <Tag color="blue" label="淡水" /> : null}
-                  {record.is_brackish === 'true' ? <Tag color="blue" label="半鹹水" /> : null}
-                  {record.is_marine === 'true' ? <Tag color="blue" label="海洋" /> : null}
-                  {record.is_fossil === 'true' ? <Tag color="blue" label="化石" /> : null}
+                  {record.is_hybrid === 'true' ? <Tag color="purple" label={t('species.hybrid')} /> : null}
+                  {record.is_terrestrial === 'true' ? <Tag color="blue" label={t('species.terrestrial')} /> : null}
+                  {record.is_freshwater === 'true' ? <Tag color="blue" label={t('species.freshwater')} /> : null}
+                  {record.is_brackish === 'true' ? <Tag color="blue" label={t('species.brackish')} /> : null}
+                  {record.is_marine === 'true' ? <Tag color="blue" label={t('species.marine')} /> : null}
+                  {record.is_fossil === 'true' ? <Tag color="blue" label={t('species.fossil')} /> : null}
                 </View>
               </Section>
 
-              <Section title="保育狀態">
+              <Section title={t('species.conservation')}>
                 <View className="space-y-1">
-                  <ConservationBadgeRow label="紅皮書" value={record.redlist} />
+                  <ConservationBadgeRow label={t('species.redlist')} value={record.redlist} />
                   <ConservationBadgeRow label="IUCN" value={record.iucn} />
                   <ConservationRow label="CITES" value={record.cites} />
-                  <ConservationRow label="保育類" value={record.protected} />
+                  <ConservationRow label={t('species.protected')} value={record.protected} />
                 </View>
               </Section>
 
@@ -277,7 +280,7 @@ export function SpeciesDetailSheet({
                 const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
                 if (nonAccepted.length === 0) return null;
                 return (
-                  <CollapsibleSection title="同物異名 Synonyms" count={nonAccepted.length} defaultOpen={false}>
+                  <CollapsibleSection title={t('species.synonyms')} count={nonAccepted.length} defaultOpen={false}>
                     {nonAccepted.map((s, idx) => (
                       <View key={idx} className="flex-row flex-wrap items-baseline">
                         <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
@@ -296,16 +299,16 @@ export function SpeciesDetailSheet({
                 );
               })()}
 
-              <Section title="此次紀錄">
-                <Text selectable className="text-sm text-gray-700 dark:text-gray-300">時間：{observedStr}</Text>
+              <Section title={t('species.thisRecord')}>
+                <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{t('species.timeLabel', { time: observedStr })}</Text>
                 {onAddPhoto ? (
                   <PhotoGrid
                     photos={parsePhotoPaths(record.photo_paths)}
                     onView={(idx) => setViewerIndex(idx)}
                     onAdd={async () => {
                       const idx = await showActionSheet({
-                        title: '加照片',
-                        options: [{ label: '拍照' }, { label: '從相簿選' }],
+                        title: t('species.addPhoto'),
+                        options: [{ label: t('species.takePhoto') }, { label: t('species.pickFromAlbum') }],
                       });
                       if (idx === 0) onAddPhoto('camera');
                       else if (idx === 1) onAddPhoto('library');
@@ -319,7 +322,7 @@ export function SpeciesDetailSheet({
                 >
                   <Ionicons name="create-outline" size={18} color="#4b5563" />
                   <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
-                    {record.notes ? record.notes : '加入備註'}
+                    {record.notes ? record.notes : t('species.addNote')}
                   </Text>
                   <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
                 </Pressable>
@@ -329,7 +332,7 @@ export function SpeciesDetailSheet({
                       // Tap to capture current GPS; long-press handled via separate clear action.
                       const perm = await Location.requestForegroundPermissionsAsync();
                       if (perm.status !== 'granted') {
-                        Alert.alert('需要定位權限', '請至 設定 → Checklister → 位置 開啟');
+                        Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
                         return;
                       }
                       try {
@@ -342,16 +345,16 @@ export function SpeciesDetailSheet({
                           pos.coords.accuracy ?? null,
                         );
                       } catch (e) {
-                        Alert.alert('無法取得位置', e instanceof Error ? e.message : String(e));
+                        Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
                       }
                     }}
                     onLongPress={
                       record.lat !== null
                         ? () => {
                             Alert.alert('GPS', undefined, [
-                              { text: '取消', style: 'cancel' },
+                              { text: t('common.cancel'), style: 'cancel' },
                               {
-                                text: '清除座標',
+                                text: t('species.clearCoord'),
                                 style: 'destructive',
                                 onPress: () => onSaveLocation(null, null, null),
                               },
@@ -373,10 +376,10 @@ export function SpeciesDetailSheet({
                               ? ` (±${Math.round(record.accuracy)}m)`
                               : ''
                           }`
-                        : '定位此物種'}
+                        : t('species.locateSpecies')}
                     </Text>
                     <Text className="text-xs text-gray-400 dark:text-gray-500">
-                      {record.lat !== null ? '長按清除' : '點選 GPS'}
+                      {record.lat !== null ? t('species.longPressClear') : t('species.tapGps')}
                     </Text>
                   </Pressable>
                 ) : null}
@@ -397,7 +400,7 @@ export function SpeciesDetailSheet({
                 ) : null}
               </Section>
 
-              <Section title="外部連結">
+              <Section title={t('species.externalLinks')}>
                 <View className="flex-row flex-wrap gap-2">
                   {links.map((link) => (
                     <Pressable
@@ -421,7 +424,7 @@ export function SpeciesDetailSheet({
                   className="flex-row items-center justify-center rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/40 px-4 py-3 active:bg-red-100 dark:active:bg-red-900/60"
                 >
                   <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                  <Text className="ml-2 text-sm font-medium text-red-700 dark:text-red-400">從名錄移除</Text>
+                  <Text className="ml-2 text-sm font-medium text-red-700 dark:text-red-400">{t('session.removeFromList')}</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -431,7 +434,7 @@ export function SpeciesDetailSheet({
         <NotesEditModal
           visible={notesModalOpen}
           initialValue={record.notes ?? ''}
-          title={record.common_name_c || record.simple_name || '備註'}
+          title={record.common_name_c || record.simple_name || t('session.notes')}
           onCancel={() => setNotesModalOpen(false)}
           onSave={(newNotes) => {
             onSaveNotes(newNotes);

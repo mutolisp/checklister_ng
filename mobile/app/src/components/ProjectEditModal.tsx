@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   Platform,
@@ -29,9 +30,12 @@ export function ProjectEditModal({
   target,
   onCancel,
   onSave,
-  newTitle = '新增專案',
-  editTitle = '編輯專案',
+  newTitle,
+  editTitle,
 }: Props) {
+  const { t } = useTranslation();
+  const resolvedNew = newTitle ?? t('sheets.addProjectTitle');
+  const resolvedEdit = editTitle ?? t('sheets.editProjectTitle');
   const visible = target !== null;
   const initial = target === 'new' || target === null ? EMPTY : target;
   const insets = useSafeAreaInsets();
@@ -61,9 +65,9 @@ export function ProjectEditModal({
       >
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={onCancel} hitSlop={8}>
-            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{isNew ? newTitle : editTitle}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{isNew ? resolvedNew : resolvedEdit}</Text>
           <Pressable
             onPress={() => {
               if (!canSave) return;
@@ -77,23 +81,23 @@ export function ProjectEditModal({
             hitSlop={8}
           >
             <Text className={`text-base font-semibold ${canSave ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300'}`}>
-              儲存
+              {t('common.save')}
             </Text>
           </Pressable>
         </View>
         <KeyboardAvoidingView className="flex-1" behavior="padding">
           <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
-            <Field label="計畫名稱">
+            <Field label={t('sheets.projectName')}>
               <TextInput
                 value={name}
                 onChangeText={setName}
                 autoFocus={isNew}
                 className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
-                placeholder="例：玉山國家公園植物相調查"
+                placeholder={t('sheets.projectNameEx')}
                 placeholderTextColor="#9ca3af"
               />
             </Field>
-            <Field label="摘要">
+            <Field label={t('sheets.summary')}>
               <TextInput
                 value={abstract}
                 onChangeText={setAbstract}
@@ -102,14 +106,14 @@ export function ProjectEditModal({
                 style={{ minHeight: 70, textAlignVertical: 'top' }}
               />
             </Field>
-            <Field label="位置說明">
+            <Field label={t('sheets.locationDesc')}>
               <TextInput
                 value={location}
                 onChangeText={setLocation}
                 className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
               />
             </Field>
-            <Field label="備註">
+            <Field label={t('sheets.note')}>
               <TextInput
                 value={notes}
                 onChangeText={setNotes}

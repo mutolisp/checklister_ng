@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listSites, type SiteWithProject } from '~/db';
 
 const TYPE_LABEL: Record<string, string> = {
-  Point: '點位',
-  LineString: '路線',
-  Polygon: '範圍',
-  MultiPoint: '多點',
-  MultiLineString: '多段路線',
-  MultiPolygon: '多範圍',
+  Point: 'sites.typePoint',
+  LineString: 'sites.typeLineString',
+  Polygon: 'sites.typePolygon',
+  MultiPoint: 'sites.typeMultiPoint',
+  MultiLineString: 'sites.typeMultiLineString',
+  MultiPolygon: 'sites.typeMultiPolygon',
 };
 
 const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -44,6 +45,7 @@ export function SiteAssignSheet({
   onAssign,
   onCreateNew,
 }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [sites, setSites] = useState<SiteWithProject[]>([]);
 
@@ -79,22 +81,22 @@ export function SiteAssignSheet({
           className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
           <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指定地理樣區</Text>
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('sheets.assignSite')}</Text>
             <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              點 / 線 / 範圍均可。為當次調查所在地，選填
+              {t('sheets.assignSiteDesc')}
             </Text>
           </View>
 
           <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40">
             <View className="px-4 pb-2 pt-3">
               <Text className="text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
-                新建地理樣區（繪製完自動指派）
+                {t('sheets.newSite')}
               </Text>
             </View>
             <View className="flex-row gap-2 px-4 pb-3">
-              <NewSiteButton icon="pin-outline" label="點" onPress={() => onCreateNew('Point')} />
-              <NewSiteButton icon="analytics-outline" label="線" onPress={() => onCreateNew('LineString')} />
-              <NewSiteButton icon="shapes-outline" label="範圍" onPress={() => onCreateNew('Polygon')} />
+              <NewSiteButton icon="pin-outline" label={t('sheets.btnPoint')} onPress={() => onCreateNew('Point')} />
+              <NewSiteButton icon="analytics-outline" label={t('sheets.btnLine')} onPress={() => onCreateNew('LineString')} />
+              <NewSiteButton icon="shapes-outline" label={t('sheets.btnPolygon')} onPress={() => onCreateNew('Polygon')} />
             </View>
           </View>
 
@@ -104,7 +106,7 @@ export function SiteAssignSheet({
               className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-3 active:bg-gray-100 dark:active:bg-gray-700"
             >
               <Ionicons name="close-circle-outline" size={20} color="#6b7280" style={{ marginRight: 12 }} />
-              <Text className="flex-1 text-base text-gray-700 dark:text-gray-300">移除指派</Text>
+              <Text className="flex-1 text-base text-gray-700 dark:text-gray-300">{t('sheets.removeAssign')}</Text>
             </Pressable>
           ) : null}
 
@@ -112,7 +114,7 @@ export function SiteAssignSheet({
             {sortedSites.length === 0 ? (
               <View className="px-4 py-6">
                 <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
-                  尚無地理樣區。點上方「新建地理樣區」開始繪製。
+                  {t('sheets.emptySites')}
                 </Text>
               </View>
             ) : (
@@ -138,7 +140,7 @@ export function SiteAssignSheet({
                         {s.name}
                       </Text>
                       <Text className="text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
-                        {TYPE_LABEL[s.geometry_type] ?? s.geometry_type} · {s.project_name}
+                        {t(TYPE_LABEL[s.geometry_type] ?? '') || s.geometry_type} · {s.project_name}
                       </Text>
                     </View>
                     {active ? <Ionicons name="checkmark" size={20} color="#2563eb" /> : null}

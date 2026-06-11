@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Slider from '@react-native-community/slider';
@@ -28,6 +29,7 @@ type Props = {
  *  each source keeps its own selected layer + opacity, so overlays can be
  *  stacked (e.g. an NLSC basemap under a Sinica historical layer). */
 export function LayerSheet({ visible, sources, onClose }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState(0);
   const [query, setQuery] = useState('');
@@ -64,7 +66,7 @@ export function LayerSheet({ visible, sources, onClose }: Props) {
           </View>
 
           <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">WMTS 疊圖圖層</Text>
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('layerSheet.title')}</Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={20} color="#6b7280" />
             </Pressable>
@@ -100,14 +102,14 @@ export function LayerSheet({ visible, sources, onClose }: Props) {
             <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3">
               <View className="flex-row items-center justify-between">
                 <Text className="flex-1 text-xs font-medium text-blue-900 dark:text-blue-100" numberOfLines={1}>
-                  目前疊圖：{selectedTitle}
+                  {t('layerSheet.current', { title: selectedTitle })}
                 </Text>
                 <Pressable onPress={() => active.onSelect('')} hitSlop={6} className="ml-2">
-                  <Text className="text-xs font-medium text-red-600 dark:text-red-400">移除</Text>
+                  <Text className="text-xs font-medium text-red-600 dark:text-red-400">{t('common.remove')}</Text>
                 </Pressable>
               </View>
               <View className="mt-2 flex-row items-center">
-                <Text className="w-12 text-xs text-blue-900 dark:text-blue-100">不透明</Text>
+                <Text className="w-12 text-xs text-blue-900 dark:text-blue-100">{t('layerSheet.opacity')}</Text>
                 <Slider
                   style={{ flex: 1, height: 30 }}
                   value={active.opacity}
@@ -129,7 +131,7 @@ export function LayerSheet({ visible, sources, onClose }: Props) {
               <Ionicons name="search" size={16} color="#6b7280" />
               <TextInput
                 className="ml-2 flex-1 text-sm text-gray-900 dark:text-gray-100"
-                placeholder={`搜尋 ${active.layers.length} 個圖層`}
+                placeholder={t('layerSheet.searchPlaceholder', { count: active.layers.length })}
                 placeholderTextColor="#9ca3af"
                 value={query}
                 onChangeText={setQuery}
@@ -171,7 +173,7 @@ export function LayerSheet({ visible, sources, onClose }: Props) {
             }}
             ListEmptyComponent={
               <View className="px-4 py-8">
-                <Text className="text-center text-sm text-gray-500 dark:text-gray-400">沒有符合的圖層</Text>
+                <Text className="text-center text-sm text-gray-500 dark:text-gray-400">{t('layerSheet.noMatch')}</Text>
               </View>
             }
           />

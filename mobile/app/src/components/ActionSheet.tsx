@@ -20,6 +20,7 @@
  * so the Android modal renders above all screens.
  */
 import { ActionSheetIOS, Modal, Platform, Pressable, Text, View } from 'react-native';
+import i18n from '~/i18n';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { create } from 'zustand';
 
@@ -67,7 +68,7 @@ export function showActionSheet(req: ActionSheetRequest): Promise<number> {
         {
           title: req.title,
           message: req.message,
-          options: [...labels, req.cancelLabel ?? '取消'],
+          options: [...labels, req.cancelLabel ?? i18n.t('common.cancel')],
           cancelButtonIndex: cancelIdx,
           destructiveButtonIndex: destructiveIdx >= 0 ? destructiveIdx : undefined,
         },
@@ -138,7 +139,7 @@ export function ActionSheetHost() {
               className="items-center justify-center py-3.5 active:bg-gray-50 dark:active:bg-gray-800"
             >
               <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                {pending.cancelLabel ?? '取消'}
+                {pending.cancelLabel ?? i18n.t('common.cancel')}
               </Text>
             </Pressable>
           </View>

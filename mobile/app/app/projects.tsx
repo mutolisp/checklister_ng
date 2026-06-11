@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -16,6 +17,7 @@ import { SwipeRow } from '~/components/SwipeRow';
 import { BackHeaderLeft } from '~/lib/goBack';
 
 export default function ProjectsScreen() {
+  const { t } = useTranslation();
   const [projects, setProjects] = useState<ProjectWithCounts[]>([]);
   const [editing, setEditing] = useState<ProjectEditTarget>(null);
 
@@ -32,12 +34,12 @@ export default function ProjectsScreen() {
   const handleDelete = (project: ProjectWithCounts) => {
     if (project.id === 0) return;
     Alert.alert(
-      '刪除專案？',
-      `「${project.name}」會被刪除。原屬此專案的 ${project.session_count} 個名錄與 ${project.plot_count} 個樣區會回到「未分類」。`,
+      t('projects.deleteTitle'),
+      t('projects.deleteMsg', { name: project.name, sessions: project.session_count, plots: project.plot_count }),
       [
-        { text: '取消', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '刪除',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => {
             deleteProject(project.id);
@@ -52,7 +54,7 @@ export default function ProjectsScreen() {
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
-          title: '專案管理',
+          title: t('nav.projects'),
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable onPress={() => setEditing('new')} hitSlop={8}>
@@ -82,7 +84,7 @@ export default function ProjectsScreen() {
                   {item.name}
                 </Text>
                 <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  名錄 {item.session_count} · 樣區 {item.plot_count}
+                  {t('projects.stats', { sessions: item.session_count, plots: item.plot_count })}
                 </Text>
                 {item.location_description ? (
                   <Text className="mt-0.5 text-xs text-gray-400 dark:text-gray-500" numberOfLines={1}>

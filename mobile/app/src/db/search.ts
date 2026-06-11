@@ -1,4 +1,6 @@
 import { getTaicolDb } from './init';
+import i18n from '~/i18n';
+import { isJpTaxonId } from './regions';
 import type { TaicolRow, SearchResult, AdvancedFilters, TaxonGroup } from './types';
 
 export const TAXON_GROUP_FILTERS: Record<TaxonGroup, Partial<Record<'kingdom' | 'phylum' | 'class', string>>> = {
@@ -44,15 +46,15 @@ export function groupFilterClause(
   return ors.length > 0 ? ` AND (${ors.join(' OR ')})` : '';
 }
 
-const ALIEN_TYPE_MAP: Record<string, string> = {
-  native: '原生',
-  naturalized: '歸化',
-  invasive: '歸化',
+const ALIEN_TYPE_KEY: Record<string, string> = {
+  native: 'alien.native',
+  naturalized: 'alien.naturalized',
+  invasive: 'alien.naturalized',
 };
 
 function mapAlienType(alienType: string, kingdom: string): string {
-  if (alienType === 'cultured') return kingdom === 'Animalia' ? '圈養' : '栽培';
-  return ALIEN_TYPE_MAP[alienType] ?? alienType ?? '';
+  if (alienType === 'cultured') return i18n.t(kingdom === 'Animalia' ? 'alien.captive' : 'alien.cultivated');
+  return ALIEN_TYPE_KEY[alienType] ? i18n.t(ALIEN_TYPE_KEY[alienType]) : (alienType ?? '');
 }
 
 function escapeLike(s: string): string {
@@ -126,6 +128,7 @@ function rowToResult(
     rank: row.rank ?? '',
     is_autonym: isAutonym(row.simple_name ?? '', row.rank ?? ''),
     is_sensu_lato: false,
+    region: (row.taxon_id ?? '').charAt(0) === 'y' ? 'JP' : 'TW',
   };
 
   if (matchedRow && matchedRow.usage_status !== 'accepted') {
@@ -175,15 +178,17 @@ export type SearchOptions = {
 export function searchByTaxonId(taxonId: string): SearchResult | null {
   if (!taxonId) return null;
   const db = getTaicolDb();
-  // Prefer the accepted row; fall back to any row keyed by this taxon_id
-  // so synonyms still surface basic metadata.
+  // Query the dataset's real table directly by 't…'/'y…' prefix (no UNION
+  // view). Prefer the accepted row; fall back to any row so synonyms still
+  // surface basic metadata.
+  const table = isJpTaxonId(taxonId) ? 'ylist_names' : 'taicol_names';
   let res = db.executeSync(
-    `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE taxon_id = ? AND usage_status = 'accepted' LIMIT 1`,
+    `SELECT ${SEARCH_COLUMNS} FROM ${table} WHERE taxon_id = ? AND usage_status = 'accepted' LIMIT 1`,
     [taxonId],
   );
   let row = (res.rows ?? [])[0] as TaicolRow | undefined;
   if (!row) {
-    res = db.executeSync(`SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE taxon_id = ? LIMIT 1`, [taxonId]);
+    res = db.executeSync(`SELECT ${SEARCH_COLUMNS} FROM ${table} WHERE taxon_id = ? LIMIT 1`, [taxonId]);
     row = (res.rows ?? [])[0] as TaicolRow | undefined;
   }
   if (!row) return null;
@@ -411,4 +416,86 @@ export function searchSpecies({ q, groups, advanced = {}, limit = 30 }: SearchOp
 
   const top = results.slice(0, limit);
   return markSensuLato(top);
+}
+
+/**
+ * Search the Japan (YList) dataset in `ylist_names`. Only called when the Japan
+ * region is enabled. Simpler than `searchSpecies`: YList has no synonyms (all
+ * rows accepted), no `is_in_taiwan` gate, and no sensu-lato marking. Same column
+ * projection + `rowToResult` as TaiCOL, so results slot into the shared UI; the
+ * region is inferred from the 'y…' taxon_id by `rowToResult`.
+ */
+export function searchSpeciesJp({ q, groups, advanced = {}, limit = 30 }: SearchOptions): SearchResult[] {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+
+  const db = getTaicolDb();
+  const pattern = `%${escapeLike(trimmed)}%`;
+  const params: (string | number)[] = [pattern, pattern, pattern, pattern, pattern];
+
+  let sql =
+    `SELECT ${SEARCH_COLUMNS} FROM ylist_names WHERE (` +
+    'common_name_c LIKE ? ESCAPE "\\" OR ' +
+    'alternative_name_c LIKE ? ESCAPE "\\" OR ' +
+    'simple_name LIKE ? ESCAPE "\\" OR ' +
+    'family LIKE ? ESCAPE "\\" OR ' +
+    'family_c LIKE ? ESCAPE "\\")';
+
+  sql += groupFilterClause(groups, params);
+
+  if (advanced.rank) {
+    if (advanced.rank === 'infraspecies') sql += ` AND rank IN ('Subspecies','Variety','Form')`;
+    else {
+      sql += ` AND rank = ?`;
+      params.push(advanced.rank);
+    }
+  }
+  if (advanced.endemic === 'true') sql += ` AND is_endemic = 'true'`;
+  if (advanced.family) {
+    sql += ` AND family = ?`;
+    params.push(advanced.family);
+  }
+  if (advanced.order) {
+    sql += ` AND "order" = ?`;
+    params.push(advanced.order);
+  }
+  if (advanced.class_name) {
+    sql += ` AND class = ?`;
+    params.push(advanced.class_name);
+  }
+  if (advanced.genus) {
+    sql += ` AND genus = ?`;
+    params.push(advanced.genus);
+  }
+
+  sql += ` LIMIT 100`;
+
+  const res = db.executeSync(sql, params);
+  const rows = (res.rows ?? []) as unknown as TaicolRow[];
+
+  const seen = new Set<string>();
+  const results: SearchResult[] = [];
+  for (const row of rows) {
+    const key = row.taxon_id ?? String(row.name_id);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(rowToResult(row));
+  }
+
+  // 和名 ranking: exact → prefix → contains → length.
+  results.sort((a, b) => {
+    const score = (r: SearchResult): number[] => [
+      r._raw_cname === trimmed ? 0 : 1,
+      r.name === trimmed ? 0 : 1,
+      r._raw_cname.startsWith(trimmed) ? 0 : 1,
+      r._raw_cname.includes(trimmed) ? 0 : 1,
+      r._raw_cname.length,
+    ];
+    const sa = score(a);
+    const sb = score(b);
+    for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return sa[i] - sb[i];
+    return a._raw_cname.localeCompare(b._raw_cname);
+  });
+
+  return results.slice(0, limit);
 }

@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { memo, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { prewarmFuzzyIndex, searchWithFuzzyFallback, type SearchResult } from '~/db';
 import type { TaxonGroup } from '~/db/types';
@@ -8,7 +9,6 @@ import { TaxonGroupPicker } from './TaxonGroupPicker';
 import { ScientificName } from './ScientificName';
 import { useSettings } from '~/stores/settings';
 
-const PLACEHOLDER = '輸入物種/分類群關鍵字...';
 /**
  * Debounce window between the last keystroke and the actual search firing.
  * Chinese IME composition pauses for ~100-200ms between committed chars, so
@@ -60,6 +60,7 @@ function cacheSet(key: string, value: SearchResult[]): void {
 }
 
 export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afterSelect = 'refocus' }: Props) {
+  const { t } = useTranslation();
   const lastGroups = useSettings((s) => s.last_search_groups);
   const setSetting = useSettings((s) => s.set);
 
@@ -172,7 +173,7 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
           <TextInput
             ref={inputRef}
             className="ml-2 flex-1 text-base text-gray-900 dark:text-gray-100"
-            placeholder={PLACEHOLDER}
+            placeholder={t('search.placeholder')}
             placeholderTextColor="#9ca3af"
             value={query}
             onChangeText={setQuery}
@@ -204,9 +205,10 @@ const AutocompleteRow = memo(function AutocompleteRow({
   onPress: () => void;
   onLongPress?: () => void;
 }) {
+  const { t } = useTranslation();
   const isSynonym = !!result.matched_as;
   const isFuzzy = !!result.fuzzy_match;
-  const cname = result.cname || '(無中文名)';
+  const cname = result.cname || t('species.noChineseName');
   const isEndemic = result.endemic === 1;
   const ab = alienBadge(result.alien_type, result.kingdom);
   return (
@@ -229,7 +231,7 @@ const AutocompleteRow = memo(function AutocompleteRow({
           className="text-sm text-gray-700 dark:text-gray-300"
         />
         {isEndemic ? (
-          <Text className="ml-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+          <Text className="ml-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('species.endemicShort')}</Text>
         ) : null}
         {ab ? (
           <Text className={`ml-1.5 text-xs font-medium ${ab.textClass}`}>{ab.shortLabel}</Text>
@@ -237,7 +239,7 @@ const AutocompleteRow = memo(function AutocompleteRow({
       </View>
       {result.matched_as ? (
         <Text className="mt-0.5 text-xs text-orange-700 dark:text-orange-300" numberOfLines={1}>
-          ↳ 你輸入：
+          {t('search.youEntered')}
           <ScientificName
             name={result.matched_as.name}
             kingdom={result.kingdom}

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSite, listProjects, type Project } from '~/db';
@@ -27,6 +28,7 @@ const FORMAT_LABEL: Record<GeoFormat, string> = {
 };
 
 export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommitted }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [filename, setFilename] = useState('');
   const [format, setFormat] = useState<GeoFormat | null>(null);
@@ -61,12 +63,12 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
       const text = await file.text();
       const detected = detectFormat(text, asset.name);
       if (!detected) {
-        Alert.alert('無法辨識格式', '請使用 .geojson / .json / .kml / .gpx / .wkt');
+        Alert.alert(t('geoImport.badFormat'), t('geoImport.badFormatMsg'));
         return;
       }
       const parsed = parseGeoFile(text, detected);
       if (parsed.length === 0) {
-        Alert.alert('解析失敗', '檔案內沒有可匯入的幾何資料');
+        Alert.alert(t('geoImport.parseFail'), t('geoImport.parseFailMsg'));
         return;
       }
 
@@ -78,7 +80,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
       const base = asset.name.replace(/\.[^.]+$/, '');
       setNamePrefix(base);
     } catch (e) {
-      Alert.alert('讀檔失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('geoImport.readFail'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -90,7 +92,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
       const name =
         item.name?.trim() ||
         (imported.length === 1 ? namePrefix : `${namePrefix} #${i + 1}`) ||
-        `匯入 ${i + 1}`;
+        t('geoImport.importN', { n: i + 1 });
       try {
         createSite({
           project_id: projectId,
@@ -107,7 +109,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
     }
     onCommitted(added);
     if (added < imported.length) {
-      Alert.alert('部分匯入', `共 ${imported.length} 筆，成功 ${added} 筆`);
+      Alert.alert(t('geoImport.partial'), t('geoImport.partialMsg', { total: imported.length, added }));
     }
     handleClose();
   };
@@ -122,14 +124,14 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
       >
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={handleClose} hitSlop={8}>
-            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">匯入地理檔案</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('geoImport.title')}</Text>
           <Pressable onPress={handleCommit} hitSlop={8} disabled={imported.length === 0}>
             <Text
               className={`text-base font-semibold ${imported.length === 0 ? 'text-gray-300' : 'text-blue-600 dark:text-blue-400'}`}
             >
-              建立 {imported.length || ''}
+              {t('geoImport.create', { n: imported.length || '' })}
             </Text>
           </Pressable>
         </View>
@@ -139,15 +141,15 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
             <View className="items-center px-6 py-12">
               <Ionicons name="cloud-upload-outline" size={56} color="#9ca3af" />
               <Text className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
-                支援 GeoJSON / KML / GPX / WKT 檔案。
-                {'\n'}MultiPoint / MultiLineString / MultiPolygon 自動保留結構。
+                {t('geoImport.supportHint')}
+                {'\n'}{t('geoImport.multiHint')}
               </Text>
               <Pressable
                 onPress={handlePickFile}
                 className="mt-6 flex-row items-center rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600"
               >
                 <Ionicons name="folder-open-outline" size={16} color="white" />
-                <Text className="ml-1 text-sm font-medium text-white">選擇檔案</Text>
+                <Text className="ml-1 text-sm font-medium text-white">{t('geoImport.pickFile')}</Text>
               </Pressable>
             </View>
           ) : (
@@ -158,24 +160,24 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
                   {format ? `（${FORMAT_LABEL[format]}）` : ''}
                 </Text>
                 <Text className="mt-1 text-xs text-blue-800">
-                  共 {imported.length} 個幾何，將建立 {imported.length} 個地理樣區
+                  {t('geoImport.geomSummary', { count: imported.length })}
                 </Text>
               </View>
 
-              <Field label="名稱前綴">
+              <Field label={t('geoImport.namePrefix')}>
                 <TextInput
                   value={namePrefix}
                   onChangeText={setNamePrefix}
                   className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
-                  placeholder="例：浸水營"
+                  placeholder={t('geoImport.namePrefixEx')}
                   placeholderTextColor="#9ca3af"
                 />
                 <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  原始檔內已有名稱會優先使用；多筆幾何會加 #1, #2 ...
+                  {t('geoImport.namePrefixHint')}
                 </Text>
               </Field>
 
-              <Field label="專案">
+              <Field label={t('plot.project')}>
                 <View className="flex-row flex-wrap gap-2">
                   {projects.map((p) => {
                     const active = p.id === projectId;
@@ -198,19 +200,19 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
 
               <View className="px-4 py-3">
                 <Text className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                  幾何預覽
+                  {t('geoImport.geomPreview')}
                 </Text>
                 {imported.slice(0, 20).map((item, i) => (
                   <View key={i} className="border-b border-gray-100 dark:border-gray-800 py-2">
                     <Text className="text-sm text-gray-900 dark:text-gray-100">
-                      {item.name || `${namePrefix || '匯入'} #${i + 1}`}
+                      {item.name || `${namePrefix || t('geoImport.defaultPrefix')} #${i + 1}`}
                     </Text>
                     <Text className="text-xs text-gray-500 dark:text-gray-400">{item.geometry.type}</Text>
                   </View>
                 ))}
                 {imported.length > 20 ? (
                   <Text className="mt-2 text-xs italic text-gray-500 dark:text-gray-400">
-                    （另有 {imported.length - 20} 筆未列出）
+                    {t('geoImport.moreNotListed', { count: imported.length - 20 })}
                   </Text>
                 ) : null}
               </View>
@@ -221,7 +223,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
                   className="flex-row items-center self-start rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1.5 active:bg-gray-200 dark:active:bg-gray-700"
                 >
                   <Ionicons name="folder-open-outline" size={14} color="#374151" />
-                  <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">換另一個檔案</Text>
+                  <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">{t('geoImport.anotherFile')}</Text>
                 </Pressable>
               </View>
             </>
@@ -231,7 +233,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
         {currentProject ? (
           <View className="border-t border-gray-100 dark:border-gray-800 px-4 py-2">
             <Text className="text-xs text-gray-500 dark:text-gray-400">
-              目標專案：<Text className="font-medium text-gray-700 dark:text-gray-300">{currentProject.name}</Text>
+              {t('geoImport.targetProject')}<Text className="font-medium text-gray-700 dark:text-gray-300">{currentProject.name}</Text>
             </Text>
           </View>
         ) : null}

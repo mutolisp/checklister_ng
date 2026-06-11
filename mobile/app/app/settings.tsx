@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter, type Href } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -8,50 +9,70 @@ import {
   type CardDensity,
   type FontScale,
   type RecordTypeDefault,
+  type RegionCode,
+  type Language,
 } from '~/stores/settings';
-import { clearAllUserData, clearSearchHistory } from '~/db';
+import { clearAllUserData, clearSearchHistory, clearTaxonomyCache } from '~/db';
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 
 export default function SettingsScreen() {
   const settings = useSettings();
+  const { t } = useTranslation();
   const toast = useToast((s) => s.show);
   const router = useRouter();
   const refreshActiveSession = useActiveSession((s) => s.refresh);
   const reloadSettings = useSettings((s) => s.load);
 
   const themeOptions: Array<{ value: Theme; label: string }> = [
-    { value: 'auto', label: '跟隨系統' },
-    { value: 'light', label: '淺色' },
-    { value: 'dark', label: '深色' },
+    { value: 'auto', label: t('settings.themeAuto') },
+    { value: 'light', label: t('settings.themeLight') },
+    { value: 'dark', label: t('settings.themeDark') },
+  ];
+
+  // Language self-names stay untranslated (English / 正體中文).
+  const languageOptions: Array<{ value: Language; label: string }> = [
+    { value: 'system', label: t('settings.languageSystem') },
+    { value: 'en', label: 'English' },
+    { value: 'zh-TW', label: '正體中文' },
   ];
 
   const undoOptions = [5, 8, 10];
   const densityOptions: Array<{ value: CardDensity; label: string }> = [
-    { value: 'compact', label: '緊湊' },
-    { value: 'comfortable', label: '寬鬆' },
+    { value: 'compact', label: t('settings.densityCompact') },
+    { value: 'comfortable', label: t('settings.densityComfortable') },
   ];
   const fontScaleOptions: Array<{ value: FontScale; label: string }> = [
-    { value: 'small', label: '小' },
-    { value: 'normal', label: '預設' },
-    { value: 'large', label: '大' },
-    { value: 'xlarge', label: '特大' },
+    { value: 'small', label: t('settings.fontSmall') },
+    { value: 'normal', label: t('settings.fontNormal') },
+    { value: 'large', label: t('settings.fontLarge') },
+    { value: 'xlarge', label: t('settings.fontXLarge') },
   ];
   const recordTypeOptions: Array<{ value: RecordTypeDefault; label: string }> = [
-    { value: 'ask', label: '每次詢問' },
-    { value: 'session', label: '快速名錄' },
-    { value: 'plot', label: '樣區調查' },
+    { value: 'ask', label: t('settings.createAsk') },
+    { value: 'session', label: t('record.kindSession') },
+    { value: 'plot', label: t('record.kindPlot') },
   ];
 
+  const jpEnabled = settings.enabled_regions.includes('JP');
+  const setJp = (on: boolean) => {
+    const next: RegionCode[] = on ? ['TW', 'JP'] : ['TW'];
+    settings.set('enabled_regions', next);
+    clearTaxonomyCache(); // tree dataset changed — drop the kingdom cache
+    // No toast here: the ToastHost banner overlays the nav header's top-left
+    // back button, swallowing taps while visible. The pill's active state is
+    // sufficient feedback and matches the other rows on this screen.
+  };
+
   const handleClearHistory = () => {
-    Alert.alert('清除查詢歷史？', '已記錄的搜尋字串會全部移除。', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('settings.clearHistoryConfirmTitle'), t('settings.clearHistoryConfirmMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '清除',
+        text: t('common.clear'),
         style: 'destructive',
         onPress: () => {
           clearSearchHistory();
-          toast('已清除查詢歷史');
+          toast(t('settings.historyCleared'));
         },
       },
     ]);
@@ -59,97 +80,108 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-      <Stack.Screen options={{ title: '偏好設定' }} />
+      <Stack.Screen options={{ title: t('settings.title') }} />
       <ScrollView>
-        <Section title="外觀">
+        <Section title={t('settings.sectionAppearance')}>
           <RowSelect
-            label="主題"
+            label={t('settings.language')}
+            value={settings.language}
+            options={languageOptions}
+            onChange={(v) => settings.set('language', v)}
+          />
+          <RowSelect
+            label={t('settings.theme')}
             value={settings.theme}
             options={themeOptions}
             onChange={(v) => settings.set('theme', v)}
           />
           <RowSelect
-            label="物種卡片密度"
+            label={t('settings.cardDensity')}
             value={settings.card_density}
             options={densityOptions}
             onChange={(v) => settings.set('card_density', v)}
           />
           <RowSelect
-            label="字體大小"
+            label={t('settings.fontSize')}
             value={settings.font_scale}
             options={fontScaleOptions}
             onChange={(v) => settings.set('font_scale', v)}
           />
         </Section>
-        <Section title="互動">
+        <Section title={t('settings.sectionInteraction')}>
           <RowSelect
-            label="Undo 時長"
+            label={t('settings.undoDuration')}
             value={settings.undo_duration}
-            options={undoOptions.map((s) => ({ value: s, label: `${s} 秒` }))}
+            options={undoOptions.map((s) => ({ value: s, label: t('settings.undoSeconds', { count: s }) }))}
             onChange={(v) => settings.set('undo_duration', v)}
           />
           <RowSelect
-            label="＋ 預設建立"
+            label={t('settings.defaultCreate')}
             value={settings.record_type_default}
             options={recordTypeOptions}
             onChange={(v) => settings.set('record_type_default', v)}
           />
         </Section>
-        <Section title="AI 辨識">
+        <Section title={t('settings.sectionRegions')}>
           <RowSelect
-            label="GPS 過濾"
-            value={settings.ai_geomodel_filter ? 'on' : 'off'}
+            label={t('settings.regionJapan')}
+            value={jpEnabled ? 'on' : 'off'}
             options={[
-              { value: 'on', label: '開啟（建議）' },
-              { value: 'off', label: '關閉' },
+              { value: 'off', label: t('settings.off') },
+              { value: 'on', label: t('settings.on') },
             ]}
-            onChange={(v) => settings.set('ai_geomodel_filter', v === 'on')}
+            onChange={(v) => setJp(v === 'on')}
           />
+          <View className="bg-white dark:bg-gray-900 px-4 pb-3">
+            <Text className="text-xs text-gray-500 dark:text-gray-400">
+              {t('settings.regionJapanDesc')}
+            </Text>
+          </View>
         </Section>
-        <Section title="調查">
+        <Section title={t('settings.sectionSurvey')}>
           <Pressable
             onPress={() => router.push('/surveyors' as Href)}
             className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
           >
             <View>
-              <Text className="text-base text-gray-900 dark:text-gray-100">調查者</Text>
-              <Text className="text-xs text-gray-500 dark:text-gray-400">常用調查者清單，可設預設自動帶入</Text>
+              <Text className="text-base text-gray-900 dark:text-gray-100">{t('settings.surveyors')}</Text>
+              <Text className="text-xs text-gray-500 dark:text-gray-400">{t('settings.surveyorsDesc')}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
           </Pressable>
         </Section>
-        <Section title="資料">
+        <Section title={t('settings.sectionData')}>
           <Pressable
             onPress={handleClearHistory}
             className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
           >
-            <Text className="text-base text-gray-900 dark:text-gray-100">清除查詢歷史</Text>
+            <Text className="text-base text-gray-900 dark:text-gray-100">{t('settings.clearHistory')}</Text>
           </Pressable>
           <Pressable
             onPress={() => {
               Alert.alert(
-                '清除所有資料？',
-                '所有記錄、專案、設定都會刪除。TaiCOL 物種資料保留。',
+                t('settings.clearAllConfirmTitle'),
+                t('settings.clearAllConfirmMsg'),
                 [
-                  { text: '取消', style: 'cancel' },
+                  { text: t('common.cancel'), style: 'cancel' },
                   {
-                    text: '確定清除',
+                    text: t('common.confirm'),
                     style: 'destructive',
                     onPress: () => {
-                      Alert.alert('再次確認', '此動作無法復原。', [
-                        { text: '取消', style: 'cancel' },
+                      Alert.alert(t('settings.clearAllConfirm2Title'), t('settings.clearAllConfirm2Msg'), [
+                        { text: t('common.cancel'), style: 'cancel' },
                         {
-                          text: '清除',
+                          text: t('common.clear'),
                           style: 'destructive',
                           onPress: async () => {
                             try {
                               await clearAllUserData();
                               reloadSettings();
                               refreshActiveSession();
-                              toast('已清除所有資料');
+                              toast(t('settings.allCleared'));
                               router.replace('/');
                             } catch (e) {
-                              toast(`清除失敗：${e instanceof Error ? e.message : String(e)}`);
+                              toast(t('settings.clearFailed', { error: e instanceof Error ? e.message : String(e) }));
                             }
                           },
                         },
@@ -161,8 +193,8 @@ export default function SettingsScreen() {
             }}
             className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
           >
-            <Text className="text-base text-red-600 dark:text-red-400">清除所有資料</Text>
-            <Text className="text-xs text-gray-500 dark:text-gray-400">不可復原，需二次確認</Text>
+            <Text className="text-base text-red-600 dark:text-red-400">{t('settings.clearAll')}</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400">{t('settings.clearAllDesc')}</Text>
           </Pressable>
         </Section>
       </ScrollView>

@@ -9,6 +9,7 @@
  *   - (tabs)/taxonomy.tsx (Search segment)
  */
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { Keyboard, Text, View } from 'react-native';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
@@ -24,6 +25,7 @@ type Props = {
 };
 
 export function SpeciesSearchPanel({ autoFocus = false }: Props) {
+  const { t } = useTranslation();
   const { addSpecies, modal, targetLabel } = useAddToActiveRecord();
   // KSV opened-offset so SearchBox sits flush against the keyboard top (without
   // this it floats `tabBarHeight` above the keyboard — see same fix in
@@ -71,7 +73,7 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
           <View className="flex-1 items-center justify-center px-8">
             <Ionicons name="search-outline" size={48} color="#cbd5e1" />
             <Text className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
-              下方輸入俗名 / 學名 / 科名搜尋物種，{'\n'}選擇結果後在此檢視詳細資訊。
+              {t('speciesSearch.hint', { br: '\n' })}
             </Text>
           </View>
         )}

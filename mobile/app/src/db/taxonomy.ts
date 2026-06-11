@@ -5,21 +5,34 @@
  */
 import { getTaicolDb } from './init';
 import { searchWithFuzzyFallback } from './fuzzy';
+import {
+  jpEnabled,
+  getEnabledRegions,
+  isJpTaxonId,
+  regionOfTaxonId,
+  normalizeSci,
+  crossRegionVernacular,
+  composeVernacular,
+} from './regions';
 import type { SearchResult } from './types';
+
+/**
+ * Region scope for tree queries. With Japan enabled we query the `all_names`
+ * view (taicol_names ∪ ylist_names) and let YList rows through the Taiwan gate
+ * via `region='JP'` (they have no is_in_taiwan flag). YList hierarchy columns
+ * are aligned to TaiCOL conventions (see ylist_import.py), so shared genera /
+ * families merge under the same nodes. Taiwan-only stays on the original
+ * taicol_names path — byte-identical to before.
+ */
+function regionScope(): { table: string; taiwanClause: string } {
+  return jpEnabled()
+    ? { table: 'all_names', taiwanClause: "(is_in_taiwan LIKE '%true%' OR region='JP')" }
+    : { table: 'taicol_names', taiwanClause: "is_in_taiwan LIKE '%true%'" };
+}
 
 export const RANK_ORDER = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'] as const;
 export type Rank = (typeof RANK_ORDER)[number];
 export type ChildRank = Rank | 'species';
-
-export const RANK_LABELS: Record<string, string> = {
-  kingdom: '界',
-  phylum: '門',
-  class: '綱',
-  order: '目',
-  family: '科',
-  genus: '屬',
-  species: '種',
-};
 
 const RANK_C_COL: Record<string, string> = {
   kingdom: 'kingdom_c',
@@ -111,14 +124,17 @@ function buildStatsCols(rankIdx: number): string {
 }
 
 function buildStatsDict(row: Record<string, unknown>, rankIdx: number): Record<string, number> {
+  // Keyed by language-independent rank-key (e.g. 'phylum', 'species',
+  // 'infraspecific'); the tree row localizes via t('rank.'+key) at render so
+  // the kingdom cache / fetched nodes re-localize on a language switch.
   const stats: Record<string, number> = {};
   for (const r of RANK_ORDER.slice(rankIdx + 1)) {
     const key = `${r}_count`;
-    if (key in row) stats[RANK_LABELS[r]] = (row[key] as number) ?? 0;
+    if (key in row) stats[r] = (row[key] as number) ?? 0;
   }
-  stats[RANK_LABELS.species] = (row.species_count as number) ?? 0;
+  stats['species'] = (row.species_count as number) ?? 0;
   const infra = (row.infraspecific_count as number) ?? 0;
-  if (infra) stats['種下'] = infra;
+  if (infra) stats['infraspecific'] = infra;
   return stats;
 }
 
@@ -128,9 +144,20 @@ function buildStatsDict(row: Record<string, unknown>, rankIdx: number): Record<s
  *  uncached SQL runs ~200ms (GROUP BY + 7 aggregations over in-Taiwan
  *  accepted rows) which is enough to feel laggy when switching tabs. */
 let CACHED_KINGDOMS: TaxonNode[] | null = null;
+/** Region signature the kingdom cache was computed under; cache is invalid when
+ *  the enabled regions change (JP toggled in settings). */
+let CACHED_KINGDOMS_SCOPE: string | null = null;
+
+function scopeSig(): string {
+  return getEnabledRegions().join(',');
+}
 
 function getTopLevel(): TaxonNode[] {
-  if (CACHED_KINGDOMS === null) CACHED_KINGDOMS = computeTopLevel();
+  const sig = scopeSig();
+  if (CACHED_KINGDOMS === null || CACHED_KINGDOMS_SCOPE !== sig) {
+    CACHED_KINGDOMS = computeTopLevel();
+    CACHED_KINGDOMS_SCOPE = sig;
+  }
   return CACHED_KINGDOMS;
 }
 
@@ -138,7 +165,14 @@ function getTopLevel(): TaxonNode[] {
  *  call from DBProvider after splash so the first taxonomy tab open is
  *  instant instead of paying the ~200ms SQL cost on mount. */
 export function prewarmKingdoms(): void {
-  if (CACHED_KINGDOMS === null) CACHED_KINGDOMS = computeTopLevel();
+  getTopLevel();
+}
+
+/** Invalidate the kingdom cache — call when enabled regions change so the tree
+ *  reflects the new dataset on next open. */
+export function clearTaxonomyCache(): void {
+  CACHED_KINGDOMS = null;
+  CACHED_KINGDOMS_SCOPE = null;
 }
 
 /**
@@ -150,12 +184,13 @@ function computeTopLevel(): TaxonNode[] {
   const virusList = [...VIRUS_KINGDOMS].map((k) => `'${k.replace(/'/g, "''")}'`).join(', ');
   const statsCols = buildStatsCols(0);
   const cCol = RANK_C_COL.kingdom;
+  const { table, taiwanClause } = regionScope();
 
   const sql = `
     SELECT kingdom AS name, ${statsCols}, MAX(${cCol}) AS name_c
-    FROM taicol_names
+    FROM ${table}
     WHERE usage_status='accepted'
-      AND is_in_taiwan LIKE '%true%'
+      AND ${taiwanClause}
       AND rank IN ('Species','Subspecies','Variety','Form')
       AND kingdom NOT IN (${virusList})
     GROUP BY kingdom
@@ -168,7 +203,7 @@ function computeTopLevel(): TaxonNode[] {
   return rows.map((row) => ({
     name: row.name as string,
     name_c: (row.name_c as string) ?? '',
-    rank: RANK_LABELS.kingdom,
+    rank: 'kingdom',
     rank_key: 'kingdom',
     child_rank: 'phylum',
     stats: buildStatsDict(row, 0),
@@ -201,14 +236,15 @@ export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
   const cCol = RANK_C_COL[opts.rank];
   const extraCols = cCol ? `, MAX(${cCol}) AS name_c` : '';
   const dbCol = quoteCol(opts.rank);
+  const { table, taiwanClause } = regionScope();
 
-  let where = `usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank IN ('Species','Subspecies','Variety','Form')`;
+  let where = `usage_status='accepted' AND ${taiwanClause} AND rank IN ('Species','Subspecies','Variety','Form')`;
   const params: string[] = [];
   where += buildAncestorWhere(opts.ancestors, params);
 
   const sql = `
     SELECT ${dbCol} AS name, ${statsCols} ${extraCols}
-    FROM taicol_names
+    FROM ${table}
     WHERE ${where}
     GROUP BY ${dbCol}
     HAVING name IS NOT NULL AND name != ''
@@ -222,7 +258,7 @@ export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
   return rows.map((row) => ({
     name: row.name as string,
     name_c: (row.name_c as string) ?? '',
-    rank: RANK_LABELS[opts.rank],
+    rank: opts.rank,
     rank_key: opts.rank,
     child_rank: childRank,
     stats: buildStatsDict(row, rankIdx),
@@ -309,13 +345,43 @@ function taxonRowToSpecies(row: Record<string, unknown>): TaxonSpecies {
 
 export function getSpeciesUnder(ancestors?: Ancestors): TaxonSpecies[] {
   const db = getTaicolDb();
-  let where = `usage_status='accepted' AND is_in_taiwan LIKE '%true%' AND rank IN ('Species','Subspecies','Variety','Form')`;
+  const { table, taiwanClause } = regionScope();
+  let where = `usage_status='accepted' AND ${taiwanClause} AND rank IN ('Species','Subspecies','Variety','Form')`;
   const params: string[] = [];
   where += buildAncestorWhere(ancestors, params);
-  const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM taicol_names WHERE ${where} ORDER BY simple_name`;
+  const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM ${table} WHERE ${where} ORDER BY simple_name`;
   const res = db.executeSync(sql, params);
   const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
-  return rows.map(taxonRowToSpecies);
+  let species = rows.map(taxonRowToSpecies);
+
+  if (jpEnabled()) {
+    // Collapse shared species (same scientific name across TW + JP) to one row,
+    // preferring the TaiCOL ('t…') row for hierarchy/conservation; then merge
+    // the cross-region vernacular into common_name_c.
+    const byKey = new Map<string, TaxonSpecies>();
+    for (const sp of species) {
+      const key = normalizeSci(sp.simple_name);
+      const existing = byKey.get(key);
+      if (!existing) byKey.set(key, sp);
+      else if (isJpTaxonId(existing.taxon_id) && !isJpTaxonId(sp.taxon_id)) byKey.set(key, sp);
+    }
+    species = [...byKey.values()];
+    const regions = getEnabledRegions();
+    const cross = crossRegionVernacular(
+      species.map((s) => s.taxon_id),
+      regions,
+    );
+    species = species.map((sp) => ({
+      ...sp,
+      common_name_c: composeVernacular(
+        sp.common_name_c,
+        regionOfTaxonId(sp.taxon_id),
+        cross.get(sp.taxon_id),
+        regions,
+      ),
+    }));
+  }
+  return species;
 }
 
 function getSpeciesAsNodes(): TaxonNode[] {
@@ -439,16 +505,17 @@ export function searchTaxonomy(q: string): TaxonSearchHit[] {
     }
   }
 
+  const { table, taiwanClause } = regionScope();
   const sql = `
     SELECT DISTINCT simple_name, common_name_c, rank,
            kingdom, kingdom_c, phylum, phylum_c,
            class, class_c, "order", order_c,
            family, family_c, genus, genus_c,
            name_author
-    FROM taicol_names
+    FROM ${table}
     WHERE (${conditions.join(' OR ')})
       AND usage_status = 'accepted'
-      AND is_in_taiwan LIKE '%true%'
+      AND ${taiwanClause}
       AND rank IN ('Species', 'Subspecies', 'Variety', 'Form', 'Genus', 'Family', 'Order', 'Class', 'Phylum')
     LIMIT 50
   `;

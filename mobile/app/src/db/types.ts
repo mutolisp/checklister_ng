@@ -78,6 +78,9 @@ export type SearchResult = {
   rank: string;
   is_autonym: boolean;
   is_sensu_lato: boolean;
+  /** Source dataset. 'TW' (TaiCOL, default) or 'JP' (YList). Set when the
+   *  Japan regional database is enabled; absent ⇒ treat as 'TW'. */
+  region?: 'TW' | 'JP';
   matched_as?: { name: string; fullname: string; status: string };
   fuzzy_match?: { query: string; matched: string; score: number };
 };

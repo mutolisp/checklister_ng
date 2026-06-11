@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -14,6 +15,7 @@ import { useSurveyors } from '~/stores/surveyors';
 import type { Surveyor } from '~/db';
 
 export default function SurveyorsScreen() {
+  const { t } = useTranslation();
   const items = useSurveyors((s) => s.items);
   const refresh = useSurveyors((s) => s.refresh);
   const add = useSurveyors((s) => s.add);
@@ -26,9 +28,9 @@ export default function SurveyorsScreen() {
 
   const handleAdd = async () => {
     const name = await promptText({
-      title: '新增調查者',
-      placeholder: '姓名',
-      confirmText: '建立',
+      title: t('surveyors.addTitle'),
+      placeholder: t('surveyors.namePlaceholder'),
+      confirmText: t('surveyors.create'),
       autoCapitalize: 'words',
     });
     if (name?.trim()) add(name);
@@ -36,9 +38,9 @@ export default function SurveyorsScreen() {
 
   const handleRename = async (id: number, current: string) => {
     const name = await promptText({
-      title: '改名',
+      title: t('surveyors.renameTitle'),
       defaultValue: current,
-      confirmText: '儲存',
+      confirmText: t('common.save'),
       autoCapitalize: 'words',
     });
     if (name?.trim()) rename(id, name);
@@ -46,7 +48,7 @@ export default function SurveyorsScreen() {
 
   const renderItem = ({ item, drag, isActive }: RenderItemParams<Surveyor>) => (
     <ScaleDecorator>
-      <SwipeRow onDelete={() => remove(item.id)} label="刪除">
+      <SwipeRow onDelete={() => remove(item.id)} label={t('common.delete')}>
         <View
           className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 ${isActive ? 'opacity-90' : ''}`}
         >
@@ -68,7 +70,7 @@ export default function SurveyorsScreen() {
             <Text className="text-base text-gray-900 dark:text-gray-100">{item.name}</Text>
           </Pressable>
           {item.is_default ? (
-            <Text className="mr-3 text-xs font-medium text-amber-700 dark:text-amber-300">預設</Text>
+            <Text className="mr-3 text-xs font-medium text-amber-700 dark:text-amber-300">{t('surveyors.default')}</Text>
           ) : null}
           {/* Drag handle — long-press to pick up and reorder. */}
           <Pressable onLongPress={drag} delayLongPress={120} hitSlop={10} className="py-3 pl-1">
@@ -83,7 +85,7 @@ export default function SurveyorsScreen() {
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
-          title: '調查者',
+          title: t('nav.surveyors'),
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable onPress={handleAdd} hitSlop={8}>
@@ -94,7 +96,7 @@ export default function SurveyorsScreen() {
       />
       <View className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-2">
         <Text className="text-xs text-gray-500 dark:text-gray-400">
-          標記「預設」(★) 的調查者，建立新的快速記錄 / 樣區 / 穿越線時會自動帶入。長按右側 ☰ 可拖曳調整順序。
+          {t('surveyors.hint')}
         </Text>
       </View>
       <DraggableFlatList
@@ -105,7 +107,7 @@ export default function SurveyorsScreen() {
         ListEmptyComponent={
           <View className="px-4 py-16">
             <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
-              尚無調查者，點右上角「＋」新增。
+              {t('surveyors.empty')}
             </Text>
           </View>
         }

@@ -22,6 +22,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '~/i18n';
 import { Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -71,26 +73,21 @@ type LeadPreview =
 
 /** Short label for the subkey scope rank, used in the action-button hint
  *  e.g. "續查屬內檢索表". Falls back to the raw rank for unmapped values. */
-const SUBKEY_RANK_LABEL: Record<string, string> = {
-  family: '科',
-  subfamily: '亞科',
-  tribe: '族',
-  genus: '屬',
-  subgenus: '亞屬',
-};
 function subkeyRankLabel(rank: string): string {
-  return SUBKEY_RANK_LABEL[rank] ?? rank;
+  const KEY: Record<string, string> = {
+    family: 'rank.family', subfamily: 'rank.subfamily', tribe: 'rank.tribe',
+    genus: 'rank.genus', subgenus: 'rank.subgenus',
+  };
+  return KEY[rank] ? i18n.t(KEY[rank]) : rank;
 }
 
 /** Short chip label for a key's mode — used to disambiguate when the same
  *  scope has multiple subkeys (dichotomous + multi_access). */
-const SUBKEY_MODE_LABEL: Record<string, string> = {
-  dichotomous: '對偶',
-  multi_access: '多重檢索條件',
-  both: '對偶 + 多重檢索條件',
-};
 function subkeyModeLabel(mode: string): string {
-  return SUBKEY_MODE_LABEL[mode] ?? mode;
+  const KEY: Record<string, string> = {
+    dichotomous: 'keys.modeDichotomous', multi_access: 'keys.modeMultiAccess', both: 'keys.modeBoth',
+  };
+  return KEY[mode] ? i18n.t(KEY[mode]) : mode;
 }
 
 type TraceStep = {
@@ -206,10 +203,11 @@ function buildLeadPreview(
   if (f.type === 'subkey') {
     return { kind: 'unresolved', rawText: `subkey ${f.id ?? ''}` };
   }
-  return { kind: 'unresolved', rawText: '(未解析)' };
+  return { kind: 'unresolved', rawText: i18n.t('keys.unresolved') };
 }
 
 export default function KeyRunnerScreen() {
+  const { t: tr } = useTranslation();
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -365,7 +363,7 @@ export default function KeyRunnerScreen() {
           terminal: { kind: 'taxon', taxonId: f.id!, marker: f.marker, status: f.status },
         }));
       } else if (f.type === 'subkey') {
-        Alert.alert('Subkey 尚未支援', 'Step 5-2 將支援科 → 屬巢狀檢索表。');
+        Alert.alert(tr('keys.subkeyUnsupported'), tr('keys.subkeyUnsupportedMsg'));
       } else {
         setState((prev) => ({ ...prev, terminal: { kind: 'unresolved', rawId: f.id } }));
       }
@@ -418,7 +416,7 @@ export default function KeyRunnerScreen() {
   const addTaxonToActiveRecord = useCallback(
     (taxonId: string, taxon: KeyTaxonInfo | null) => {
       if (!taxon) {
-        toast('找不到此 taxon');
+        toast(tr('keys.taxonNotFound'));
         return;
       }
       if (activePlot) {
@@ -433,17 +431,17 @@ export default function KeyRunnerScreen() {
       // as SpeciesSearchPanel).
       const target = activeSession ?? startActiveSession();
       if (!target) {
-        toast('無法啟動名錄');
+        toast(tr('keys.cannotStartSession'));
         return;
       }
       if (isTaxonInSession(target.id, taxonId)) {
-        toast(`已存在於目前名錄：${taxon.common_name_c || taxon.simple_name}`);
+        toast(tr('keys.alreadyInSession', { name: taxon.common_name_c || taxon.simple_name }));
         return;
       }
       addRecord({ session_id: target.id, taxon_id: taxonId });
       refreshActiveSession();
-      toast(`已加入：${taxon.common_name_c || taxon.simple_name}`, {
-        action: { label: '前往', onPress: () => router.push(`/session/${target.id}` as Href) },
+      toast(tr('session.added', { name: taxon.common_name_c || taxon.simple_name }), {
+        action: { label: tr('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}` as Href) },
       });
     },
     [activePlot, activeSession, startActiveSession, refreshActiveSession, router, toast],
@@ -466,8 +464,8 @@ export default function KeyRunnerScreen() {
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
       });
       setPlotValueTarget(null);
-      toast(`已加入樣區：${t.common_name_c || t.simple_name}（分層 ${plotValueTarget.layer}）`, {
-        action: { label: '前往', onPress: () => router.push(`/plot/${activePlot.id}` as Href) },
+      toast(tr('keys.addedToPlotLayer', { name: t.common_name_c || t.simple_name, layer: plotValueTarget.layer }), {
+        action: { label: tr('addToRecord.goTo'), onPress: () => router.push(`/plot/${activePlot.id}` as Href) },
       });
     },
     [plotValueTarget, activePlot, router, toast],
@@ -477,8 +475,8 @@ export default function KeyRunnerScreen() {
   if (!loaded) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: '檢索表', headerLeft: BackHeaderLeft }} />
-        <Text className="text-sm text-gray-500 dark:text-gray-400">載入中...</Text>
+        <Stack.Screen options={{ title: tr('nav.key'), headerLeft: BackHeaderLeft }} />
+        <Text className="text-sm text-gray-500 dark:text-gray-400">{tr('common.loading')}</Text>
       </SafeAreaView>
     );
   }
@@ -486,8 +484,8 @@ export default function KeyRunnerScreen() {
   if (!keyData) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: '檢索表', headerLeft: BackHeaderLeft }} />
-        <Text className="text-sm text-gray-500 dark:text-gray-400">找不到此檢索表</Text>
+        <Stack.Screen options={{ title: tr('nav.key'), headerLeft: BackHeaderLeft }} />
+        <Text className="text-sm text-gray-500 dark:text-gray-400">{tr('keys.keyNotFound')}</Text>
       </SafeAreaView>
     );
   }
@@ -503,7 +501,7 @@ export default function KeyRunnerScreen() {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
         <Stack.Screen options={{ title: keyData.scope_name, headerLeft: BackHeaderLeft }} />
-        <Text className="text-sm text-gray-500 dark:text-gray-400">此檢索表沒有節點內容</Text>
+        <Text className="text-sm text-gray-500 dark:text-gray-400">{tr('keys.noNodes')}</Text>
       </SafeAreaView>
     );
   }
@@ -570,11 +568,11 @@ export default function KeyRunnerScreen() {
       <Stack.Screen
         options={{
           title: screenTitle,
-          headerBackTitle: '返回',
+          headerBackTitle: tr('nav.back'),
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable onPress={restart} hitSlop={8}>
-              <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">重來</Text>
+              <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{tr('keys.restart')}</Text>
             </Pressable>
           ),
         }}
@@ -595,7 +593,7 @@ export default function KeyRunnerScreen() {
         {keyData.source ? (
           <View className="mt-6 border-t border-gray-100 dark:border-gray-800 px-4 pt-3">
             <Text className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
-              引用
+              {tr('keys.citation')}
             </Text>
             <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400" selectable>
               {/* Strip the "(Sheets:<id>#<worksheet>)" trace the importer
@@ -616,7 +614,7 @@ export default function KeyRunnerScreen() {
             className="flex-row items-center justify-center py-3 active:bg-gray-100 dark:active:bg-gray-700"
           >
             <Ionicons name="arrow-back" size={16} color="#374151" />
-            <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">上一步</Text>
+            <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">{tr('keys.prevStep')}</Text>
           </Pressable>
         </View>
       ) : null}
@@ -676,6 +674,7 @@ function Breadcrumb({
    *  losing their place. */
   onLongPressStep: (coupletNumber: number) => void;
 }) {
+  const { t: tr } = useTranslation();
   if (path.length === 0) return null;
   return (
     <ScrollView
@@ -691,7 +690,7 @@ function Breadcrumb({
         * has a sense of progress regardless of where they're scrolled. */}
       <View className="mr-2 rounded-md bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5">
         <Text className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
-          第 {path.length} 步
+          {tr('keys.stepN', { n: path.length })}
         </Text>
       </View>
       {path.map((n, i) => {
@@ -720,7 +719,7 @@ function Breadcrumb({
         <View className="flex-row items-center">
           <Ionicons name="chevron-forward" size={10} color="#9ca3af" style={{ marginHorizontal: 2 }} />
           <View className="rounded-full bg-blue-500 px-2 py-0.5">
-            <Text className="text-[11px] font-semibold text-white">終點</Text>
+            <Text className="text-[11px] font-semibold text-white">{tr('keys.terminal')}</Text>
           </View>
         </View>
       ) : null}
@@ -741,10 +740,11 @@ function CoupletView({
   reachableCount: number;
   onPeekCandidates: () => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <View className="px-4 pt-3">
       <View className="mb-2 flex-row items-center justify-between">
-        <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">檢索條件 {couplet.number}</Text>
+        <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">{tr('keys.coupletN', { n: couplet.number })}</Text>
         {reachableCount > 0 ? (
           <Pressable
             onPress={onPeekCandidates}
@@ -752,7 +752,7 @@ function CoupletView({
           >
             <Ionicons name="list" size={12} color="#6b7280" />
             <Text className="ml-1 text-[11px] font-medium text-gray-700 dark:text-gray-300">
-              不確定？看候選 ({reachableCount})
+              {tr('keys.uncertainSeeCandidates', { count: reachableCount })}
             </Text>
           </Pressable>
         ) : null}
@@ -779,6 +779,7 @@ function LeadButton({
   preview: LeadPreview;
   onPress: () => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
@@ -789,7 +790,7 @@ function LeadButton({
           <Text className="text-sm font-bold text-white">{label}</Text>
         </View>
         <Text className="flex-1 text-base leading-6 text-gray-900 dark:text-gray-100" selectable>
-          {text || '(無描述)'}
+          {text || tr('keys.noDescription')}
         </Text>
       </View>
       <LeadPreviewLine preview={preview} />
@@ -798,10 +799,11 @@ function LeadButton({
 }
 
 function LeadPreviewLine({ preview }: { preview: LeadPreview }) {
+  const { t: tr } = useTranslation();
   if (preview.kind === 'couplet') {
     return (
       <Text className="mt-2 text-xs font-medium text-blue-600 dark:text-blue-400">
-        → 檢索條件 {preview.coupletNumber}
+        {tr('keys.toCoupletN', { n: preview.coupletNumber })}
       </Text>
     );
   }
@@ -851,6 +853,7 @@ function TerminalTaxon({
   onBack: () => void;
   onRestart: () => void;
 }) {
+  const { t: tr } = useTranslation();
   if (!taxon) {
     // Common case: terminal points to a scope (subfamily / family) that
     // TaiCOL doesn't carry a taxon_id for, e.g. Poaceae key lead "Bambusoideae
@@ -861,7 +864,7 @@ function TerminalTaxon({
       <View className="px-4 pt-4">
         <View className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 px-4 py-4">
           <Text className="text-base font-medium text-amber-800 dark:text-amber-300">
-            {subkeys.length > 0 ? '此終端為下一層檢索表' : '無此 taxon_id'}
+            {subkeys.length > 0 ? tr('keys.terminalIsSubkey') : tr('keys.noTaxonId')}
           </Text>
           <Text className="mt-1 text-xs text-amber-700 dark:text-amber-300">{taxonId}</Text>
         </View>
@@ -881,13 +884,13 @@ function TerminalTaxon({
   type Tag = { label: string; bg: string; text: string };
   const tags: Tag[] = [];
   if (taxon.is_endemic === 'true')
-    tags.push({ label: '臺灣特有', bg: 'bg-emerald-100 dark:bg-emerald-900/60', text: 'text-emerald-700 dark:text-emerald-300' });
+    tags.push({ label: tr('keys.endemicTw'), bg: 'bg-emerald-100 dark:bg-emerald-900/60', text: 'text-emerald-700 dark:text-emerald-300' });
   // redlist + IUCN are rendered as ConservationBadge below the tags row
   // so they get the official IUCN palette instead of the generic Tailwind tag.
   if (taxon.cites)
     tags.push({ label: `CITES ${taxon.cites}`, bg: 'bg-red-100 dark:bg-red-900/60', text: 'text-red-700 dark:text-red-400' });
   if (taxon.protected)
-    tags.push({ label: `保育 ${taxon.protected}`, bg: 'bg-red-100 dark:bg-red-900/60', text: 'text-red-700 dark:text-red-400' });
+    tags.push({ label: tr('keys.protectedLevel', { level: taxon.protected }), bg: 'bg-red-100 dark:bg-red-900/60', text: 'text-red-700 dark:text-red-400' });
   if (marker) tags.push({ label: marker, bg: 'bg-blue-100 dark:bg-blue-900/60', text: 'text-blue-700 dark:text-blue-300' });
 
   return (
@@ -897,9 +900,9 @@ function TerminalTaxon({
         className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-4 active:bg-emerald-100 dark:active:bg-emerald-900/60"
       >
         <View className="flex-row items-center justify-between">
-          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">檢索完成</Text>
+          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{tr('keys.keyDone')}</Text>
           <View className="flex-row items-center">
-            <Text className="mr-1 text-[11px] text-emerald-700 dark:text-emerald-300">詳細資訊</Text>
+            <Text className="mr-1 text-[11px] text-emerald-700 dark:text-emerald-300">{tr('keys.details')}</Text>
             <Ionicons name="information-circle-outline" size={14} color="#047857" />
           </View>
         </View>
@@ -976,6 +979,7 @@ function SubkeyButton({
   showModeBadge: boolean;
   onPress: () => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <Pressable
       onPress={onPress}
@@ -987,7 +991,7 @@ function SubkeyButton({
       <View className="flex-1">
         <View className="flex-row items-center flex-wrap">
           <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">
-            續查{subkeyRankLabel(subkey.scope_rank)}內檢索表
+            {tr('keys.continueSubkey', { rank: subkeyRankLabel(subkey.scope_rank) })}
           </Text>
           {showModeBadge ? (
             <View className="ml-2 rounded bg-blue-200 dark:bg-blue-800/80 px-1.5 py-0.5">
@@ -1019,20 +1023,21 @@ function AddToActiveRecordButton({
   target: 'plot' | 'session' | 'new-session';
   onPress: () => void;
 }) {
+  const { t: tr } = useTranslation();
   // 文案依目標調整：plot 要再輸豐度故說「填入豐度」；session 已存在就直接加；
   // 沒任何 active 時誠實告知會幫他建一筆新名錄。
   const label =
     target === 'plot'
-      ? '加入目前樣區（下一步輸入豐度）'
+      ? tr('keys.addToPlot')
       : target === 'session'
-        ? '加入目前名錄'
-        : '建立新名錄並加入';
+        ? tr('addToRecord.toSession')
+        : tr('addToRecord.newSession');
   const sub =
     target === 'plot'
-      ? '依現有樣區的分層與單位設定填寫'
+      ? tr('keys.addToPlotDesc')
       : target === 'session'
-        ? '加入已開啟的名錄'
-        : '尚無進行中的記錄，將自動開一筆新名錄';
+        ? tr('keys.addToOpenSession')
+        : tr('keys.addNewSessionDesc');
   return (
     <Pressable
       onPress={onPress}
@@ -1057,15 +1062,16 @@ function UnresolvedTerminal({
   rawId: string | null;
   onBack: () => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <View className="px-4 pt-6">
       <View className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 px-4 py-4">
-        <Text className="text-base font-medium text-amber-800 dark:text-amber-300">無法解析的指向</Text>
+        <Text className="text-base font-medium text-amber-800 dark:text-amber-300">{tr('keys.unresolvableTitle')}</Text>
         <Text className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-          原始值：<Text className="font-mono">{rawId ?? '(空)'}</Text>
+          {tr('keys.rawValue')}<Text className="font-mono">{rawId ?? tr('keys.empty')}</Text>
         </Text>
         <Text className="mt-2 text-xs text-amber-700 dark:text-amber-300">
-          通常是來源資料的 typo 或 PDF font 誤讀（例如 `:` 應為 8 / 9）。請至 Google Sheets 修正後重新匯入。
+          {tr('keys.unresolvableHint')}
         </Text>
       </View>
       <FooterButtons onBack={onBack} />
@@ -1080,6 +1086,7 @@ function FooterButtons({
   onBack: () => void;
   onRestart?: () => void;
 }) {
+  const { t: tr } = useTranslation();
   return (
     <View className="mt-4 flex-row gap-3">
       <Pressable
@@ -1087,7 +1094,7 @@ function FooterButtons({
         className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-700 py-3 active:bg-gray-300 dark:active:bg-gray-600"
       >
         <Ionicons name="arrow-back" size={14} color="#374151" />
-        <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">上一步</Text>
+        <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">{tr('keys.prevStep')}</Text>
       </Pressable>
       {onRestart ? (
         <Pressable
@@ -1095,7 +1102,7 @@ function FooterButtons({
           className="flex-1 flex-row items-center justify-center rounded-lg bg-emerald-500 py-3 active:bg-emerald-600"
         >
           <Ionicons name="refresh" size={14} color="white" />
-          <Text className="ml-1.5 text-sm font-medium text-white">重來</Text>
+          <Text className="ml-1.5 text-sm font-medium text-white">{tr('keys.restart')}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -1122,6 +1129,7 @@ function CandidatesSheet({
   onPick: (c: ReachableTerminal) => void;
   onClose: () => void;
 }) {
+  const { t: tr } = useTranslation();
   // Sort: resolved taxa first (with cname), then by cname / sciname order so
   // the user can scan alphabetically.
   const sorted = useMemo(() => {
@@ -1158,11 +1166,11 @@ function CandidatesSheet({
             </View>
             <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
               <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                不確定？跳過此條件看候選節點或分類群
+                {tr('keys.uncertainSkip')}
               </Text>
               <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                從檢索條件 {coupletNumber ?? '?'} 往下還能檢索到的分類群（{sorted.length} 筆），
-                直接點選跳到該分類群
+                {tr('keys.reachableFrom', { n: coupletNumber ?? '?', count: sorted.length })}
+                {tr('keys.tapToJump')}
               </Text>
             </View>
             <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
@@ -1172,7 +1180,7 @@ function CandidatesSheet({
               {sorted.length === 0 ? (
                 <View className="px-4 py-12">
                   <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
-                    沒有可檢索到之分類群
+                    {tr('keys.noReachable')}
                   </Text>
                 </View>
               ) : null}
@@ -1185,6 +1193,7 @@ function CandidatesSheet({
 }
 
 function CandidateRow({ c, onPress }: { c: ReachableTerminal; onPress: () => void }) {
+  const { t: tr } = useTranslation();
   const t = c.taxon;
   return (
     <Pressable
@@ -1228,7 +1237,7 @@ function CandidateRow({ c, onPress }: { c: ReachableTerminal; onPress: () => voi
               className="flex-1 text-sm leading-5 text-gray-700 dark:text-gray-300"
               numberOfLines={3}
             >
-              {s.text || '(無描述)'}
+              {s.text || tr('keys.noDescription')}
             </Text>
           </View>
         ))}
@@ -1251,6 +1260,7 @@ function CoupletPreviewPopup({
   couplet: KeyCouplet | null;
   onClose: () => void;
 }) {
+  const { t: tr } = useTranslation();
   if (!couplet) return null;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
@@ -1273,7 +1283,7 @@ function CoupletPreviewPopup({
         >
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              檢索條件 {couplet.number}
+              {tr('keys.coupletN', { n: couplet.number })}
             </Text>
             <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={20} color="#6b7280" />
@@ -1287,7 +1297,7 @@ function CoupletPreviewPopup({
           </View>
           <PreviewLead label="B" text={couplet.lead_b_text} />
           <Text className="mt-3 text-[10px] text-gray-400 dark:text-gray-500">
-            點擊外圍關閉
+            {tr('keys.tapOutsideClose')}
           </Text>
         </Pressable>
       </Pressable>
@@ -1296,13 +1306,14 @@ function CoupletPreviewPopup({
 }
 
 function PreviewLead({ label, text }: { label: 'A' | 'B'; text: string }) {
+  const { t: tr } = useTranslation();
   return (
     <View className="flex-row items-baseline">
       <View className="mr-2 h-5 w-5 items-center justify-center rounded-full bg-emerald-500">
         <Text className="text-[10px] font-bold text-white">{label}</Text>
       </View>
       <Text className="flex-1 text-sm leading-5 text-gray-800 dark:text-gray-200" selectable>
-        {text || '(無描述)'}
+        {text || tr('keys.noDescription')}
       </Text>
     </View>
   );

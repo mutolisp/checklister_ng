@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
 import { parsePhotoPaths, type RecordWithTaxon } from '~/db';
 import { alienBadge } from '~/lib/conservationColors';
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export function SpeciesCard({ record, onPress, onLongPress }: Props) {
+  const { t } = useTranslation();
   const isEndemic = record.is_endemic === 'true';
   const ab = alienBadge(record.alien_type, record.kingdom);
   const photos = parsePhotoPaths(record.photo_paths);
@@ -43,7 +45,7 @@ export function SpeciesCard({ record, onPress, onLongPress }: Props) {
       )}
       <View className="flex-1">
         <Text className="font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
-          {record.common_name_c || '(無中文名)'}
+          {record.common_name_c || t('species.noChineseName')}
         </Text>
         <ScientificName
           name={record.simple_name}
@@ -59,7 +61,7 @@ export function SpeciesCard({ record, onPress, onLongPress }: Props) {
       <View className="ml-2 items-end justify-start">
         <View className="flex-row items-center">
           {isEndemic ? (
-            <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+            <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('species.endemicShort')}</Text>
           ) : null}
           {ab ? (
             <Text className={`${isEndemic ? 'ml-1.5' : ''} text-xs font-medium ${ab.textClass}`}>

@@ -1,6 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { SystemBars } from 'react-native-edge-to-edge';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -18,6 +19,7 @@ import { StaleSessionWatcher } from '~/components/StaleSessionWatcher';
 import { TextPromptHost } from '~/components/TextPromptModal';
 import { ToastHost } from '~/components/ToastHost';
 import { useThemeSync } from '~/hooks/useThemeSync';
+import { useI18nSync } from '~/hooks/useI18nSync';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 
@@ -55,6 +57,8 @@ export default function RootLayout() {
  */
 function ThemedShell() {
   const scheme = useThemeSync();
+  useI18nSync();
+  const { t } = useTranslation();
   const isDark = scheme === 'dark';
   const session = useActiveSession((s) => s.session);
   const plot = useActivePlot((s) => s.plot);
@@ -74,18 +78,18 @@ function ThemedShell() {
               session left unattended in 檢索表 runner still gets nagged. */}
           <StaleSessionWatcher />
           <StalePlotWatcher />
-          <Stack>
+          <Stack screenOptions={{ headerBackTitle: t('nav.back') }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="session/[id]" options={{ title: '名錄', headerBackTitle: '返回' }} />
-            <Stack.Screen name="plot/[id]" options={{ title: '樣區', headerBackTitle: '返回' }} />
-            <Stack.Screen name="key/[id]" options={{ title: '檢索表', headerBackTitle: '返回' }} />
-            <Stack.Screen name="projects" options={{ title: '專案管理', headerBackTitle: '返回' }} />
-            <Stack.Screen name="sites" options={{ title: '樣區管理', headerBackTitle: '返回' }} />
-            <Stack.Screen name="settings" options={{ title: '偏好設定', headerBackTitle: '返回' }} />
-            <Stack.Screen name="surveyors" options={{ title: '調查者', headerBackTitle: '返回' }} />
-            <Stack.Screen name="about" options={{ title: '關於', headerBackTitle: '返回' }} />
-            <Stack.Screen name="favorites" options={{ title: '常用名錄', headerBackTitle: '返回' }} />
-            <Stack.Screen name="backup" options={{ title: '備份', headerBackTitle: '返回' }} />
+            <Stack.Screen name="session/[id]" options={{ title: t('nav.session') }} />
+            <Stack.Screen name="plot/[id]" options={{ title: t('nav.plot') }} />
+            <Stack.Screen name="key/[id]" options={{ title: t('nav.key') }} />
+            <Stack.Screen name="projects" options={{ title: t('nav.projects') }} />
+            <Stack.Screen name="sites" options={{ title: t('nav.sites') }} />
+            <Stack.Screen name="settings" options={{ title: t('nav.settings') }} />
+            <Stack.Screen name="surveyors" options={{ title: t('nav.surveyors') }} />
+            <Stack.Screen name="about" options={{ title: t('nav.about') }} />
+            <Stack.Screen name="favorites" options={{ title: t('nav.favorites') }} />
+            <Stack.Screen name="backup" options={{ title: t('nav.backup') }} />
           </Stack>
         </View>
         <ToastHost />

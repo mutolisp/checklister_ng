@@ -19,6 +19,7 @@
  */
 import * as Location from 'expo-location';
 import { create } from 'zustand';
+import i18n from '~/i18n';
 import {
   buildTrackGeoJSON,
   getPlotSurvey,
@@ -118,7 +119,7 @@ export async function startRecording(target: RecordTarget): Promise<void> {
   if (watchSub) return; // already recording
   const perm = await Location.requestForegroundPermissionsAsync();
   if (perm.status !== 'granted') {
-    throw new Error('需要定位權限');
+    throw new Error(i18n.t('gps.permTitle'));
   }
 
   const adapter = buildAdapter(target);

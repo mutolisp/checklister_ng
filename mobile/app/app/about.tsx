@@ -1,18 +1,20 @@
 import { Stack } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import Constants from 'expo-constants';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function AboutScreen() {
+  const { t } = useTranslation();
   const version = Constants.expoConfig?.version ?? '0.4.1 build 5';
 
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-      <Stack.Screen options={{ title: '關於' }} />
+      <Stack.Screen options={{ title: t('nav.about') }} />
       <ScrollView>
         <View className="items-center bg-white dark:bg-gray-900 px-4 py-8">
           <Text className="text-3xl font-bold text-gray-900 dark:text-gray-100">Checklister</Text>
-          <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">v{version} · 次世代名錄產生器</Text>
+          <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">v{version} · {t('about.subtitle')}</Text>
         </View>
 
         <Section title="Author">
@@ -47,10 +49,10 @@ export default function AboutScreen() {
         </Section>
 
         <Section title="License">
-          <Text className="text-sm text-gray-700 dark:text-gray-300">本 app 為開源專案。物種資料採用 TaiCOL 授權條款。</Text>
+          <Text className="text-sm text-gray-700 dark:text-gray-300">{t('about.openSource')}</Text>
         </Section>
 
-        <Section title="協力單位">
+        <Section title={t('about.partners')}>
           <Text className="text-sm text-gray-700 dark:text-gray-300">臺灣生物多樣性機構(TaiBIF)</Text>
           <Text className="text-sm text-gray-700 dark:text-gray-300">臺灣物種名錄(TaiCOL)</Text>
           <Text className="text-sm text-gray-700 dark:text-gray-300">臺灣生物多樣性資訊聯盟(TBIA)</Text>

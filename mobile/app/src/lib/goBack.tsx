@@ -8,6 +8,7 @@
  * never stuck.
  */
 import { Ionicons } from '@expo/vector-icons';
+import i18n from '~/i18n';
 import { router } from 'expo-router';
 import { Pressable, Text } from 'react-native';
 
@@ -26,7 +27,7 @@ export function BackHeaderLeft() {
   return (
     <Pressable onPress={goBackOrHome} hitSlop={8} className="flex-row items-center">
       <Ionicons name="chevron-back" size={22} color="#2563eb" />
-      <Text className="ml-0.5 text-base text-blue-600 dark:text-blue-400">返回</Text>
+      <Text className="ml-0.5 text-base text-blue-600 dark:text-blue-400">{i18n.t('nav.back')}</Text>
     </Pressable>
   );
 }

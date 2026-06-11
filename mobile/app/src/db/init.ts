@@ -1,4 +1,5 @@
 import { Asset } from 'expo-asset';
+import i18n from '~/i18n';
 import { File, Paths } from 'expo-file-system';
 import { open, type DB } from '@op-engineering/op-sqlite';
 import { runUserMigrations } from './migrations';
@@ -36,9 +37,9 @@ async function ensureTaicolDb(onProgress?: (step: string) => void): Promise<void
   }
 
   const reason = !dest.exists
-    ? '首次安裝需數秒'
-    : '偵測到新版資料庫';
-  onProgress?.(`解壓縮物種資料庫（${reason}）...`);
+    ? i18n.t('splash.firstInstall')
+    : i18n.t('splash.newDb');
+  onProgress?.(i18n.t('splash.extracting', { reason }));
 
   // First-install path is the dominant cold-start cost (118MB asset copy).
   // Time each phase so we can see in perf log whether asset extraction or
@@ -73,17 +74,17 @@ export async function initDb(
 ): Promise<{ taicol: DB; user: DB }> {
   if (taicolDb && userDb) return { taicol: taicolDb, user: userDb };
 
-  onProgress?.('準備物種資料庫...');
+  onProgress?.(i18n.t('splash.preparing'));
   await ensureTaicolDb(onProgress);
 
-  onProgress?.('開啟資料庫...');
+  onProgress?.(i18n.t('splash.opening'));
   taicolDb = open({ name: TAICOL_DB_NAME, location: Paths.document.uri });
   userDb = open({ name: USER_DB_NAME, location: Paths.document.uri });
 
-  onProgress?.('更新資料結構...');
+  onProgress?.(i18n.t('splash.migrating'));
   await runUserMigrations(userDb);
 
-  onProgress?.('清理狀態...');
+  onProgress?.(i18n.t('splash.cleanup'));
   // Idempotent: mops up any leftover multi-active records from older builds.
   enforceSingleActiveOnStartup();
 

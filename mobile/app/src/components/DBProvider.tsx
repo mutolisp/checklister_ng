@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Text, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
@@ -14,9 +15,10 @@ import { useSettings } from '~/stores/settings';
 type Props = { children: ReactNode };
 
 export function DBProvider({ children }: Props) {
+  const { t } = useTranslation();
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<string>('正在啟動...');
+  const [progress, setProgress] = useState<string>(t('splash.starting'));
   const refreshActiveSession = useActiveSession((s) => s.refresh);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
   const refreshFavorites = useFavorites((s) => s.refresh);
@@ -39,16 +41,16 @@ export function DBProvider({ children }: Props) {
         });
         perf.measure('app:db-init-done', 'app:db-init-start');
         if (cancelled) return;
-        setProgress('載入偏好設定...');
+        setProgress(t('splash.loadingPrefs'));
         perf.time('app:load-settings', loadSettings);
-        setProgress('載入當前記錄...');
+        setProgress(t('splash.loadingRecords'));
         perf.time('app:refresh-active', () => {
           refreshActiveSession();
           refreshActivePlot();
           refreshFavorites();
           refreshSurveyors();
         });
-        setProgress('載入分類群...');
+        setProgress(t('splash.loadingTaxa'));
         // Kingdom prewarm moved BEFORE setReady. Cost is ~200ms but the user
         // already sees splash + progress text; the cost is invisible here and
         // GUARANTEES the 物種 tab opens cached even if the user taps it the
@@ -59,7 +61,7 @@ export function DBProvider({ children }: Props) {
         } catch {
           // non-fatal: taxonomy tab falls back to lazy SQL
         }
-        setProgress('載入字型...');
+        setProgress(t('splash.loadingFonts'));
         await perf.timeAsync('app:font-load', () => fontPromise);
         if (cancelled) return;
         perf.measure('app:set-ready', 'app:db-init-start');
@@ -103,7 +105,7 @@ export function DBProvider({ children }: Props) {
   if (error) {
     return (
       <View className="flex-1 items-center justify-center bg-red-50 dark:bg-red-950/40 px-6">
-        <Text className="text-lg font-bold text-red-700 dark:text-red-400">資料庫初始化失敗</Text>
+        <Text className="text-lg font-bold text-red-700 dark:text-red-400">{t('splash.initFailed')}</Text>
         <Text className="mt-2 text-center text-sm text-red-600 dark:text-red-400">{error}</Text>
       </View>
     );

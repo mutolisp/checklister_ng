@@ -7,9 +7,12 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
+import i18n from '~/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import {
+  endemicTagLabel,
   getInfraspeciesOf,
   getSynonyms,
   type Ancestors,
@@ -56,7 +59,7 @@ function externalLinks(result: SearchResult): Array<{ label: string; url: string
   if (result.kingdom === 'Plantae') {
     links.push({ label: 'POWO', url: `https://powo.science.kew.org/results?q=${sciEnc}` });
     links.push({ label: 'IPNI', url: `https://www.ipni.org/?q=${sciEnc}` });
-    links.push({ label: '台灣植物資訊整合查詢', url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}` });
+    links.push({ label: i18n.t('species.taiLink'), url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}` });
   }
   return links;
 }
@@ -65,9 +68,10 @@ export function SpeciesDetailPanel({
   result,
   onAddToSession,
   onClose,
-  addButtonLabel = '加到當前記錄',
+  addButtonLabel,
   onPickSubordinate,
 }: Props) {
+  const { t } = useTranslation();
   const [synonyms, setSynonyms] = useState<Synonym[]>([]);
   const [infraspecies, setInfraspecies] = useState<TaxonSpecies[]>([]);
   const scrollRef = useRef<ScrollView>(null);
@@ -125,7 +129,7 @@ export function SpeciesDetailPanel({
       <View className="flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3">
         <View className="flex-1">
           <Text selectable className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {result.cname || '(無中文名)'}
+            {result.cname || t('species.noChineseName')}
           </Text>
           <ScientificName
             name={result.name}
@@ -147,7 +151,7 @@ export function SpeciesDetailPanel({
                 color="#d97706"
               />
               <Text className="ml-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
-                {favorited ? '已在常用名錄' : '加入常用名錄'}
+                {favorited ? t('species.inFavorites') : t('favorites.add')}
               </Text>
             </Pressable>
           ) : null}
@@ -161,7 +165,7 @@ export function SpeciesDetailPanel({
             });
             if (idx >= 0 && idx < actions.length) {
               const a = actions[idx];
-              await copyToClipboard(buildSpeciesCopyText(result, a.mode), a.label.replace(/^複製/, ''));
+              await copyToClipboard(buildSpeciesCopyText(result, a.mode), a.label);
             }
           }}
           hitSlop={8}
@@ -179,13 +183,13 @@ export function SpeciesDetailPanel({
       {result.matched_as ? (
         <View className="border-b border-gray-100 dark:border-gray-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2">
           <Text selectable className="text-xs text-orange-900 dark:text-orange-200">
-            你輸入的是{' '}
+            {t('species.matchedSynonymPre')}
             <ScientificName
               name={result.matched_as.name}
               kingdom={result.kingdom}
               nomenclature={result.nomenclature_name}
             />
-            （{result.matched_as.status}），上方為接受名
+            {t('species.matchedSynonymPost', { status: result.matched_as.status })}
           </Text>
         </View>
       ) : null}
@@ -196,16 +200,16 @@ export function SpeciesDetailPanel({
         </View>
 
         {result.alternative_name_c ? (
-          <Section title="其他俗名">
+          <Section title={t('species.otherNames')}>
             <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
               {splitAltNames(result.alternative_name_c).join('、')}
             </Text>
           </Section>
         ) : null}
 
-        <Section title="物種狀態">
+        <Section title={t('species.status')}>
           <View className="flex-row flex-wrap gap-2">
-            {result.endemic ? <Tag color="emerald" label="特有種" /> : null}
+            {result.endemic ? <Tag color="emerald" label={endemicTagLabel(result.taxon_id)} /> : null}
             {(() => {
               const ab = alienBadge(result.alien_type, result.kingdom);
               if (!ab) return null;
@@ -213,22 +217,22 @@ export function SpeciesDetailPanel({
                 ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple';
               return <Tag color={color} label={ab.longLabel} />;
             })()}
-            {result.is_hybrid === 'true' ? <Tag color="purple" label="雜交" /> : null}
+            {result.is_hybrid === 'true' ? <Tag color="purple" label={t('species.hybrid')} /> : null}
             {habitatLabels(result).map((label) => (
               <Tag key={label} color="blue" label={label} />
             ))}
           </View>
         </Section>
 
-        <Section title="保育狀態">
-          <ConservationBadgeRow label="紅皮書" value={result.redlist} />
+        <Section title={t('species.conservation')}>
+          <ConservationBadgeRow label={t('species.redlist')} value={result.redlist} />
           <ConservationBadgeRow label="IUCN" value={result.iucn_category} />
           <ConservationRow label="CITES" value={result.cites} />
-          <ConservationRow label="保育類" value={result.protected} />
+          <ConservationRow label={t('species.protected')} value={result.protected} />
         </Section>
 
         {result.alien_status_note ? (
-          <Section title="來源文獻">
+          <Section title={t('species.sourceLit')}>
             <View>
               {parseAlienStatusNote(result.alien_status_note).map((entry, idx) => (
                 <View
@@ -257,7 +261,7 @@ export function SpeciesDetailPanel({
           const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
           if (nonAccepted.length === 0) return null;
           return (
-            <CollapsibleSection title="同物異名 Synonyms" count={nonAccepted.length} defaultOpen={false}>
+            <CollapsibleSection title={t('species.synonyms')} count={nonAccepted.length} defaultOpen={false}>
               {nonAccepted.map((s, idx) => (
                 <View key={idx} className="flex-row flex-wrap items-baseline">
                   <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
@@ -278,7 +282,7 @@ export function SpeciesDetailPanel({
         })()}
 
         {infraspecies.length > 0 ? (
-          <Section title={`下級分類群 (${infraspecies.length})`}>
+          <Section title={t('species.infraspecies', { count: infraspecies.length })}>
             <View>
               {infraspecies.map((sp) => {
                 const rc = rankColor(sp.rank);
@@ -333,7 +337,7 @@ export function SpeciesDetailPanel({
           </Section>
         ) : null}
 
-        <Section title="外部連結">
+        <Section title={t('species.externalLinks')}>
           <View className="flex-row flex-wrap gap-2">
             {links.map((link) => (
               <Pressable
@@ -351,7 +355,7 @@ export function SpeciesDetailPanel({
         {result.nomenclature_name ? (
           <View className="px-4 pt-3">
             <Text className="text-xs text-gray-400 dark:text-gray-500">
-              命名法規：{result.nomenclature_name}
+              {t('species.nomenclature', { name: result.nomenclature_name })}
             </Text>
           </View>
         ) : null}
@@ -362,7 +366,7 @@ export function SpeciesDetailPanel({
             className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"
           >
             <Ionicons name="add" size={18} color="white" />
-            <Text className="ml-2 text-sm font-medium text-white">{addButtonLabel}</Text>
+            <Text className="ml-2 text-sm font-medium text-white">{addButtonLabel ?? t('species.addToRecord')}</Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -412,15 +416,6 @@ function buildJumpPath(result: SearchResult, depth: Rank): JumpPath {
   return path;
 }
 
-const RANK_LABEL_ZH: Record<Rank, string> = {
-  kingdom: '界',
-  phylum: '門',
-  class: '綱',
-  order: '目',
-  family: '科',
-  genus: '屬',
-};
-
 function RankChipRow({
   result,
   onClose,
@@ -464,7 +459,7 @@ function RankChipRow({
           hitSlop={4}
         >
           <Text className="text-[10px] font-semibold uppercase text-gray-500 dark:text-gray-400">
-            {RANK_LABEL_ZH[rank]}
+            {i18n.t('rank.' + rank)}
           </Text>
           {nameC ? (
             <Text className="ml-1 text-xs text-gray-800 dark:text-gray-200">{nameC}</Text>
@@ -482,11 +477,11 @@ function RankChipRow({
 
 function habitatLabels(result: SearchResult): string[] {
   const out: string[] = [];
-  if (result.is_terrestrial === 'true') out.push('陸域');
-  if (result.is_freshwater === 'true') out.push('淡水');
-  if (result.is_brackish === 'true') out.push('半鹹水');
-  if (result.is_marine === 'true') out.push('海洋');
-  if (result.is_fossil === 'true') out.push('化石');
+  if (result.is_terrestrial === 'true') out.push(i18n.t('species.terrestrial'));
+  if (result.is_freshwater === 'true') out.push(i18n.t('species.freshwater'));
+  if (result.is_brackish === 'true') out.push(i18n.t('species.brackish'));
+  if (result.is_marine === 'true') out.push(i18n.t('species.marine'));
+  if (result.is_fossil === 'true') out.push(i18n.t('species.fossil'));
   return out;
 }
 

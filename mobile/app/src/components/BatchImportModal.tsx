@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Alert,
   Modal,
@@ -30,6 +31,7 @@ type Step = 'input' | 'preview';
 type InputMode = 'paste' | 'voice';
 
 export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('input');
   const [inputMode, setInputMode] = useState<InputMode>('paste');
@@ -67,7 +69,7 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
       const content = await file.text();
       setText(content);
     } catch (e) {
-      Alert.alert('讀檔失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('batchImport.readFail'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -76,8 +78,8 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
     const names = voice ? splitVoiceInput(text) : parseInput(text);
     if (names.length === 0) {
       Alert.alert(
-        '沒有可匯入的名稱',
-        voice ? '請用語音唸出物種名，以句號分隔' : '請輸入或貼上每行一個名稱',
+        t('batchImport.noNames'),
+        voice ? t('batchImport.noNamesVoice') : t('batchImport.noNamesText'),
       );
       return;
     }
@@ -120,8 +122,8 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
     onCommitted(added);
     if (skipped > 0) {
       Alert.alert(
-        '匯入完成',
-        `已加入 ${added} 筆，略過 ${skipped} 筆（重複或缺 taxon_id）`,
+        t('batchImport.done'),
+        t('batchImport.doneMsg', { added, skipped }),
       );
     }
     handleClose();
@@ -139,21 +141,21 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
       >
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={handleClose} hitSlop={8}>
-            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
           <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-            {step === 'input' ? '批次匯入' : `預覽（將加入 ${totalSelected} 筆）`}
+            {step === 'input' ? t('batchImport.title') : t('batchImport.previewTitle', { count: totalSelected })}
           </Text>
           {step === 'input' ? (
             <Pressable onPress={handlePreview} hitSlop={8}>
-              <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">預覽</Text>
+              <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">{t('batchImport.preview')}</Text>
             </Pressable>
           ) : (
             <Pressable onPress={handleCommit} hitSlop={8} disabled={totalSelected === 0}>
               <Text
                 className={`text-base font-semibold ${totalSelected === 0 ? 'text-gray-300' : 'text-blue-600 dark:text-blue-400'}`}
               >
-                加入
+                {t('batchImport.add')}
               </Text>
             </Pressable>
           )}
@@ -163,13 +165,13 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
           <KeyboardAvoidingView className="flex-1" behavior="padding">
             <View className="flex-row border-b border-gray-200 dark:border-gray-700">
               <ModeTab
-                label="貼上"
+                label={t('batchImport.paste')}
                 icon="clipboard-outline"
                 active={inputMode === 'paste'}
                 onPress={() => setInputMode('paste')}
               />
               <ModeTab
-                label="語音"
+                label={t('batchImport.voice')}
                 icon="mic-outline"
                 active={inputMode === 'voice'}
                 onPress={() => setInputMode('voice')}
@@ -179,19 +181,19 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
               {inputMode === 'paste' ? (
                 <>
                   <Text className="text-xs text-gray-600 dark:text-gray-400">
-                    每行一個名稱（俗名 / 學名 / 科）。支援貼上 .yml 匯出檔內容。
+                    {t('batchImport.inputHint')}
                   </Text>
                   <Pressable
                     onPress={handlePickFile}
                     className="mt-2 flex-row items-center self-start rounded-full bg-white dark:bg-gray-900 px-3 py-1.5 active:bg-blue-50 dark:active:bg-blue-900/40"
                   >
                     <Ionicons name="folder-open-outline" size={14} color="#2563eb" />
-                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">從檔案讀入</Text>
+                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">{t('batchImport.readFromFile')}</Text>
                   </Pressable>
                 </>
               ) : (
                 <Text className="text-xs text-gray-600 dark:text-gray-400">
-                  點下方輸入框後，用鍵盤的麥克風唸出物種名，每筆之間唸「句號」分隔。同音誤判會在預覽中讓你挑選。
+                  {t('batchImport.voiceHint')}
                 </Text>
               )}
             </View>
@@ -203,8 +205,8 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
               autoFocus
               placeholder={
                 inputMode === 'voice'
-                  ? '例：臺灣華八仙。粗毛鱗蓋蕨。'
-                  : '例：\n殼斗科\n大葉雀榕\nLithocarpus konishii'
+                  ? t('batchImport.exampleVoice')
+                  : t('batchImport.exampleText')
               }
               placeholderTextColor="#9ca3af"
               textAlignVertical="top"
@@ -214,8 +216,8 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
           <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
             {resolved && resolved.exact.length > 0 ? (
               <Section
-                title={`精確匹配 (${resolved.exact.filter((_, i) => !skipExact.has(i)).length}/${resolved.exact.length})`}
-                hint="自動匹配，可逐筆取消"
+                title={t('batchImport.exactTitle', { n: resolved.exact.filter((_, i) => !skipExact.has(i)).length, total: resolved.exact.length })}
+                hint={t('batchImport.exactHint')}
                 color="green"
               >
                 {resolved.exact.map((e, idx) => {
@@ -250,7 +252,7 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
                           kingdom={m.kingdom}
                           className="text-xs text-gray-700 dark:text-gray-300"
                         />
-                        <Text className="text-[11px] text-gray-500 dark:text-gray-400">原輸入：{e.raw}</Text>
+                        <Text className="text-[11px] text-gray-500 dark:text-gray-400">{t('batchImport.rawInput', { raw: e.raw })}</Text>
                       </View>
                     </Pressable>
                   );
@@ -260,15 +262,15 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
 
             {resolved && resolved.ambiguous.length > 0 ? (
               <Section
-                title={`需確認 (${resolved.ambiguous.filter((_, i) => ambiguousPicks.get(i) !== null).length}/${resolved.ambiguous.length})`}
-                hint="同名稱有多筆候選，請挑選"
+                title={t('batchImport.confirmTitle', { n: resolved.ambiguous.filter((_, i) => ambiguousPicks.get(i) !== null).length, total: resolved.ambiguous.length })}
+                hint={t('batchImport.confirmHint')}
                 color="amber"
               >
                 {resolved.ambiguous.map((e, idx) => {
                   const pick = ambiguousPicks.get(idx);
                   return (
                     <View key={idx} className="border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-                      <Text className="text-xs text-gray-600 dark:text-gray-400">原輸入：{e.raw}</Text>
+                      <Text className="text-xs text-gray-600 dark:text-gray-400">{t('batchImport.rawInput', { raw: e.raw })}</Text>
                       <View className="mt-1">
                         <Pressable
                           onPress={() =>
@@ -281,7 +283,7 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
                             size={16}
                             color={pick === null ? '#6b7280' : '#9ca3af'}
                           />
-                          <Text className="ml-2 text-xs italic text-gray-600 dark:text-gray-400">略過此筆</Text>
+                          <Text className="ml-2 text-xs italic text-gray-600 dark:text-gray-400">{t('batchImport.skipThis')}</Text>
                         </Pressable>
                         {e.matches.slice(0, 5).map((m, mi) => {
                           const selected = pick?.id === m.id;
@@ -321,8 +323,8 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
 
             {resolved && resolved.unmatched.length > 0 ? (
               <Section
-                title={`找不到 (${resolved.unmatched.length})`}
-                hint="這些名稱在 TaiCOL 找不到，將被忽略"
+                title={t('batchImport.notFoundTitle', { count: resolved.unmatched.length })}
+                hint={t('batchImport.notFoundHint')}
                 color="red"
               >
                 {resolved.unmatched.map((e, idx) => (
@@ -338,7 +340,7 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
             resolved.ambiguous.length === 0 &&
             resolved.unmatched.length === 0 ? (
               <View className="px-4 py-12">
-                <Text className="text-center text-sm text-gray-500 dark:text-gray-400">沒有可匯入的內容</Text>
+                <Text className="text-center text-sm text-gray-500 dark:text-gray-400">{t('batchImport.nothingToImport')}</Text>
               </View>
             ) : null}
           </ScrollView>

@@ -1,28 +1,30 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import i18n from '~/i18n';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { TaxonGroup } from '~/db/types';
 
-export const TAXON_GROUP_OPTIONS: Array<{ value: TaxonGroup | ''; label: string }> = [
-  { value: '', label: '全部類群' },
-  { value: 'Tracheophyta', label: '維管束植物' },
-  { value: 'Plantae', label: '植物（含苔蘚）' },
-  { value: 'Aves', label: '鳥類' },
-  { value: 'Mammalia', label: '哺乳類' },
-  { value: 'Reptilia', label: '爬蟲類' },
-  { value: 'Amphibia', label: '兩棲類' },
-  { value: 'Insecta', label: '昆蟲' },
-  { value: 'Arachnida', label: '蜘蛛類' },
-  { value: 'Mollusca', label: '軟體動物' },
-  { value: 'Actinopterygii', label: '條鰭魚類' },
-  { value: 'Fungi', label: '真菌' },
-  { value: 'Protozoa', label: '原生動物' },
-  { value: 'Animalia', label: '其他動物' },
+export const TAXON_GROUP_OPTIONS: Array<{ value: TaxonGroup | '' }> = [
+  { value: '' },
+  { value: 'Tracheophyta' },
+  { value: 'Plantae' },
+  { value: 'Aves' },
+  { value: 'Mammalia' },
+  { value: 'Reptilia' },
+  { value: 'Amphibia' },
+  { value: 'Insecta' },
+  { value: 'Arachnida' },
+  { value: 'Mollusca' },
+  { value: 'Actinopterygii' },
+  { value: 'Fungi' },
+  { value: 'Protozoa' },
+  { value: 'Animalia' },
 ];
 
 export function getGroupLabel(value: TaxonGroup | ''): string {
-  return TAXON_GROUP_OPTIONS.find((o) => o.value === value)?.label ?? '全部類群';
+  return i18n.t('taxonGroup.' + (value || 'all'));
 }
 
 /** Above this count we collapse the selected-chips strip into a single
@@ -36,6 +38,7 @@ type Props = {
 };
 
 export function TaxonGroupPicker({ value, onChange }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   const toggle = (g: TaxonGroup) => {
@@ -54,11 +57,11 @@ export function TaxonGroupPicker({ value, onChange }: Props) {
       </Pressable>
 
       {value.length === 0 ? (
-        <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">全部類群</Text>
+        <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">{t('taxonGroup.all')}</Text>
       ) : value.length > MAX_INLINE_CHIPS ? (
         <Pressable onPress={() => setOpen(true)} className="ml-2">
           <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">
-            {value.length} 個分類群
+            {t('taxonGroup.selectedGroups', { count: value.length })}
           </Text>
         </Pressable>
       ) : (
@@ -90,16 +93,16 @@ export function TaxonGroupPicker({ value, onChange }: Props) {
             <SafeAreaView edges={['bottom']}>
               <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
                 <View className="flex-1">
-                  <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">搜尋限定類群</Text>
+                  <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('taxonGroup.limitTitle')}</Text>
                   <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    可複選，搜尋只會在勾選的類群內查詢
+                    {t('taxonGroup.limitHint')}
                   </Text>
                 </View>
                 <Pressable
                   onPress={() => setOpen(false)}
                   className="ml-3 rounded-full bg-blue-600 px-4 py-1.5 active:bg-blue-700"
                 >
-                  <Text className="text-sm font-medium text-white">完成</Text>
+                  <Text className="text-sm font-medium text-white">{t('common.done')}</Text>
                 </Pressable>
               </View>
               <ScrollView className="max-h-96">
@@ -116,7 +119,7 @@ export function TaxonGroupPicker({ value, onChange }: Props) {
                       className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
                     >
                       <Text className={`flex-1 text-base ${active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}>
-                        {opt.label}
+                        {getGroupLabel(opt.value)}
                       </Text>
                       {active ? <Ionicons name="checkmark" size={20} color="#2563eb" /> : null}
                     </Pressable>

@@ -12,6 +12,7 @@
  */
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
+import { useTranslation } from 'react-i18next';
 import {
   addPlotSpecies,
   addRecord,
@@ -60,17 +61,18 @@ export function useAddToActiveRecord(): {
   targetLabel: string;
 } {
   const router = useRouter();
+  const { t } = useTranslation();
   const toast = useToast((s) => s.show);
   const plot = useActivePlot((s) => s.plot);
   const session = useActiveSession((s) => s.session);
   const startSession = useActiveSession((s) => s.start);
   const [plotTarget, setPlotTarget] = useState<PlotTarget | null>(null);
 
-  const targetLabel = plot ? '加入目前樣區' : session ? '加入目前名錄' : '建立新名錄並加入';
+  const targetLabel = plot ? t('addToRecord.toPlot') : session ? t('addToRecord.toSession') : t('addToRecord.newSession');
 
   const addSpecies = (sp: SearchResult) => {
     if (!sp.taxon_id) {
-      toast('此物種無 taxon_id');
+      toast(t('addToRecord.noTaxonId'));
       return;
     }
     // Read the active plot fresh to avoid a stale closure.
@@ -85,13 +87,13 @@ export function useAddToActiveRecord(): {
     // Session path (or start a fresh one).
     const target = session ?? startSession();
     if (isTaxonInSession(target.id, sp.taxon_id)) {
-      toast(`已存在於目前記錄：${sp.cname || sp.name}`);
+      toast(t('addToRecord.alreadyInRecord', { name: sp.cname || sp.name }));
       return;
     }
     addRecord({ session_id: target.id, taxon_id: sp.taxon_id });
     useActiveSession.getState().refresh();
-    toast(`已加入：${sp.cname || sp.name}`, {
-      action: { label: '前往', onPress: () => router.push(`/session/${target.id}`) },
+    toast(t('session.added', { name: sp.cname || sp.name }), {
+      action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}`) },
     });
   };
 
@@ -113,8 +115,8 @@ export function useAddToActiveRecord(): {
     });
     setPlotTarget(null);
     useActivePlot.getState().refresh();
-    toast(`已加入樣區：${sp.cname || sp.name}`, {
-      action: { label: '前往', onPress: () => router.push(`/plot/${plotId}`) },
+    toast(t('addToRecord.addedToPlot', { name: sp.cname || sp.name }), {
+      action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/plot/${plotId}`) },
     });
   };
 

@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { showActionSheet } from '~/components/ActionSheet';
@@ -11,12 +12,13 @@ import type { ExportFile } from '~/lib/bundleExport';
 type Busy = null | 'backup' | 'photos' | 'restore';
 
 export default function BackupScreen() {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState<Busy>(null);
   const [progress, setProgress] = useState('');
 
   const share = async (file: ExportFile) => {
     if (!(await Sharing.isAvailableAsync())) {
-      Alert.alert('系統分享不可用', `已產出檔案：${file.uri}`);
+      Alert.alert(t('backup.shareUnavailable'), t('backup.fileGenerated', { uri: file.uri }));
       return;
     }
     await Sharing.shareAsync(file.uri, { mimeType: file.mimeType, dialogTitle: file.filename });
@@ -29,7 +31,7 @@ export default function BackupScreen() {
       const file = await createBackup();
       await share(file);
     } catch (e) {
-      Alert.alert('備份失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('backup.backupFailed'), e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
     }
@@ -40,14 +42,14 @@ export default function BackupScreen() {
     try {
       setBusy('photos');
       setProgress('');
-      const file = await createPhotoBackup((done, total) => setProgress(`${done}/${total} 張`));
+      const file = await createPhotoBackup((done, total) => setProgress(t('backup.photoProgress', { done, total })));
       if (!file) {
-        Alert.alert('沒有照片', '目前的記錄沒有任何照片可備份。');
+        Alert.alert(t('backup.noPhotos'), t('backup.noPhotosMsg'));
         return;
       }
       await share(file);
     } catch (e) {
-      Alert.alert('照片備份失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('backup.photoBackupFailed'), e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(null);
       setProgress('');
@@ -66,9 +68,9 @@ export default function BackupScreen() {
       if (!uri) return;
 
       const confirm = await showActionSheet({
-        title: '回復備份',
-        message: '這會覆蓋目前 app 內的所有資料（名錄、樣區、常用名錄、設定），且無法復原。完成後 app 會自動重啟。',
-        options: [{ label: '回復並覆蓋', destructive: true }],
+        title: t('backup.restoreTitle'),
+        message: t('backup.restoreMsg'),
+        options: [{ label: t('backup.restoreConfirm'), destructive: true }],
       });
       if (confirm !== 0) return;
 
@@ -77,7 +79,7 @@ export default function BackupScreen() {
       await restoreBackup(uri);
     } catch (e) {
       setBusy(null);
-      Alert.alert('回復失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('backup.restoreFailed'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -86,11 +88,11 @@ export default function BackupScreen() {
       <ScrollView className="flex-1">
         <Section
           icon="archive-outline"
-          title="資料備份"
-          desc="把所有使用者資料（名錄、樣區、常用名錄、偏好設定）打包成 zip 檔，可另存或傳到其他地方。不含照片。"
+          title={t('backup.dataBackupTitle')}
+          desc={t('backup.dataBackupDesc')}
         >
           <ActionButton
-            label="建立備份並匯出"
+            label={t('backup.createExport')}
             onPress={handleBackup}
             busy={busy === 'backup'}
             disabled={busy !== null}
@@ -99,27 +101,27 @@ export default function BackupScreen() {
 
         <Section
           icon="images-outline"
-          title="照片備份"
-          desc="把所有記錄引用到的照片匯出成 zip，內含對應表（photos.csv）。僅供存檔/轉移，回復資料時不會自動還原照片。"
+          title={t('backup.photoBackupTitle')}
+          desc={t('backup.photoBackupDesc')}
         >
           <ActionButton
-            label="匯出照片"
+            label={t('backup.exportPhotos')}
             onPress={handlePhotoBackup}
             busy={busy === 'photos'}
             disabled={busy !== null}
           />
           {busy === 'photos' && progress ? (
-            <Text className="mt-2 text-xs text-gray-500 dark:text-gray-400">處理中… {progress}</Text>
+            <Text className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t('backup.processing', { progress })}</Text>
           ) : null}
         </Section>
 
         <Section
           icon="cloud-upload-outline"
-          title="資料回復"
-          desc="從備份 zip 回復使用者資料。⚠️ 會覆蓋目前所有資料，無法復原，完成後 app 會自動重啟。"
+          title={t('backup.dataRestoreTitle')}
+          desc={t('backup.dataRestoreDesc')}
         >
           <ActionButton
-            label="從備份檔回復"
+            label={t('backup.restoreFromFile')}
             onPress={handleRestore}
             busy={busy === 'restore'}
             disabled={busy !== null}

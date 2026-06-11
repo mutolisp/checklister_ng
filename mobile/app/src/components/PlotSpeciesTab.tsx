@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -23,7 +24,7 @@ import {
   type PlotSpeciesRecordWithTaxon,
   type PlotSurvey,
   type SearchResult,
-  LAYER_LABEL,
+  layerLabel,
   updatePlotSpeciesLocation,
   updatePlotSpeciesLayer,
   updatePlotSpeciesPhotos,
@@ -59,6 +60,7 @@ export function PlotSpeciesTab({
   plot: PlotSurvey;
   onChanged: () => void;
 }) {
+  const { t: tr } = useTranslation();
   // `stratified` = fixed plot only (has E1..E6 layers). transect + point_count
   // are non-stratified: a single 'T' bucket, no layer chips/headers. Keep the
   // transect / point-count distinction only for the user-facing copy.
@@ -193,15 +195,15 @@ export function PlotSpeciesTab({
   const handlePickSort = async () => {
     const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
     const labels: Record<RecordSort, string> = {
-      observed: '加入順序',
-      cname: '俗名',
-      name: '學名',
-      family: '科',
+      observed: tr('session.sortObserved'),
+      cname: tr('session.sortCname'),
+      name: tr('session.sortName'),
+      family: tr('session.sortFamily'),
     };
     const idx = await showActionSheet({
-      title: '排序方式',
+      title: tr('session.sortTitle'),
       options: orders.map((o) => ({
-        label: o === sortOrder ? `${labels[o]}（再點翻轉方向）` : labels[o],
+        label: o === sortOrder ? tr('session.sortActiveHint', { label: labels[o] }) : labels[o],
       })),
     });
     if (idx < 0 || idx >= orders.length) return;
@@ -327,7 +329,7 @@ export function PlotSpeciesTab({
         setPendingPhotos((prev) => [...prev, ...newUris]);
       }
     } catch (e) {
-      Alert.alert('加照片失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(tr('plotSpecies.addPhotoFail'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -375,10 +377,10 @@ export function PlotSpeciesTab({
 
   const handleChangeLayer = async (r: PlotSpeciesRecordWithTaxon) => {
     const idx = await showActionSheet({
-      title: '變更分層',
-      cancelLabel: '取消',
+      title: tr('plotSpecies.changeLayer'),
+      cancelLabel: tr('common.cancel'),
       options: activeLayers.map((l) => ({
-        label: `${LAYER_LABEL[l]}${l === r.layer ? '（目前）' : ''}`,
+        label: `${layerLabel(l)}${l === r.layer ? tr('plotSpecies.currentSuffix') : ''}`,
       })),
     });
     if (idx < 0 || idx >= activeLayers.length) return;
@@ -387,7 +389,7 @@ export function PlotSpeciesTab({
     updatePlotSpeciesLayer(r.id, next);
     reload();
     onChanged();
-    useToast.getState().show(`已移至 ${next}`);
+    useToast.getState().show(tr('plotSpecies.movedTo', { layer: layerLabel(next) }));
   };
 
   const handleLongPressRecord = async (r: PlotSpeciesRecordWithTaxon) => {
@@ -396,10 +398,10 @@ export function PlotSpeciesTab({
     // point_count records all live in the single 'T' bucket.
     const canChangeLayer = stratified;
     const options = [
-      { label: '編輯' },
-      ...(canChangeLayer ? [{ label: '變更分層' }] : []),
-      { label: fav ? '移除常用名錄' : '加入常用名錄' },
-      { label: '刪除', destructive: true },
+      { label: tr('common.edit') },
+      ...(canChangeLayer ? [{ label: tr('plotSpecies.changeLayer') }] : []),
+      { label: fav ? tr('favorites.remove') : tr('favorites.add') },
+      { label: tr('common.delete'), destructive: true },
     ];
     let i = 0;
     const editIdx = i++;
@@ -416,9 +418,9 @@ export function PlotSpeciesTab({
       const t = useToast.getState().show;
       if (fav) {
         useFavorites.getState().remove(r.taxon_id);
-        t('已從常用名錄移除');
+        t(tr('favorites.removed'));
       } else {
-        t(useFavorites.getState().addById(r.taxon_id) ? '已加入常用名錄' : '無法加入常用名錄');
+        t(useFavorites.getState().addById(r.taxon_id) ? tr('favorites.added') : tr('favorites.addFail'));
       }
     } else if (idx === delIdx) {
       deletePlotSpecies(r.id);
@@ -498,10 +500,10 @@ export function PlotSpeciesTab({
   })();
 
   const SORT_LABEL: Record<RecordSort, string> = {
-    observed: '加入順序',
-    cname: '俗名',
-    name: '學名',
-    family: '科',
+    observed: tr('session.sortObserved'),
+    cname: tr('session.sortCname'),
+    name: tr('session.sortName'),
+    family: tr('session.sortFamily'),
   };
 
   return (
@@ -560,12 +562,12 @@ export function PlotSpeciesTab({
         </View>
         {!stratified ? (
           <Text className="text-[11px] text-gray-500 dark:text-gray-400">
-            {isPointCount ? '定點計數記錄' : '穿越線記錄'}
-            {grouped['T'].length > 0 ? ` · 已記 ${grouped['T'].length} 筆` : ''}
+            {isPointCount ? tr('plotSpecies.pointCountRecord') : tr('plotSpecies.transectRecord')}
+            {grouped['T'].length > 0 ? tr('plotSpecies.recordedCount', { count: grouped['T'].length }) : ''}
           </Text>
         ) : (
           <>
-            <Text className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">輸入分層</Text>
+            <Text className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">{tr('plotSpecies.inputLayer')}</Text>
             {/* Horizontal scrollable chips — supports up to 6 layers (E1-E6)
                 without cramping on narrow phones. Each chip is fixed-width so
                 ≤4 layers fill the row, 5-6 layers gain horizontal scroll. */}
@@ -591,8 +593,8 @@ export function PlotSpeciesTab({
               })}
             </ScrollView>
             <Text className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-              {LAYER_LABEL[layer]}
-              {grouped[layer].length > 0 ? ` · 已記 ${grouped[layer].length} 筆` : ''}
+              {layerLabel(layer)}
+              {grouped[layer].length > 0 ? tr('plotSpecies.recordedCount', { count: grouped[layer].length }) : ''}
             </Text>
           </>
         )}
@@ -633,7 +635,7 @@ export function PlotSpeciesTab({
             return (
               <View className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5">
                 <Text className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-                  {LAYER_LABEL[item.layer]} ({grouped[item.layer].length})
+                  {layerLabel(item.layer)} ({grouped[item.layer].length})
                 </Text>
               </View>
             );
@@ -659,7 +661,7 @@ export function PlotSpeciesTab({
           <View className="items-center px-8 py-12">
             <Ionicons name="leaf-outline" size={40} color="#cbd5e1" />
             <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-              {!stratified ? '從下方搜尋加入物種' : '選擇分層後從下方搜尋加入物種'}
+              {!stratified ? tr('plotSpecies.emptyHint') : tr('plotSpecies.emptyHintStratified')}
             </Text>
           </View>
         }
@@ -718,6 +720,7 @@ function SpeciesRow({
   onLongPress: () => void;
   onAdjust?: (delta: number) => void;
 }) {
+  const { t: tr } = useTranslation();
   const ab = alienBadge(record.alien_type, record.kingdom);
   return (
     <Pressable
@@ -729,16 +732,16 @@ function SpeciesRow({
       <View className="flex-1">
         <View className="flex-row items-center" style={{ flexWrap: 'wrap' }}>
           <Text className="text-sm font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
-            {record.common_name_c || '(無中文名)'}
+            {record.common_name_c || tr('species.noChineseName')}
           </Text>
           {record.is_endemic === 'true' ? (
-            <Text className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+            <Text className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">{tr('species.endemicShort')}</Text>
           ) : null}
           {ab ? (
             <Text className={`ml-1.5 text-[11px] font-medium ${ab.textClass}`}>{ab.shortLabel}</Text>
           ) : null}
           {record.is_hybrid === 'true' ? (
-            <Text className="ml-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">雜</Text>
+            <Text className="ml-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">{tr('plotSpecies.hybridShort')}</Text>
           ) : null}
         </View>
         <ScientificName
@@ -859,6 +862,7 @@ function MiniNum({
   /** Inclusive upper bound — entered value must be ≤ this. */
   max?: number;
 }) {
+  const { t: tr } = useTranslation();
   const [draft, setDraft] = useState(value == null ? '' : String(value));
   useEffect(() => {
     setDraft(value == null ? '' : String(value));
@@ -879,7 +883,7 @@ function MiniNum({
               (min === undefined || n > min) &&
               (max === undefined || n <= max);
             if (!ok) {
-              toast(`數值須大於 ${min ?? 0}、小於等於 ${max ?? 100}`);
+              toast(tr('plot.numRange', { min: min ?? 0, max: max ?? 100 }));
               setDraft(value == null ? '' : String(value)); // revert
               return;
             }
@@ -910,6 +914,7 @@ function SubplotLayerInputs({
   plotLayers: PlotLayer[];
   onChanged: () => void;
 }) {
+  const { t: tr } = useTranslation();
   const [rows, setRows] = useState<SubplotLayer[]>([]);
   const reload = useCallback(() => setRows(getSubplotLayers(subplotId)), [subplotId]);
   useEffect(() => reload(), [reload]);
@@ -920,7 +925,7 @@ function SubplotLayerInputs({
       <Pressable onPress={() => setOpen((o) => !o)} className="flex-row items-center py-1" hitSlop={6}>
         <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} color="#6b7280" />
         <Text className="ml-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-          本小區各層覆蓋 / 高度
+          {tr('plotSpecies.subplotCoverHeight')}
         </Text>
       </Pressable>
       {open
@@ -936,7 +941,7 @@ function SubplotLayerInputs({
                 <Text className="w-7 text-xs font-bold text-gray-700 dark:text-gray-300">{l}</Text>
                 <MiniNum
                   value={row?.cover_pct ?? null}
-                  placeholder="覆蓋"
+                  placeholder={tr('plotSpecies.cover')}
                   suffix="%"
                   min={0}
                   max={100}
@@ -948,7 +953,7 @@ function SubplotLayerInputs({
                 />
                 <MiniNum
                   value={heightDisplay}
-                  placeholder="高"
+                  placeholder={tr('plotSpecies.height')}
                   suffix={unit}
                   onSave={(n) => {
                     updateSubplotLayer(subplotId, idx, {

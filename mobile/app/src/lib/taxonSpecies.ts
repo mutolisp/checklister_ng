@@ -1,4 +1,5 @@
 import type { SearchResult, TaxonSpecies } from '~/db';
+import i18n from '~/i18n';
 
 /** Lift a TaxonSpecies (returned by `getSpeciesUnder` / `getInfraspeciesOf`)
  *  into a SearchResult so it slots into `LookupResultSheet` /
@@ -18,13 +19,11 @@ export function taxonSpeciesToSearchResult(sp: TaxonSpecies): SearchResult {
     endemic: sp.is_endemic === 'true' ? 1 : 0,
     source:
       sp.alien_type === 'native'
-        ? '原生'
+        ? i18n.t('alien.native')
         : sp.alien_type === 'naturalized' || sp.alien_type === 'invasive'
-          ? '歸化'
+          ? i18n.t('alien.naturalized')
           : sp.alien_type === 'cultured'
-            ? sp.kingdom === 'Animalia'
-              ? '圈養'
-              : '栽培'
+            ? i18n.t(sp.kingdom === 'Animalia' ? 'alien.captive' : 'alien.cultivated')
             : '',
     alien_type: sp.alien_type,
     pt_name: '',

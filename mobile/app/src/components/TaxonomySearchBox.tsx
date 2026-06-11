@@ -1,11 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { memo, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { searchTaxonomy, type TaxonSearchHit } from '~/db';
 import { rankColor } from '~/lib/rankColors';
 import { ScientificName } from './ScientificName';
 
-const PLACEHOLDER = '搜尋分類群（俗名 / 學名 / 科名 ...）';
 const DEBOUNCE_MS = 250;
 
 type Props = {
@@ -13,6 +13,7 @@ type Props = {
 };
 
 export function TaxonomySearchBox({ onPick }: Props) {
+  const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TaxonSearchHit[]>([]);
   const inputRef = useRef<TextInput>(null);
@@ -74,7 +75,7 @@ export function TaxonomySearchBox({ onPick }: Props) {
           <TextInput
             ref={inputRef}
             className="ml-2 flex-1 text-base text-gray-900 dark:text-gray-100"
-            placeholder={PLACEHOLDER}
+            placeholder={t('search.taxonomyPlaceholder')}
             placeholderTextColor="#9ca3af"
             value={query}
             onChangeText={setQuery}
@@ -93,6 +94,7 @@ export function TaxonomySearchBox({ onPick }: Props) {
 }
 
 const HitRow = memo(function HitRow({ hit, onPress }: { hit: TaxonSearchHit; onPress: () => void }) {
+  const { t } = useTranslation();
   const pathPreview = hit.path.map((p) => p.value).join(' › ');
   const c = rankColor(hit.rank);
   const isSynonym = !!hit.matched_as;
@@ -112,9 +114,9 @@ const HitRow = memo(function HitRow({ hit, onPress }: { hit: TaxonSearchHit; onP
       </View>
       {hit.matched_as ? (
         <Text className="mt-0.5 text-[11px] text-orange-700 dark:text-orange-300" numberOfLines={1}>
-          ↳ 你輸入：
+          {t('search.youEntered')}
           <ScientificName name={hit.matched_as.name} rank={hit.rank} />
-          （{hit.matched_as.status}）
+          {t('search.synonymStatus', { status: hit.matched_as.status })}
         </Text>
       ) : null}
       {pathPreview ? (

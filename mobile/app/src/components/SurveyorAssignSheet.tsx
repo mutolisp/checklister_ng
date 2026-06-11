@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, Text, TextInput, View } from 'react-native';
 import DraggableFlatList, {
   ScaleDecorator,
@@ -27,6 +28,7 @@ function parseNames(s: string): string[] {
 }
 
 export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const items = useSurveyors((s) => s.items);
   const add = useSurveyors((s) => s.add);
@@ -117,13 +119,13 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
               </View>
               <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
                 <View className="flex-1">
-                  <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指派調查者</Text>
+                  <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('sheets.assignSurveyor')}</Text>
                   <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                    可多選；長按 ☰ 拖曳調整順序（同步偏好設定）
+                    {t('sheets.assignSurveyorDesc')}
                   </Text>
                 </View>
                 <Pressable onPress={handleConfirm} hitSlop={8} className="ml-3">
-                  <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">完成</Text>
+                  <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">{t('common.done')}</Text>
                 </Pressable>
               </View>
 
@@ -134,14 +136,14 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
                     className="flex-1 rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
                     value={newName}
                     onChangeText={setNewName}
-                    placeholder="調查者姓名"
+                    placeholder={t('sheets.surveyorNamePlaceholder')}
                     placeholderTextColor="#9ca3af"
                     autoFocus
                     returnKeyType="done"
                     onSubmitEditing={handleAddSubmit}
                   />
                   <Pressable onPress={handleAddSubmit} hitSlop={6} className="px-2 py-1">
-                    <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">加入</Text>
+                    <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{t('sheets.addSurveyor')}</Text>
                   </Pressable>
                 </View>
               ) : (
@@ -152,7 +154,7 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
                   <View className="mr-3 h-8 w-8 items-center justify-center rounded-full bg-blue-500">
                     <Ionicons name="add" size={20} color="white" />
                   </View>
-                  <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新增調查者</Text>
+                  <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">{t('surveyors.addTitle')}</Text>
                 </Pressable>
               )}
 
@@ -178,7 +180,7 @@ export function SurveyorAssignSheet({ visible, current, onCancel, onAssign }: Pr
               {items.length === 0 && extras.length === 0 ? (
                 <View className="px-4 py-8">
                   <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
-                    尚無調查者，點上方「新增調查者」建立。
+                    {t('sheets.emptySurveyors')}
                   </Text>
                 </View>
               ) : (

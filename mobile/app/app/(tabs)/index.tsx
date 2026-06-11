@@ -2,7 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import { isoDateTime } from '~/lib/datetime';
 import { ExportPreferenceSheet } from '~/components/ExportPreferenceSheet';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
 import {
@@ -32,17 +34,7 @@ import { useToast } from '~/stores/toast';
 type Filter = 'all' | RecordKind;
 type ViewMode = 'flat' | 'byProject';
 
-const FILTER_LABEL: Record<Filter, string> = {
-  all: '全部',
-  session: '名錄',
-  plot: '樣區',
-};
-
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
+const formatTime = isoDateTime;
 
 function KindIcon({ kind, active }: { kind: RecordKind; active: boolean }) {
   const tint = active ? '#10b981' : '#94a3b8';
@@ -80,6 +72,7 @@ function RecordRow({
   selectMode: boolean;
   selected: boolean;
 }) {
+  const { t } = useTranslation();
   const showTimestamp = Boolean(
     item.kind === 'session' &&
       item.session &&
@@ -104,13 +97,13 @@ function RecordRow({
           {item.active ? (
             <View className="ml-2 rounded bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.5">
               <Text className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                {item.kind === 'session' ? '記錄中' : '進行中'}
+                {item.kind === 'session' ? t('records.recording') : t('records.inProgress')}
               </Text>
             </View>
           ) : null}
           {item.notReady ? (
             <View className="ml-2 rounded bg-amber-100 dark:bg-amber-900/60 px-1.5 py-0.5">
-              <Text className="text-[11px] font-medium text-amber-700 dark:text-amber-300">資訊未補齊</Text>
+              <Text className="text-[11px] font-medium text-amber-700 dark:text-amber-300">{t('records.notReady')}</Text>
             </View>
           ) : null}
         </View>
@@ -127,6 +120,7 @@ function RecordRow({
 }
 
 function ProjectHeader({ group }: { group: ProjectGroup }) {
+  const { t } = useTranslation();
   const sessionCount = group.items.filter((x) => x.kind === 'session').length;
   const plotCount = group.items.filter((x) => x.kind === 'plot').length;
   return (
@@ -135,9 +129,9 @@ function ProjectHeader({ group }: { group: ProjectGroup }) {
         <Ionicons name="folder-outline" size={14} color="#4b5563" />
         <Text className="ml-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200">{group.projectName}</Text>
         <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-          {sessionCount > 0 ? `名錄 ${sessionCount}` : ''}
+          {sessionCount > 0 ? t('records.sessionCount', { count: sessionCount }) : ''}
           {sessionCount > 0 && plotCount > 0 ? ' · ' : ''}
-          {plotCount > 0 ? `樣區 ${plotCount}` : ''}
+          {plotCount > 0 ? t('records.plotCount', { count: plotCount }) : ''}
         </Text>
       </View>
     </View>
@@ -161,6 +155,12 @@ function buildFlatRows(groups: ProjectGroup[]): FlatRow[] {
 
 export default function RecordsListScreen() {
   const router = useRouter();
+  const { t } = useTranslation();
+  const filterLabel: Record<Filter, string> = {
+    all: t('records.filterAll'),
+    session: t('nav.session'),
+    plot: t('nav.plot'),
+  };
   const refreshActive = useActiveSession((s) => s.refresh);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
   const toast = useToast((s) => s.show);
@@ -239,7 +239,7 @@ export default function RecordsListScreen() {
   ) => {
     if (exportBusy) return;
     setExportBusy(true);
-    setExportProgress({ label: '準備中…' });
+    setExportProgress({ label: t('export.preparing') });
     try {
       const file = await bundleFn();
       // Dismiss the progress Modal AND wait for it to finish animating out.
@@ -249,16 +249,16 @@ export default function RecordsListScreen() {
       await new Promise((r) => setTimeout(r, 450));
       const ok = await Sharing.isAvailableAsync();
       if (!ok) {
-        Alert.alert('分享不可用', `已產生檔案：${file.uri}`);
+        Alert.alert(t('export.shareUnavailable'), t('export.fileGenerated', { uri: file.uri }));
       } else {
         await Sharing.shareAsync(file.uri, {
           mimeType: file.mimeType,
           dialogTitle: file.filename,
         });
       }
-      toast(`匯出完成：${file.filename}`);
+      toast(t('export.done', { filename: file.filename }));
     } catch (e) {
-      Alert.alert('匯出失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('export.failed'), e instanceof Error ? e.message : String(e));
     } finally {
       setExportProgress(null);
       setExportBusy(false);
@@ -281,7 +281,7 @@ export default function RecordsListScreen() {
 
   const handleExportSelection = async () => {
     if (selected.size === 0) {
-      toast('沒有選取任何記錄');
+      toast(t('records.noneSelected'));
       return;
     }
     const bundleItems: BundleItem[] = [];
@@ -294,7 +294,7 @@ export default function RecordsListScreen() {
       if (it) bundleItems.push({ kind: it.kind, id: it.id });
     }
     if (bundleItems.length === 0) {
-      toast('沒有可匯出的記錄');
+      toast(t('records.noExportable'));
       return;
     }
     const est = await estimateBundleSize(bundleItems, { includePhotos });
@@ -316,35 +316,35 @@ export default function RecordsListScreen() {
       }
       if (bytes >= 500 * 1024 * 1024) {
         Alert.alert(
-          '匯出檔案非常大',
-          `預估約 ${formatBytes(bytes)}。打包可能需要幾分鐘，且裝置可能需要較多記憶體。建議：先到偏好設定關閉「包含照片」或分批匯出。是否仍要繼續？`,
+          t('export.veryLargeTitle'),
+          t('export.veryLargeMsg', { size: formatBytes(bytes) }),
           [
-            { text: '取消', style: 'cancel', onPress: () => resolve(false) },
-            { text: '仍要匯出', style: 'destructive', onPress: () => resolve(true) },
+            { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+            { text: t('export.exportAnyway'), style: 'destructive', onPress: () => resolve(true) },
           ],
         );
         return;
       }
       Alert.alert(
-        '匯出檔案較大',
-        `預估約 ${formatBytes(bytes)}。是否繼續？`,
+        t('export.largeTitle'),
+        t('export.largeMsg', { size: formatBytes(bytes) }),
         [
-          { text: '取消', style: 'cancel', onPress: () => resolve(false) },
-          { text: '繼續', onPress: () => resolve(true) },
+          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+          { text: t('common.continue'), onPress: () => resolve(true) },
         ],
       );
     });
   }
 
   const handleDelete = (item: RecordItem) => {
-    const noun = item.kind === 'session' ? '名錄' : '樣區';
+    const noun = item.kind === 'session' ? t('nav.session') : t('nav.plot');
     Alert.alert(
-      `刪除${noun}？`,
-      `「${item.title}」與其下 ${item.recordCount} 筆紀錄將全部移除，無法復原。`,
+      t('records.deleteTitle', { noun }),
+      t('records.deleteMsg', { title: item.title, count: item.recordCount }),
       [
-        { text: '取消', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '刪除',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => {
             if (item.kind === 'session') deleteSession(item.id);
@@ -366,13 +366,13 @@ export default function RecordsListScreen() {
         disabled={selectMode}
         actions={[
           {
-            label: '匯出',
+            label: t('common.export'),
             icon: 'share-outline',
             color: 'blue',
             onPress: () => handleExportOne(item),
           },
           {
-            label: '刪除',
+            label: t('common.delete'),
             icon: 'trash',
             color: 'red',
             onPress: () => handleDelete(item),
@@ -398,10 +398,10 @@ export default function RecordsListScreen() {
         {selectMode ? (
           <View className="flex-row items-center justify-between">
             <Pressable onPress={selectClear} hitSlop={8}>
-              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">取消</Text>
+              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">{t('common.cancel')}</Text>
             </Pressable>
             <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              已選 {selected.size}
+              {t('records.selectedCount', { count: selected.size })}
             </Text>
             <Pressable
               onPress={handleExportSelection}
@@ -411,13 +411,13 @@ export default function RecordsListScreen() {
               <Text
                 className={`text-base font-medium ${selected.size === 0 || exportBusy ? 'text-gray-400 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}`}
               >
-                匯出
+                {t('common.export')}
               </Text>
             </Pressable>
           </View>
         ) : (
           <View className="flex-row items-center justify-between">
-            <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">記錄</Text>
+            <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('tab.records')}</Text>
             <View className="flex-row items-center gap-2">
               <Pressable
                 onPress={() => router.push('/favorites')}
@@ -425,7 +425,7 @@ export default function RecordsListScreen() {
                 className="flex-row items-center rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
               >
                 <Ionicons name="star" size={14} color="#d97706" />
-                <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">常用名錄</Text>
+                <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">{t('records.favorites')}</Text>
               </Pressable>
               <Pressable
                 onPress={() => setPrefOpen(true)}
@@ -444,7 +444,7 @@ export default function RecordsListScreen() {
                   color="#2563eb"
                 />
                 <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">
-                  {viewMode === 'byProject' ? '按專案' : '時間軸'}
+                  {viewMode === 'byProject' ? t('records.byProject') : t('records.timeline')}
                 </Text>
               </Pressable>
             </View>
@@ -453,7 +453,7 @@ export default function RecordsListScreen() {
         {selectMode ? null : (
           <>
             <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {counts.all} 筆 · 名錄 {counts.session} / 樣區 {counts.plot}
+              {t('records.stats', { all: counts.all, session: counts.session, plot: counts.plot })}
             </Text>
             <View className="mt-3 flex-row gap-2">
               {(['all', 'session', 'plot'] as Filter[]).map((f) => {
@@ -465,7 +465,7 @@ export default function RecordsListScreen() {
                     className={`flex-1 items-center rounded-lg py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
                   >
                     <Text className={`text-sm font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {FILTER_LABEL[f]} ({counts[f]})
+                      {filterLabel[f]} ({counts[f]})
                     </Text>
                   </Pressable>
                 );
@@ -479,9 +479,9 @@ export default function RecordsListScreen() {
         <View className="flex-1 items-center justify-center px-6">
           <Ionicons name="add-circle-outline" size={56} color="#cbd5e1" />
           <Text className="mt-3 text-base font-medium text-gray-700 dark:text-gray-300">
-            {filter === 'all' ? '還沒有任何記錄' : `沒有${FILTER_LABEL[filter]}記錄`}
+            {filter === 'all' ? t('records.empty') : t('records.emptyFiltered', { kind: filterLabel[filter] })}
           </Text>
-          <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">按下方 + 開始新記錄</Text>
+          <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{t('records.emptyHint')}</Text>
         </View>
       ) : viewMode === 'flat' ? (
         <FlatList

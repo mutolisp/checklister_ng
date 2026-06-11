@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { endSession, latestSessionActivityAt } from '~/db';
@@ -17,6 +18,7 @@ const STALE_THRESHOLD_MS = 12 * 60 * 60 * 1000; // 12 hours
  * taxon would immediately re-fire "已開了 72 小時" — annoying noise.
  */
 export function StaleSessionWatcher() {
+  const { t } = useTranslation();
   const session = useActiveSession((s) => s.session);
   const refresh = useActiveSession((s) => s.refresh);
   const router = useRouter();
@@ -41,15 +43,15 @@ export function StaleSessionWatcher() {
     const hours = Math.round(ageMs / (60 * 60 * 1000));
 
     Alert.alert(
-      '記錄已閒置一段時間',
-      `「${session.name}」上次活動是 ${dateStr}，已過 ${hours} 小時。要繼續記錄還是結束？`,
+      t('watcher.sessionIdle'),
+      t('watcher.sessionIdleMsg', { name: session.name, date: dateStr, hours }),
       [
         {
-          text: '繼續記錄',
+          text: t('watcher.keepRecording'),
           onPress: () => router.push(`/session/${session.id}`),
         },
         {
-          text: '結束',
+          text: t('session.end'),
           style: 'destructive',
           onPress: () => {
             if (isRecordingTarget({ kind: 'session', id: session.id })) pauseRecording();

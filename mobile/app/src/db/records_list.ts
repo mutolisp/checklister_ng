@@ -5,6 +5,7 @@
  * Keeping a dedicated helper avoids spreading kind-switching across the UI.
  */
 import { getUserDb } from './init';
+import i18n from '~/i18n';
 import { listPlotSurveys, plotCanAcceptSpecies, type PlotSurvey } from './plots';
 import { listProjects } from './projects';
 import { listSessions, type SessionWithStats } from './sessions';
@@ -45,7 +46,7 @@ function sessionToItem(s: SessionWithStats): RecordItem {
     kind: 'session',
     id: s.id,
     title: s.name,
-    subtitle: `${s.record_count} 筆 · ${s.project_name}`,
+    subtitle: i18n.t('recordsList.sessionSubtitle', { count: s.record_count, project: s.project_name }),
     active: s.ended_at === null,
     startedAt: s.started_at,
     recordCount: s.record_count,
@@ -60,13 +61,13 @@ function plotToItem(p: PlotSurvey, projectNameById: Map<number, string>): Record
   const sizeStr = p.sample_size_value
     ? ` · ${p.sample_size_value}${p.sample_size_unit ?? ''}`
     : '';
-  const protocol = p.sampling_protocol || '未設 protocol';
-  const projectName = projectNameById.get(p.project_id) ?? '未分類';
+  const protocol = p.sampling_protocol || i18n.t('plots.noProtocol');
+  const projectName = projectNameById.get(p.project_id) ?? i18n.t('plot.uncategorized');
   return {
     kind: 'plot',
     id: p.id,
     title: p.plotid,
-    subtitle: `${n} 筆 · ${protocol}${sizeStr}`,
+    subtitle: i18n.t('recordsList.plotSubtitle', { count: n, protocol, size: sizeStr }),
     active: p.status === 'active',
     startedAt: p.start_ts ?? p.created_at,
     recordCount: n,

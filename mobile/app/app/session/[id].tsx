@@ -3,6 +3,8 @@ import * as Location from 'expo-location';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { BackHeaderLeft, goBackOrHome } from '~/lib/goBack';
 import { useCallback, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { isoDateTime } from '~/lib/datetime';
 import {
   Alert,
   FlatList,
@@ -66,13 +68,6 @@ import {
   useTrackRecorder,
 } from '~/lib/trackRecorder';
 
-const SORT_LABEL: Record<RecordSort, string> = {
-  observed: '加入順序',
-  cname: '俗名',
-  name: '學名',
-  family: '科',
-};
-
 function sortRecords(
   rs: RecordWithTaxon[],
   order: RecordSort,
@@ -102,21 +97,28 @@ function sortRecords(
   return direction === 'desc' ? sorted.reverse() : sorted;
 }
 
-const HIGH_LEVEL_GROUPS: Array<{ key: string; label: string; field: 'kingdom' | 'phylum' | 'class' | 'order'; value: string }> = [
-  { key: 'plantae', label: '植物', field: 'kingdom', value: 'Plantae' },
-  { key: 'aves', label: '鳥類', field: 'class', value: 'Aves' },
-  { key: 'mammalia', label: '哺乳', field: 'class', value: 'Mammalia' },
-  { key: 'reptilia', label: '爬蟲', field: 'class', value: 'Reptilia' },
-  { key: 'amphibia', label: '兩棲', field: 'class', value: 'Amphibia' },
-  { key: 'insecta', label: '昆蟲', field: 'class', value: 'Insecta' },
-  { key: 'fish', label: '魚類', field: 'class', value: 'Actinopterygii' },
-  { key: 'fungi', label: '真菌', field: 'kingdom', value: 'Fungi' },
+const HIGH_LEVEL_GROUPS: Array<{ key: string; field: 'kingdom' | 'phylum' | 'class' | 'order'; value: string }> = [
+  { key: 'plantae', field: 'kingdom', value: 'Plantae' },
+  { key: 'aves', field: 'class', value: 'Aves' },
+  { key: 'mammalia', field: 'class', value: 'Mammalia' },
+  { key: 'reptilia', field: 'class', value: 'Reptilia' },
+  { key: 'amphibia', field: 'class', value: 'Amphibia' },
+  { key: 'insecta', field: 'class', value: 'Insecta' },
+  { key: 'fish', field: 'class', value: 'Actinopterygii' },
+  { key: 'fungi', field: 'kingdom', value: 'Fungi' },
 ];
 
 export default function SessionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const sessionId = parseInt(id as string, 10);
   const router = useRouter();
+  const { t } = useTranslation();
+  const sortLabel: Record<RecordSort, string> = {
+    observed: t('session.sortObserved'),
+    cname: t('session.sortCname'),
+    name: t('session.sortName'),
+    family: t('session.sortFamily'),
+  };
   const toast = useToast((s) => s.show);
   const refreshActive = useActiveSession((s) => s.refresh);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
@@ -193,18 +195,18 @@ export default function SessionDetailScreen() {
 
   const handleAdd = (result: SearchResult) => {
     if (!result.taxon_id) {
-      toast('此物種無 taxon_id，無法加入');
+      toast(t('session.noTaxonId'));
       return;
     }
     if (isTaxonInSession(sessionId, result.taxon_id)) {
-      toast(`已存在：${result.cname || result.name}`);
+      toast(t('session.alreadyExists', { name: result.cname || result.name }));
       return;
     }
     const recordId = addRecord({ session_id: sessionId, taxon_id: result.taxon_id });
     reload();
-    toast(`已加入：${result.cname || result.name}`, {
+    toast(t('session.added', { name: result.cname || result.name }), {
       action: {
-        label: 'UNDO',
+        label: t('common.undo'),
         onPress: () => {
           deleteRecord(recordId);
           reload();
@@ -216,9 +218,9 @@ export default function SessionDetailScreen() {
   const handleSwipeRemove = (record: RecordWithTaxon) => {
     deleteRecord(record.id);
     reload();
-    toast(`已移除：${record.common_name_c || record.simple_name}`, {
+    toast(t('session.removed', { name: record.common_name_c || record.simple_name }), {
       action: {
-        label: 'UNDO',
+        label: t('common.undo'),
         onPress: () => {
           if (record.taxon_id) {
             addRecord({ session_id: sessionId, taxon_id: record.taxon_id, notes: record.notes });
@@ -269,13 +271,13 @@ export default function SessionDetailScreen() {
       reload();
       toast(
         mode === 'camera'
-          ? '已存入相簿並關聯'
+          ? t('session.photoSavedLinked')
           : newUris.length === 1
-            ? '已加入照片'
-            : `已加入 ${newUris.length} 張照片`,
+            ? t('session.photoAdded')
+            : t('session.photosAdded', { count: newUris.length }),
       );
     } catch (e) {
-      Alert.alert('無法加入照片', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('session.photoFailTitle'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -289,7 +291,7 @@ export default function SessionDetailScreen() {
       photo_paths: next.length > 0 ? JSON.stringify(next) : null,
     });
     reload();
-    toast('已移除照片');
+    toast(t('session.photoRemoved'));
   };
 
   const handleSaveLongPressNotes = (newNotes: string) => {
@@ -307,7 +309,7 @@ export default function SessionDetailScreen() {
     updateSession(session.id, { project_id: projectId });
     setProjectSheetOpen(false);
     reload();
-    toast('已更新專案');
+    toast(t('session.projectUpdated'));
   };
 
   // ── GPS ───────────────────────────────────────────────────────
@@ -315,10 +317,7 @@ export default function SessionDetailScreen() {
   const ensureForegroundPermission = async (): Promise<boolean> => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert(
-        '需要定位權限',
-        '請至 設定 → Checklister → 位置 開啟「使用 App 期間」',
-      );
+      Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
       return false;
     }
     return true;
@@ -335,9 +334,9 @@ export default function SessionDetailScreen() {
         start_lng: pos.coords.longitude,
       });
       reload();
-      toast('已記錄目前位置');
+      toast(t('gps.posRecorded'));
     } catch (e) {
-      Alert.alert('無法取得位置', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -346,16 +345,16 @@ export default function SessionDetailScreen() {
     // Single recorder: block if another record is already recording. The
     // recorder owns permission prompting (throws '需要定位權限').
     if (recordingTarget && !(recordingTarget.kind === 'session' && recordingTarget.id === session.id)) {
-      Alert.alert('已有記錄正在錄製軌跡', '請先停止其他記錄的軌跡再開始');
+      Alert.alert(t('gps.trackBusyTitle'), t('gps.trackBusyMsg'));
       return;
     }
     try {
       // Resume (if a track already exists) is handled inside the recorder,
       // which loads prior segments and appends a new one.
       await startRecording({ kind: 'session', id: session.id });
-      toast('開始軌跡錄製');
+      toast(t('gps.trackStarted'));
     } catch (e) {
-      Alert.alert('無法啟動軌跡', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('gps.trackStartFail'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -364,15 +363,15 @@ export default function SessionDetailScreen() {
       pauseRecording(); // commits the in-progress segment
     }
     reload();
-    toast('軌跡已存檔');
+    toast(t('gps.trackSaved'));
   }, [sessionId, reload, toast]);
 
   const handleClearGps = () => {
     if (!session) return;
-    Alert.alert('清除此記錄的空間資料？', '樣區指派、起點與軌跡都會被移除（樣區本身不會刪除）', [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('gps.clearTitle'), t('gps.clearMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '清除',
+        text: t('common.clear'),
         style: 'destructive',
         onPress: () => {
           // Tear down the watch first so it can't re-write the row after we
@@ -386,7 +385,7 @@ export default function SessionDetailScreen() {
             gps_mode: null,
           });
           reload();
-          toast('已清除空間資料');
+          toast(t('gps.cleared'));
         },
       },
     ]);
@@ -402,7 +401,7 @@ export default function SessionDetailScreen() {
       const lat = pos.coords.latitude;
       const lng = pos.coords.longitude;
       const { createSite } = await import('~/db');
-      const stamp = new Date().toLocaleString('zh-TW', { hour12: false }).slice(0, 16);
+      const stamp = isoDateTime(Date.now());
       const newSiteId = createSite({
         project_id: session.project_id,
         session_id: session.id,
@@ -411,9 +410,9 @@ export default function SessionDetailScreen() {
       });
       updateSession(session.id, { site_id: newSiteId, start_lat: lat, start_lng: lng });
       reload();
-      toast('已建立 Point 樣區並指派');
+      toast(t('session.pointSiteCreated'));
     } catch (e) {
-      Alert.alert('無法取得位置', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -426,27 +425,27 @@ export default function SessionDetailScreen() {
 
     const options: Array<{ label: string; action: () => void; destructive?: boolean }> = [
       {
-        label: hasSite ? `指定樣區（目前：${site?.name ?? ''}）` : '指定 / 新建樣區',
+        label: hasSite ? t('session.assignSiteCurrent', { name: site?.name ?? '' }) : t('session.assignOrCreateSite'),
         action: () => setSiteSheetOpen(true),
       },
       {
-        label: '從當前位置建立 Point 樣區',
+        label: t('session.createPointSiteFromGps'),
         action: handleCreatePointSiteFromGps,
       },
       {
-        label: hasPoint ? '重新定位起點' : '定位當前位置（不建樣區）',
+        label: hasPoint ? t('session.relocateStart') : t('session.locateNoSite'),
         action: handleDropPoint,
       },
       tracking
-        ? { label: `停止軌跡錄製（${trackCount} 點）`, action: handleStopTrack }
-        : { label: trackHasData ? '繼續軌跡錄製' : '開始軌跡錄製', action: handleStartTrack },
+        ? { label: t('session.stopTrack', { count: trackCount }), action: handleStopTrack }
+        : { label: trackHasData ? t('session.resumeTrack') : t('session.startTrack'), action: handleStartTrack },
     ];
     if (hasAnySpatial) {
-      options.push({ label: '清除空間資料', action: handleClearGps, destructive: true });
+      options.push({ label: t('session.clearSpatial'), action: handleClearGps, destructive: true });
     }
 
     const idx = await showActionSheet({
-      title: '空間資料（樣區 / 起點 / 軌跡）',
+      title: t('session.spatialMenuTitle'),
       options: options.map((o) => ({ label: o.label, destructive: o.destructive })),
     });
     if (idx >= 0 && idx < options.length) options[idx].action();
@@ -457,7 +456,7 @@ export default function SessionDetailScreen() {
     updateSession(session.id, { site_id: siteId });
     setSiteSheetOpen(false);
     reload();
-    toast(siteId === null ? '已移除樣區指派' : '已指定樣區');
+    toast(siteId === null ? t('session.siteUnassigned') : t('session.siteAssigned'));
   };
 
   const handleCreateSiteForSession = (drawType: 'Point' | 'LineString' | 'Polygon') => {
@@ -482,16 +481,16 @@ export default function SessionDetailScreen() {
       refreshActive();
       refreshActivePlot();
       reload();
-      toast('已重新啟用');
+      toast(t('session.reopened'));
     };
     if (otherActive && otherActive.id !== session.id) {
       Alert.alert(
-        '已有另一筆記錄正在進行',
-        `「${otherActive.name}」目前進行中。要先結束它再啟用此記錄嗎？`,
+        t('session.otherActiveTitle'),
+        t('session.otherActiveMsg', { name: otherActive.name }),
         [
-          { text: '取消', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: '結束舊的並啟用',
+            text: t('session.endOldAndReopen'),
             style: 'destructive',
             onPress: () => {
               endSession(otherActive.id);
@@ -508,12 +507,12 @@ export default function SessionDetailScreen() {
   const handlePickSort = async () => {
     const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
     const idx = await showActionSheet({
-      title: '排序方式',
+      title: t('session.sortTitle'),
       options: orders.map((o) => ({
         label:
           o === sortOrder
-            ? `${SORT_LABEL[o]}（再點翻轉方向）`
-            : SORT_LABEL[o],
+            ? t('session.sortActiveHint', { label: sortLabel[o] })
+            : sortLabel[o],
       })),
     });
     if (idx < 0 || idx >= orders.length) return;
@@ -538,19 +537,19 @@ export default function SessionDetailScreen() {
     const idx = await showActionSheet({
       title: record.common_name_c || record.simple_name,
       options: [
-        { label: '編輯備註' },
-        { label: fav ? '移除常用名錄' : '加入常用名錄' },
-        { label: '看詳細資訊' },
-        { label: '從名錄移除', destructive: true },
+        { label: t('session.editNotes') },
+        { label: fav ? t('favorites.remove') : t('favorites.add') },
+        { label: t('session.viewDetails') },
+        { label: t('session.removeFromList'), destructive: true },
       ],
     });
     if (idx === 0) setNotesEditing(record);
     else if (idx === 1) {
       if (fav) {
         useFavorites.getState().remove(record.taxon_id);
-        toast('已從常用名錄移除');
+        toast(t('favorites.removed'));
       } else {
-        toast(useFavorites.getState().addById(record.taxon_id) ? '已加入常用名錄' : '無法加入常用名錄');
+        toast(useFavorites.getState().addById(record.taxon_id) ? t('favorites.added') : t('favorites.addFail'));
       }
     } else if (idx === 2) setActiveRecord(record);
     else if (idx === 3) handleSwipeRemove(record);
@@ -559,8 +558,8 @@ export default function SessionDetailScreen() {
   if (!session) {
     return (
       <View className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
-        <Stack.Screen options={{ title: '記錄', headerLeft: BackHeaderLeft }} />
-        <Text className="text-gray-500 dark:text-gray-400">載入中...</Text>
+        <Stack.Screen options={{ title: t('nav.session'), headerLeft: BackHeaderLeft }} />
+        <Text className="text-gray-500 dark:text-gray-400">{t('common.loading')}</Text>
       </View>
     );
   }
@@ -579,13 +578,13 @@ export default function SessionDetailScreen() {
           headerRight: isActive
             ? () => (
                 <Pressable onPress={handleEnd} hitSlop={8}>
-                  <Text className="text-base font-medium text-red-600 dark:text-red-400">結束</Text>
+                  <Text className="text-base font-medium text-red-600 dark:text-red-400">{t('session.end')}</Text>
                 </Pressable>
               )
             : () => (
                 <Pressable onPress={handleReopen} hitSlop={8} className="flex-row items-center">
                   <Ionicons name="refresh" size={16} color="#2563eb" />
-                  <Text className="ml-1 text-base font-medium text-blue-600 dark:text-blue-400">繼續編輯</Text>
+                  <Text className="ml-1 text-base font-medium text-blue-600 dark:text-blue-400">{t('session.continueEdit')}</Text>
                 </Pressable>
               ),
         }}
@@ -617,7 +616,7 @@ export default function SessionDetailScreen() {
                   <>
                     <Ionicons name="radio" size={14} color="#dc2626" />
                     <Text className="ml-1 text-xs font-medium text-red-600 dark:text-red-400" numberOfLines={1}>
-                      軌跡 {trackCount}
+                      {t('session.trackBadge', { count: trackCount })}
                     </Text>
                   </>
                 );
@@ -637,7 +636,7 @@ export default function SessionDetailScreen() {
                   <>
                     <Ionicons name="location" size={14} color="#2563eb" />
                     <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
-                      已定位
+                      {t('session.located')}
                     </Text>
                   </>
                 );
@@ -645,7 +644,7 @@ export default function SessionDetailScreen() {
               return (
                 <>
                   <Ionicons name="pin-outline" size={14} color="#9ca3af" />
-                  <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">空間</Text>
+                  <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">{t('session.spatial')}</Text>
                 </>
               );
             })()}
@@ -664,7 +663,7 @@ export default function SessionDetailScreen() {
               className={`ml-1 flex-1 text-xs ${session.recorded_by ? 'font-medium text-blue-700 dark:text-blue-300' : 'italic text-gray-500 dark:text-gray-400'}`}
               numberOfLines={1}
             >
-              {session.recorded_by || '調查者'}
+              {session.recorded_by || t('session.surveyor')}
             </Text>
           </Pressable>
         </View>
@@ -677,7 +676,7 @@ export default function SessionDetailScreen() {
             contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center' }}
           >
             <Chip
-              label={`全部 ${records.length}`}
+              label={`${t('records.filterAll')} ${records.length}`}
               active={filterKey === null}
               onPress={() => setFilterKey(null)}
             />
@@ -687,7 +686,7 @@ export default function SessionDetailScreen() {
               return (
                 <Chip
                   key={g.key}
-                  label={`${g.label} ${count}`}
+                  label={`${t('group.' + g.key)} ${count}`}
                   active={filterKey === g.key}
                   onPress={() => setFilterKey(g.key)}
                 />
@@ -697,7 +696,7 @@ export default function SessionDetailScreen() {
           <View className="flex-row items-center gap-3 pl-2 pr-3">
             <Pressable onPress={handlePickSort} hitSlop={8} className="flex-row items-center active:opacity-70">
               <Ionicons name="swap-vertical" size={18} color="#6b7280" />
-              <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">{SORT_LABEL[sortOrder]}</Text>
+              <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">{sortLabel[sortOrder]}</Text>
             </Pressable>
             <Pressable onPress={handleToggleSortDir} hitSlop={6} className="active:opacity-50">
               <Ionicons name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} size={14} color="#6b7280" />
@@ -713,7 +712,7 @@ export default function SessionDetailScreen() {
           <View className="flex-1 items-center justify-center px-6">
             <Ionicons name="search-outline" size={56} color="#9ca3af" />
             <Text className="mt-3 text-base text-gray-700 dark:text-gray-300">
-              {records.length === 0 ? '按下方搜尋框找物種加入名錄' : '此分類群無記錄'}
+              {records.length === 0 ? t('session.emptyHint') : t('session.emptyGroup')}
             </Text>
           </View>
         ) : (
@@ -721,7 +720,7 @@ export default function SessionDetailScreen() {
             data={filtered}
             keyExtractor={(r) => `${r.id}`}
             renderItem={({ item }) => (
-              <SwipeRow onDelete={() => handleSwipeRemove(item)} label="移除">
+              <SwipeRow onDelete={() => handleSwipeRemove(item)} label={t('common.remove')}>
                 <SpeciesCard
                   record={item}
                   onPress={() => setActiveRecord(item)}
@@ -767,7 +766,7 @@ export default function SessionDetailScreen() {
           updateRecordLocation(activeRecord.id, lat, lng, accuracy);
           setActiveRecord({ ...activeRecord, lat, lng, accuracy });
           reload();
-          toast(lat === null ? '已清除座標' : '已記錄此物種座標');
+          toast(lat === null ? t('session.coordCleared') : t('session.coordRecorded'));
         }}
         onAddPhoto={handleAddPhoto}
         onRemovePhoto={handleRemovePhoto}
@@ -797,7 +796,7 @@ export default function SessionDetailScreen() {
       <NotesEditModal
         visible={notesEditing !== null && !activeRecord}
         initialValue={notesEditing?.notes ?? ''}
-        title={notesEditing?.common_name_c || notesEditing?.simple_name || '備註'}
+        title={notesEditing?.common_name_c || notesEditing?.simple_name || t('session.notes')}
         onCancel={() => setNotesEditing(null)}
         onSave={handleSaveLongPressNotes}
       />
@@ -851,7 +850,7 @@ export default function SessionDetailScreen() {
         onClose={() => setBatchImportOpen(false)}
         onCommitted={(added) => {
           reload();
-          if (added > 0) toast(`已匯入 ${added} 筆`);
+          if (added > 0) toast(t('session.imported', { count: added }));
         }}
       />
 

@@ -1,5 +1,12 @@
 import { getUserDb, getTaicolDb } from './init';
 import { generateUuid } from './plots';
+import {
+  getEnabledRegions,
+  isJpTaxonId,
+  regionOfTaxonId,
+  crossRegionVernacular,
+  composeVernacular,
+} from './regions';
 
 export type ChecklistRecord = {
   id: number;
@@ -179,29 +186,50 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   if (records.length === 0) return [];
 
   const taxonIds = records.map((r) => r.taxon_id);
-  const placeholders = taxonIds.map(() => '?').join(',');
-  const taxaRes = taicolDb.executeSync(
-    `SELECT taxon_id, simple_name, name_author, common_name_c, alternative_name_c,
+  // Resolve names by querying each dataset's real table directly (indexed on
+  // taxon_id) — split by the 't…'/'y…' prefix. We deliberately avoid a
+  // taicol∪ylist UNION view: joining/scanning it materializes ~270k rows and
+  // costs seconds. All-Taiwan sessions only touch taicol_names (unchanged).
+  const TAXON_COLS = `taxon_id, simple_name, name_author, common_name_c, alternative_name_c,
             family, family_c, rank,
             is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
             kingdom, kingdom_c, phylum, phylum_c, class, class_c, "order", order_c, genus, genus_c,
-            is_terrestrial, is_freshwater, is_brackish, is_marine, is_fossil
-     FROM taicol_names
-     WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
-    taxonIds,
-  );
+            is_terrestrial, is_freshwater, is_brackish, is_marine, is_fossil`;
   const taxonMap = new Map<string, Record<string, unknown>>();
-  for (const row of (taxaRes.rows ?? []) as Array<Record<string, unknown>>) {
-    taxonMap.set(row.taxon_id as string, row);
-  }
+  const fillFrom = (tbl: string, ids: string[]) => {
+    if (ids.length === 0) return;
+    const ph = ids.map(() => '?').join(',');
+    const res = taicolDb.executeSync(
+      `SELECT ${TAXON_COLS} FROM ${tbl} WHERE taxon_id IN (${ph}) AND usage_status = 'accepted'`,
+      ids,
+    );
+    for (const row of (res.rows ?? []) as Array<Record<string, unknown>>) {
+      taxonMap.set(row.taxon_id as string, row);
+    }
+  };
+  fillFrom('taicol_names', taxonIds.filter((id) => !isJpTaxonId(id)));
+  fillFrom('ylist_names', taxonIds.filter(isJpTaxonId));
+
+  // When Japan is enabled, merge the cross-region vernacular into common_name_c
+  // so every downstream display + export shows e.g. "糯米條 / タイワンツクバネウツギ"
+  // for shared species, or the lone 和名 for Japan-only ones. Skipped entirely
+  // when only ['TW'] is enabled — common_name_c stays exactly as TaiCOL has it.
+  const regions = getEnabledRegions();
+  const cross = regions.includes('JP')
+    ? crossRegionVernacular(taxonIds, regions)
+    : null;
 
   return records.map((r) => {
     const t = taxonMap.get(r.taxon_id) ?? {};
+    const ownCname = (t.common_name_c as string) ?? '';
+    const common_name_c = cross
+      ? composeVernacular(ownCname, regionOfTaxonId(r.taxon_id), cross.get(r.taxon_id), regions)
+      : ownCname;
     return {
       ...r,
       simple_name: (t.simple_name as string) ?? '',
       name_author: (t.name_author as string) ?? '',
-      common_name_c: (t.common_name_c as string) ?? '',
+      common_name_c,
       alternative_name_c: (t.alternative_name_c as string) ?? '',
       family: (t.family as string) ?? '',
       family_c: (t.family_c as string) ?? '',

@@ -3,6 +3,8 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { isoTime } from '~/lib/datetime';
 import {
   Alert,
   Platform,
@@ -39,7 +41,7 @@ import {
   type PlotLayer,
   type PlotSurvey,
   type Project,
-  LAYER_LABEL,
+  layerLabel,
   MAX_LAYER_COUNT,
 } from '~/db';
 import { PhotoGrid, PhotoViewerModal } from '~/components/PhotoGrid';
@@ -58,6 +60,8 @@ import { showActionSheet } from '~/components/ActionSheet';
 type Tab = 'env' | 'species';
 
 export default function PlotDetailScreen() {
+  const { t } = useTranslation();
+
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const plotId = Number(id);
@@ -81,8 +85,8 @@ export default function PlotDetailScreen() {
   if (!plot) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
-        <Stack.Screen options={{ title: '樣區', headerLeft: BackHeaderLeft }} />
-        <Text className="text-gray-500 dark:text-gray-400">找不到此樣區</Text>
+        <Stack.Screen options={{ title: t('nav.plot'), headerLeft: BackHeaderLeft }} />
+        <Text className="text-gray-500 dark:text-gray-400">{t('plot.notFound')}</Text>
       </SafeAreaView>
     );
   }
@@ -109,10 +113,10 @@ export default function PlotDetailScreen() {
                   refreshActiveSession();
                   reload();
                 } else {
-                  Alert.alert('結束樣區?', '結束後仍可重新開啟編輯。', [
-                    { text: '取消', style: 'cancel' },
+                  Alert.alert(t('plot.endTitle'), t('plot.endMsg'), [
+                    { text: t('common.cancel'), style: 'cancel' },
                     {
-                      text: '結束',
+                      text: t('session.end'),
                       onPress: () => {
                         if (isRecordingTarget({ kind: 'plot', id: plot.id })) pauseRecording();
                         endPlotSurvey(plot.id);
@@ -125,16 +129,16 @@ export default function PlotDetailScreen() {
               hitSlop={8}
             >
               <Text className="text-base font-medium text-blue-600 dark:text-blue-400">
-                {plot.status === 'done' ? '重開' : '結束'}
+                {plot.status === 'done' ? t('plot.reopen') : t('session.end')}
               </Text>
             </Pressable>
           ),
         }}
       />
       <View className="flex-row border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <TabBtn label="環境" active={tab === 'env'} onPress={() => setTab('env')} />
+        <TabBtn label={t('plot.tabEnv')} active={tab === 'env'} onPress={() => setTab('env')} />
         <TabBtn
-          label={`物種 ${speciesCount > 0 ? speciesCount : ''}`}
+          label={`${t('plot.tabSpecies')} ${speciesCount > 0 ? speciesCount : ''}`}
           active={tab === 'species'}
           onPress={() => setTab('species')}
           disabled={!ready}
@@ -192,10 +196,12 @@ function TabBtn({
 
 /** HH:MM clock for the point-count start/end time buttons. */
 function fmtClock(ts: number): string {
-  return new Date(ts).toLocaleTimeString('zh-TW', { hour: '2-digit', minute: '2-digit' });
+  return isoTime(ts);
 }
 
 function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const { t } = useTranslation();
+
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
   const [surveyorSheetOpen, setSurveyorSheetOpen] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
@@ -212,7 +218,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
   const captureGps = async () => {
     const perm = await Location.requestForegroundPermissionsAsync();
     if (perm.status !== 'granted') {
-      Alert.alert('需要定位權限', '請至 設定 → Checklister → 位置 開啟');
+      Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
       return;
     }
     try {
@@ -229,7 +235,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         start_ts: plot.start_ts ?? Date.now(),
       });
     } catch (e) {
-      Alert.alert('無法取得位置', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -240,7 +246,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
 
   return (
     <KeyboardAwareScrollView className="flex-1" keyboardShouldPersistTaps="handled" bottomOffset={24}>
-      <Section title="必填" required>
+      <Section title={t('plot.required')} required>
         <Field
           label="Plotid"
           value={plot.plotid}
@@ -254,12 +260,12 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         >
           <Ionicons name="folder-outline" size={18} color="#4b5563" />
           <View className="ml-2 flex-1">
-            <Text className="text-xs text-gray-500 dark:text-gray-400">專案</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400">{t('plot.project')}</Text>
             <Text
               className={`text-sm ${project?.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}
               numberOfLines={1}
             >
-              {project?.name ?? '未分類'}
+              {project?.name ?? t('plot.uncategorized')}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
@@ -271,7 +277,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
             <View className="flex-row items-center">
               <Text className="flex-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-                GPS 座標 + 精度 + 海拔 <Text className="text-red-500">*</Text>
+                {t('plot.gpsLabel')} <Text className="text-red-500">*</Text>
               </Text>
               <Pressable
                 onPress={captureGps}
@@ -279,7 +285,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
               >
                 <Ionicons name="locate" size={14} color="white" />
                 <Text className="ml-1 text-xs font-medium text-white">
-                  {hasGps ? '重新抓取' : '抓取座標'}
+                  {hasGps ? t('plot.refetchGps') : t('plot.fetchGps')}
                 </Text>
               </Pressable>
             </View>
@@ -289,11 +295,11 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 {'  '}
                 <Text className="text-xs text-gray-500 dark:text-gray-400">
                   ±{plot.coord_uncertainty_m?.toFixed(1)} m
-                  {plot.elevation_m != null ? ` · 海拔 ${plot.elevation_m} m` : ''}
+                  {plot.elevation_m != null ? t('plot.elevSuffix', { m: plot.elevation_m }) : ''}
                 </Text>
               </Text>
             ) : (
-              <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">尚未抓取（物種輸入需此資料）</Text>
+              <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">{t('plot.gpsNotYet')}</Text>
             )}
           </View>
         )}
@@ -301,9 +307,9 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         {plot.plot_type === 'point_count' ? (
           <>
             <Field
-              label="計數半徑 (radius)"
+              label={t('plot.radius')}
               value={plot.point_radius_m !== null ? String(plot.point_radius_m) : ''}
-              placeholder="例: 25"
+              placeholder={t('plot.egRadius')}
               keyboardType="decimal-pad"
               suffix="m"
               onSave={(v) => {
@@ -312,7 +318,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
               }}
             />
             <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-              <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">計數時間</Text>
+              <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('plot.countTime')}</Text>
               <View className="mt-2 flex-row gap-2">
                 <Pressable
                   onPress={() => patch({ start_ts: Date.now() })}
@@ -320,7 +326,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 >
                   <Ionicons name="play" size={14} color="#16a34a" />
                   <Text className="ml-1 text-xs text-gray-700 dark:text-gray-300">
-                    開始 {plot.start_ts ? fmtClock(plot.start_ts) : '—'}
+                    {t('plot.startLabel')} {plot.start_ts ? fmtClock(plot.start_ts) : '—'}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -329,7 +335,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 >
                   <Ionicons name="stop" size={14} color="#dc2626" />
                   <Text className="ml-1 text-xs text-gray-700 dark:text-gray-300">
-                    結束 {plot.stop_ts ? fmtClock(plot.stop_ts) : '—'}
+                    {t('plot.stopLabel')} {plot.stop_ts ? fmtClock(plot.stop_ts) : '—'}
                   </Text>
                 </Pressable>
               </View>
@@ -339,7 +345,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
 
         <View className="mb-3">
           <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-            調查者 (recordedBy)
+            {t('plot.recordedBy')}
           </Text>
           <Pressable
             onPress={() => setSurveyorSheetOpen(true)}
@@ -349,21 +355,21 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
               className={`flex-1 text-sm ${plot.recorded_by ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}
               numberOfLines={1}
             >
-              {plot.recorded_by || '點選指派調查者…'}
+              {plot.recorded_by || t('plot.assignSurveyor')}
             </Text>
             <Ionicons name="people-outline" size={16} color="#9ca3af" />
           </Pressable>
         </View>
       </Section>
 
-      <CollapsibleSection title="基本資訊">
+      <CollapsibleSection title={t('plot.basicInfo')}>
         {/* 穿越線不需要樣區大小 / 單位（其尺度由軌跡長度表示）。 */}
         {plot.plot_type !== 'transect' ? (
           <>
             <Field
-              label="樣區大小 (sampleSizeValue)"
+              label={t('plot.sampleSizeValue')}
               value={plot.sample_size_value !== null ? String(plot.sample_size_value) : ''}
-              placeholder="例: 25 或 100"
+              placeholder={t('plot.egSampleSize')}
               keyboardType="decimal-pad"
               onSave={(v) => {
                 const n = v.trim() === '' ? null : Number(v);
@@ -371,21 +377,21 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
               }}
             />
             <Field
-              label="樣區單位 (sampleSizeUnit)"
+              label={t('plot.sampleSizeUnit')}
               value={plot.sample_size_unit ?? ''}
-              placeholder="例: square meters / meters"
+              placeholder={t('plot.egSampleUnit')}
               onSave={(v) => patch({ sample_size_unit: v || null })}
             />
           </>
         ) : null}
         <Field
-          label="調查法 (samplingProtocol)"
+          label={t('plot.samplingProtocol')}
           value={plot.sampling_protocol ?? ''}
-          placeholder="例: 方形樣區調查法 / 穿越線調查法"
+          placeholder={t('plot.egProtocol')}
           onSave={(v) => patch({ sampling_protocol: v || null })}
         />
         <NumField
-          label="總植被覆蓋度 (totalCoverInPercentage)"
+          label={t('plot.totalCover')}
           value={plot.total_cover_pct}
           suffix="%"
           min={0}
@@ -393,14 +399,14 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           onSave={(n) => patch({ total_cover_pct: n })}
         />
         <Field
-          label="地點描述 (locality)"
+          label={t('plot.locality')}
           value={plot.locality ?? ''}
-          placeholder="例: 臺大校園總圖書館旁"
+          placeholder={t('plot.egLocality')}
           onSave={(v) => patch({ locality: v || null })}
           multiline
         />
         <Field
-          label="備註 (fieldNote)"
+          label={t('plot.fieldNote')}
           value={plot.field_note ?? ''}
           onSave={(v) => patch({ field_note: v || null })}
           multiline
@@ -415,45 +421,45 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         <SubplotSection plot={plot} onUpdated={onUpdated} />
       ) : null}
 
-      <CollapsibleSection title="進階（地形、地表覆蓋）">
+      <CollapsibleSection title={t('plot.advanced')}>
         <NumField
-          label="海拔 (elevation)"
+          label={t('plot.elevation')}
           suffix="m"
           value={plot.elevation_m}
           onSave={(n) => patch({ elevation_m: n })}
         />
         <NumField
-          label="坡度 (slope)"
+          label={t('plot.slope')}
           suffix="°"
           value={plot.slope_deg}
           onSave={(n) => patch({ slope_deg: n })}
         />
         <NumField
-          label="坡向 (aspect)"
+          label={t('plot.aspect')}
           suffix="°"
           value={plot.aspect_deg}
           onSave={(n) => patch({ aspect_deg: n })}
         />
         <Field
-          label="地形位置 (terrainPosition)"
+          label={t('plot.terrainPosition')}
           value={plot.terrain_position ?? ''}
           placeholder="ridge / upper / mid / lower / valley / plain"
           onSave={(v) => patch({ terrain_position: v || null })}
         />
         <NumField
-          label="岩石覆蓋"
+          label={t('plot.rockCover')}
           suffix="%"
           value={plot.rock_cover_pct}
           onSave={(n) => patch({ rock_cover_pct: n })}
         />
         <NumField
-          label="碎石覆蓋"
+          label={t('plot.gravelCover')}
           suffix="%"
           value={plot.gravel_cover_pct}
           onSave={(n) => patch({ gravel_cover_pct: n })}
         />
         <NumField
-          label="裸露地覆蓋"
+          label={t('plot.bareCover')}
           suffix="%"
           value={plot.bareland_cover_pct}
           onSave={(n) => patch({ bareland_cover_pct: n })}
@@ -540,6 +546,8 @@ function CollapsibleSection({
 }
 
 function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const { t } = useTranslation();
+
   // +/- icons sit on a dark button in dark mode — use a bright glyph there.
   const { scheme } = useThemeColors();
   const stepIcon = scheme === 'dark' ? '#f3f4f6' : '#374151';
@@ -591,9 +599,9 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
   const first = subplots[0];
 
   return (
-    <CollapsibleSection title="小區劃分 (subplots)">
+    <CollapsibleSection title={t('plot.subplots')}>
       <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
-        切分後在「物種」分頁可逐小區記錄物種、豐度與各層 cover/height（分層設定共用）。0 = 不切分。
+        {t('plot.subplotsDesc')}
       </Text>
       <View className="mb-3 flex-row items-center">
         <Pressable
@@ -612,7 +620,7 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
         >
           <Ionicons name="add" size={18} color={stepIcon} />
         </Pressable>
-        <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">小區數量</Text>
+        <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">{t('plot.subplotCount')}</Text>
       </View>
 
       {count > 0 ? (
@@ -622,25 +630,25 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
             size={20}
             color={uniform ? '#2563eb' : scheme === 'dark' ? '#9ca3af' : '#6b7280'}
           />
-          <Text className="ml-2 text-sm text-gray-800 dark:text-gray-200">各小區長寬相同</Text>
+          <Text className="ml-2 text-sm text-gray-800 dark:text-gray-200">{t('plot.subplotUniform')}</Text>
         </Pressable>
       ) : null}
 
       {/* Uniform mode: one shared 寬/長 pair applied to all subplots. */}
       {uniform && count > 0 ? (
         <View className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2">
-          <Text className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">所有小區共用尺寸</Text>
+          <Text className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">{t('plot.subplotSharedSize')}</Text>
           <View className="flex-row gap-3">
             <View className="flex-1">
               <NumField
-                label="寬 (m)"
+                label={t('plot.width')}
                 value={first?.width_m ?? null}
                 onSave={(n) => applyUniform({ width_m: n })}
               />
             </View>
             <View className="flex-1">
               <NumField
-                label="長 (m)"
+                label={t('plot.length')}
                 value={first?.length_m ?? null}
                 onSave={(n) => applyUniform({ length_m: n })}
               />
@@ -655,7 +663,7 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
           className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2"
         >
           <Field
-            label={`小區 ${s.idx} 名稱`}
+            label={t('plot.subplotName', { idx: s.idx })}
             value={s.label}
             onSave={(v) => {
               updateSubplot(s.id, { label: v });
@@ -667,7 +675,7 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
             <View className="flex-row gap-3">
               <View className="flex-1">
                 <NumField
-                  label="寬 (m)"
+                  label={t('plot.width')}
                   value={s.width_m}
                   onSave={(n) => {
                     updateSubplot(s.id, { width_m: n });
@@ -677,7 +685,7 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
               </View>
               <View className="flex-1">
                 <NumField
-                  label="長 (m)"
+                  label={t('plot.length')}
                   value={s.length_m}
                   onSave={(n) => {
                     updateSubplot(s.id, { length_m: n });
@@ -760,6 +768,8 @@ function NumField({
   /** Inclusive upper bound — entered value must be ≤ this. */
   max?: number;
 }) {
+  const { t } = useTranslation();
+
   const toast = useToast((s) => s.show);
   // Bumping this remounts <Field>, resetting its draft to the last saved value
   // (used to discard an out-of-range entry).
@@ -773,19 +783,19 @@ function NumField({
       keyboardType="decimal-pad"
       suffix={suffix}
       onSave={(v) => {
-        const t = v.trim();
-        if (t === '') {
+        const trimmed = v.trim();
+        if (trimmed === '') {
           onSave(null);
           return;
         }
-        const n = Number(t);
+        const n = Number(trimmed);
         if (ranged) {
           const ok =
             Number.isFinite(n) &&
             (min === undefined || n > min) &&
             (max === undefined || n <= max);
           if (!ok) {
-            toast(`數值須大於 ${min ?? 0}、小於等於 ${max ?? 100}`);
+            toast(t('plot.numRange', { min: min ?? 0, max: max ?? 100 }));
             setResetKey((k) => k + 1);
             return;
           }
@@ -799,11 +809,13 @@ function NumField({
 }
 
 function SpeciesGateScreen() {
+  const { t } = useTranslation();
+
   return (
     <View className="flex-1 items-center justify-center px-8">
       <Ionicons name="lock-closed-outline" size={48} color="#fbbf24" />
       <Text className="mt-3 text-center text-gray-500 dark:text-gray-400">
-        請先在「環境」頁填妥 plotid、GPS 座標與精度
+        {t('plot.speciesGate')}
       </Text>
     </View>
   );
@@ -814,6 +826,8 @@ function SpeciesGateScreen() {
 // ─────────────────────────────────────────────────────────────────────
 
 function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const { t } = useTranslation();
+
   // +/- icons sit on a dark button in dark mode — use a bright glyph there.
   const { scheme } = useThemeColors();
   const stepIcon = scheme === 'dark' ? '#f3f4f6' : '#374151';
@@ -850,9 +864,9 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
   };
 
   return (
-    <CollapsibleSection title="分層 (layer)">
+    <CollapsibleSection title={t('plot.layerSection')}>
       <View className="mb-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3">
-        <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">分層數量</Text>
+        <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('plot.layerCount')}</Text>
         <View className="mt-2 flex-row items-center">
           <Pressable
             onPress={decrement}
@@ -880,12 +894,12 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
             />
           </Pressable>
           <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">
-            1-{MAX_LAYER_COUNT} 層；E1 苔蘚 / E2 草本 / E3 灌木 / E4 亞喬木 / E5 主林冠 / E6 突出
+            {t('plot.layerHint', { max: MAX_LAYER_COUNT })}
           </Text>
         </View>
       </View>
       <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
-        每層獨立 cover% / height(cm) / 預設豐度單位。物種輸入時 modal 會預選此處單位、可即時切換。
+        {t('plot.layerDesc')}
       </Text>
       {activeLayers.map((layerKey) => {
         const idx = layerIndexOf(layerKey as FixedLayer);
@@ -896,7 +910,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
             className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3"
           >
             <Text className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-              {LAYER_LABEL[layerKey]}
+              {layerLabel(layerKey)}
             </Text>
             <View className="mt-2 flex-row gap-3">
               <View className="flex-1">
@@ -950,7 +964,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
               </View>
             </View>
             <Text className="mt-1 text-xs font-medium text-gray-600 dark:text-gray-400">
-              預設豐度單位
+              {t('plot.defaultAbundanceUnit')}
             </Text>
             <View className="mt-1 flex-row gap-2">
               {(['BB', 'percent', 'DBH'] as AbundanceMethod[]).map((m) => {
@@ -964,7 +978,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
                     <Text
                       className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
                     >
-                      {m === 'BB' ? 'Braun-Blanquet' : m === 'percent' ? '百分比 %' : 'DBH'}
+                      {m === 'BB' ? 'Braun-Blanquet' : m === 'percent' ? t('plot.percentUnit') : 'DBH'}
                     </Text>
                   </Pressable>
                 );
@@ -982,6 +996,8 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
 // ─────────────────────────────────────────────────────────────────────
 
 function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
+  const { t } = useTranslation();
+
   const photos = parseEnvPhotos(plot.env_photos_json);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
@@ -1000,22 +1016,22 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
 
   const handleAdd = async () => {
     const choice = await showActionSheet({
-      title: '加入環境照片',
-      options: [{ label: '拍照' }, { label: '從相簿選擇' }],
+      title: t('plot.addEnvPhoto'),
+      options: [{ label: t('plot.takePhoto') }, { label: t('plot.pickFromAlbum') }],
     });
     if (choice === 0) {
       try {
         const uri = await captureEnvPhoto();
         if (uri) append([uri]);
       } catch (e) {
-        Alert.alert('拍照失敗', e instanceof Error ? e.message : String(e));
+        Alert.alert(t('plot.takePhotoFail'), e instanceof Error ? e.message : String(e));
       }
     } else if (choice === 1) {
       try {
         const uris = await pickPhotos();
         append(uris);
       } catch (e) {
-        Alert.alert('選擇照片失敗', e instanceof Error ? e.message : String(e));
+        Alert.alert(t('plot.pickPhotoFail'), e instanceof Error ? e.message : String(e));
       }
     }
   };
@@ -1024,7 +1040,7 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
     <View className="px-4 py-3">
       <View className="mb-2 flex-row items-center">
         <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-          環境照片
+          {t('plot.envPhotos')}
         </Text>
         {photos.length > 0 ? (
           <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">
@@ -1033,7 +1049,7 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
         ) : null}
       </View>
       <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
-        匯出時自動命名為 {plot.plotid || '<plotid>'}_YYYYMMDD_env-N.jpg
+        {t('plot.envPhotoNaming', { plotid: plot.plotid || '<plotid>' })}
       </Text>
       <PhotoGrid
         photos={photos}

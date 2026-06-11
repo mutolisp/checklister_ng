@@ -15,6 +15,7 @@
  * `bundleExport.ts` rather than reimplementing the ph:// / content:// handling.
  */
 import { reloadAppAsync } from 'expo';
+import i18n from '~/i18n';
 import Constants from 'expo-constants';
 import { File, Paths } from 'expo-file-system';
 import { readAsStringAsync } from 'expo-file-system/legacy';
@@ -91,21 +92,21 @@ export async function restoreBackup(zipUri: string): Promise<void> {
   const dbBytes = files[USER_DB_NAME];
   const manifestBytes = files['manifest.json'];
   if (!dbBytes || !manifestBytes) {
-    throw new Error('這不是有效的備份檔（缺少 user.db 或 manifest.json）');
+    throw new Error(i18n.t('backup.invalidFile'));
   }
 
   let manifest: BackupManifest;
   try {
     manifest = JSON.parse(strFromU8(manifestBytes));
   } catch {
-    throw new Error('備份檔損毀（manifest.json 無法解析）');
+    throw new Error(i18n.t('backup.corrupt'));
   }
   if (manifest.kind !== 'checklister-user-backup') {
-    throw new Error('這不是 Checklister 的備份檔');
+    throw new Error(i18n.t('backup.notChecklister'));
   }
   if (manifest.schemaVersion > LATEST_SCHEMA_VERSION) {
     throw new Error(
-      `此備份由較新版本的 app 建立（資料結構 v${manifest.schemaVersion}），請先更新 app 再回復。`,
+      i18n.t('backup.tooNew', { version: manifest.schemaVersion }),
     );
   }
 

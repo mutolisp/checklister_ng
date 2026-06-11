@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { searchByTaxonId, type FavoriteItem, type SearchResult } from '~/db';
@@ -14,13 +15,14 @@ import { useToast } from '~/stores/toast';
 
 type SortKey = 'added' | 'cname' | 'name' | 'family';
 const SORT_LABEL: Record<SortKey, string> = {
-  added: '加入時間',
-  cname: '俗名',
-  name: '學名',
-  family: '科',
+  added: 'favorites.sortAdded',
+  cname: 'session.sortCname',
+  name: 'session.sortName',
+  family: 'session.sortFamily',
 };
 
 export default function FavoritesScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const items = useFavorites((s) => s.items);
   const add = useFavorites((s) => s.add);
@@ -70,8 +72,8 @@ export default function FavoritesScreen() {
   const handleSort = async () => {
     const keys: SortKey[] = ['added', 'cname', 'name', 'family'];
     const idx = await showActionSheet({
-      title: '排序方式',
-      options: keys.map((k) => ({ label: k === sortKey ? `✓ ${SORT_LABEL[k]}` : SORT_LABEL[k] })),
+      title: t('favorites.sortTitle'),
+      options: keys.map((k) => ({ label: k === sortKey ? `✓ ${t(SORT_LABEL[k])}` : t(SORT_LABEL[k]) })),
     });
     if (idx >= 0 && idx < keys.length) setSortKey(keys[idx]);
   };
@@ -79,21 +81,21 @@ export default function FavoritesScreen() {
   const openDetail = (taxonId: string) => {
     const r = searchByTaxonId(taxonId);
     if (r) setSelected(r);
-    else toast('此物種已不在名錄資料庫中');
+    else toast(t('favorites.notInDb'));
   };
 
   const handleLongPress = async (item: FavoriteItem) => {
     const idx = await showActionSheet({
       title: item.common_name_c || item.simple_name,
-      options: [{ label: '加入記錄' }, { label: '移除常用名錄', destructive: true }],
+      options: [{ label: t('favorites.addToRecord') }, { label: t('favorites.removeFav'), destructive: true }],
     });
     if (idx === 0) {
       const r = searchByTaxonId(item.taxon_id);
       if (r) addSpecies(r);
-      else toast('此物種已不在名錄資料庫中');
+      else toast(t('favorites.notInDb'));
     } else if (idx === 1) {
       remove(item.taxon_id);
-      toast('已從常用名錄移除');
+      toast(t('favorites.removed'));
     }
   };
 
@@ -106,7 +108,7 @@ export default function FavoritesScreen() {
       <View className="flex-1">
         {/* Sub-toolbar: count + 排序 + 放大鏡（在已收藏內過濾） */}
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
-        <Text className="text-sm text-gray-500 dark:text-gray-400">{items.length} 筆</Text>
+        <Text className="text-sm text-gray-500 dark:text-gray-400">{t('favorites.count', { count: items.length })}</Text>
         <View className="flex-row items-center gap-2">
           <Pressable
             onPress={handleSort}
@@ -114,7 +116,7 @@ export default function FavoritesScreen() {
           >
             <Ionicons name="swap-vertical" size={14} color="#4b5563" />
             <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-              {SORT_LABEL[sortKey]}
+              {t(SORT_LABEL[sortKey])}
             </Text>
           </Pressable>
           <Pressable
@@ -136,7 +138,7 @@ export default function FavoritesScreen() {
             className="rounded-lg bg-gray-100 dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
             value={filter}
             onChangeText={setFilter}
-            placeholder="在常用名錄內搜尋..."
+            placeholder={t('favorites.searchPlaceholder')}
             placeholderTextColor="#9ca3af"
             autoFocus
           />
@@ -151,8 +153,8 @@ export default function FavoritesScreen() {
           <View className="px-4 py-16">
             <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
               {items.length === 0
-                ? '尚無常用名錄。用下方搜尋框加入,或在物種詳細 / 分類樹 / 記錄中長按加入。'
-                : '沒有符合的項目'}
+                ? t('favorites.empty')
+                : t('favorites.noMatch')}
             </Text>
           </View>
         }
@@ -189,7 +191,7 @@ export default function FavoritesScreen() {
         <SearchBox
           onSelect={(r) => {
             add(r);
-            toast(`已加入常用名錄：${r.cname || r.name}`);
+            toast(t('favorites.added', { name: r.cname || r.name }));
           }}
           onLongPressResult={async (r) => {
             Keyboard.dismiss();
@@ -205,7 +207,7 @@ export default function FavoritesScreen() {
         onAddToSession={() => {
           if (selected) addSpecies(selected);
         }}
-        addButtonLabel="加入記錄"
+        addButtonLabel={t('favorites.addToRecord')}
       />
       {addRecordModal}
     </SafeAreaView>

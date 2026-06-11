@@ -9,6 +9,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, FlatList, Modal, Pressable, Text, View } from 'react-native';
 
 export function PhotoGrid({
@@ -22,6 +23,7 @@ export function PhotoGrid({
   onView?: (index: number) => void;
   onRemove?: (uri: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <View className="mt-2 flex-row flex-wrap gap-2">
       {photos.map((uri, idx) => (
@@ -31,9 +33,9 @@ export function PhotoGrid({
           onLongPress={
             onRemove
               ? () => {
-                  Alert.alert('照片', undefined, [
-                    { text: '取消', style: 'cancel' },
-                    { text: '移除', style: 'destructive', onPress: () => onRemove(uri) },
+                  Alert.alert(t('plotValue.photo'), undefined, [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    { text: t('common.remove'), style: 'destructive', onPress: () => onRemove(uri) },
                   ]);
                 }
               : undefined
@@ -50,7 +52,7 @@ export function PhotoGrid({
         style={{ width: 88, height: 88 }}
       >
         <Ionicons name="camera-outline" size={24} color="#6b7280" />
-        <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400">加照片</Text>
+        <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400">{t('species.addPhoto')}</Text>
       </Pressable>
     </View>
   );

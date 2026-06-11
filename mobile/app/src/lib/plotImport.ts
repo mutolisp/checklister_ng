@@ -7,6 +7,7 @@
  * Data only — photos are not imported (zip `photos/` is ignored).
  */
 import { readAsStringAsync } from 'expo-file-system/legacy';
+import i18n from '~/i18n';
 import { strFromU8, unzipSync } from 'fflate';
 import yaml from 'js-yaml';
 import { base64ToBytes } from './bundleExport';
@@ -37,8 +38,8 @@ function pipeToJson(v: unknown): string | null {
 function parsePlotYaml(text: string): ImportedPlot {
   const doc = yaml.load(text) as Record<string, unknown> | null;
   const p = (doc?.plot ?? null) as Record<string, unknown> | null;
-  if (!doc || !p) throw new Error('不是有效的樣區 yml（缺 plot 區塊）');
-  if (!p.uuid || !p.plotid) throw new Error('樣區 yml 缺 uuid 或 plotid');
+  if (!doc || !p) throw new Error(i18n.t('plotImport.invalidYml'));
+  if (!p.uuid || !p.plotid) throw new Error(i18n.t('plotImport.missingFields'));
 
   const plot_type: PlotType = PLOT_TYPES.includes(p.plot_type as PlotType)
     ? (p.plot_type as PlotType)
@@ -132,7 +133,7 @@ export async function readPlotImport(uri: string): Promise<ImportedPlot> {
     const ymlName = Object.keys(files).find(
       (n) => n.toLowerCase().endsWith('.yml') || n.toLowerCase().endsWith('.yaml'),
     );
-    if (!ymlName) throw new Error('zip 內找不到 .yml 檔');
+    if (!ymlName) throw new Error(i18n.t('plotImport.noYmlInZip'));
     return parsePlotYaml(strFromU8(files[ymlName]));
   }
   const text = await readAsStringAsync(uri, { encoding: 'utf8' });

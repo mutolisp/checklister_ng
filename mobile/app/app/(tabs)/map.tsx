@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -58,14 +59,14 @@ import { useToast } from '~/stores/toast';
 
 const BASEMAP_OPTIONS: Array<{
   value: MapBasemap;
-  label: string;
+  labelKey: string;
   icon: keyof typeof Ionicons.glyphMap;
   mapType: MapType;
 }> = [
-  { value: 'standard', label: '標準', icon: 'map-outline', mapType: 'standard' },
-  { value: 'satellite', label: '衛星', icon: 'globe-outline', mapType: 'satellite' },
-  { value: 'hybrid', label: '混合', icon: 'layers-outline', mapType: 'hybrid' },
-  { value: 'terrain', label: '地形', icon: 'trail-sign-outline', mapType: 'terrain' },
+  { value: 'standard', labelKey: 'map.basemapStandard', icon: 'map-outline', mapType: 'standard' },
+  { value: 'satellite', labelKey: 'map.basemapSatellite', icon: 'globe-outline', mapType: 'satellite' },
+  { value: 'hybrid', labelKey: 'map.basemapHybrid', icon: 'layers-outline', mapType: 'hybrid' },
+  { value: 'terrain', labelKey: 'map.basemapTerrain', icon: 'trail-sign-outline', mapType: 'terrain' },
 ];
 
 const SINICA_TILE_URL = 'https://gis.sinica.edu.tw/tileserver/file-exists.php?img={LAYER}-png-{z}-{x}-{y}';
@@ -73,12 +74,12 @@ const SINICA_TILE_URL = 'https://gis.sinica.edu.tw/tileserver/file-exists.php?im
 const NLSC_TILE_URL = 'https://wmts.nlsc.gov.tw/wmts/{LAYER}/default/GoogleMapsCompatible/{z}/{y}/{x}';
 
 const DRAW_LABEL: Record<string, string> = {
-  Point: '點位',
-  LineString: '路線',
-  Polygon: '範圍',
-  MultiPoint: '多點',
-  MultiLineString: '多段路線',
-  MultiPolygon: '多範圍',
+  Point: 'sites.typePoint',
+  LineString: 'sites.typeLineString',
+  Polygon: 'sites.typePolygon',
+  MultiPoint: 'sites.typeMultiPoint',
+  MultiLineString: 'sites.typeMultiLineString',
+  MultiPolygon: 'sites.typeMultiPolygon',
 };
 
 const SITE_COLOR = '#2563eb';
@@ -97,9 +98,9 @@ const SESSION_ACTIVE_COLOR = '#10b981'; // green — the active session
 const TRACK_EDIT_WARN_POINTS = 200;
 
 const PLOT_TYPE_LABEL: Record<string, string> = {
-  fixed: '固定樣區',
-  transect: '穿越線',
-  point_count: '定點計數',
+  fixed: 'map.plotFixed',
+  transect: 'map.plotTransect',
+  point_count: 'map.plotPointCount',
 };
 
 function basemapToMapType(b: MapBasemap): MapType {
@@ -111,6 +112,7 @@ function basemapMeta(b: MapBasemap): (typeof BASEMAP_OPTIONS)[number] {
 }
 
 export default function MapScreen() {
+  const { t } = useTranslation();
   const initial = useSettings((s) => s.map_view);
   const setSetting = useSettings((s) => s.set);
   const settingsLoaded = useSettings((s) => s.loaded);
@@ -261,7 +263,7 @@ export default function MapScreen() {
     try {
       const perm = await Location.requestForegroundPermissionsAsync();
       if (perm.status !== 'granted') {
-        Alert.alert('需要定位權限', '請至 設定 → Checklister → 位置 開啟「使用 App 期間」');
+        Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -275,15 +277,15 @@ export default function MapScreen() {
         500,
       );
     } catch (e) {
-      Alert.alert('無法取得位置', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
     }
   };
 
   const handlePickBasemap = async () => {
     setToolsOpen(false);
     const idx = await showActionSheet({
-      title: '基底地圖',
-      options: BASEMAP_OPTIONS.map((o) => ({ label: o.label })),
+      title: t('map.pickBasemap'),
+      options: BASEMAP_OPTIONS.map((o) => ({ label: t(o.labelKey) })),
     });
     if (idx >= 0 && idx < BASEMAP_OPTIONS.length) setCurrentBasemap(BASEMAP_OPTIONS[idx].value);
   };
@@ -296,8 +298,8 @@ export default function MapScreen() {
   const handlePickDrawMode = async () => {
     setToolsOpen(false);
     const idx = await showActionSheet({
-      title: '繪製地理樣區',
-      options: [{ label: '點位' }, { label: '路線' }, { label: '範圍' }],
+      title: t('map.drawSite'),
+      options: [{ label: t('sites.typePoint') }, { label: t('sites.typeLineString') }, { label: t('sites.typePolygon') }],
     });
     if (idx === 0) startDraw('Point');
     else if (idx === 1) startDraw('LineString');
@@ -309,10 +311,10 @@ export default function MapScreen() {
     setDrawPoints([]);
     toast(
       mode === 'Point'
-        ? '點選地圖定位'
+        ? t('map.drawTapPoint')
         : mode === 'LineString'
-          ? '依序點選地圖建立路徑（至少 2 點）'
-          : '依序點選地圖建立邊界（至少 3 點）',
+          ? t('map.drawTapLine')
+          : t('map.drawTapPolygon'),
     );
   };
 
@@ -336,11 +338,11 @@ export default function MapScreen() {
   const finishDraw = () => {
     if (!drawMode) return;
     if (drawMode === 'LineString' && drawPoints.length < 2) {
-      toast('路線至少需 2 個點');
+      toast(t('map.lineNeed2'));
       return;
     }
     if (drawMode === 'Polygon' && drawPoints.length < 3) {
-      toast('範圍至少需 3 個點');
+      toast(t('map.polyNeed3'));
       return;
     }
     setSaveSiteOpen(true);
@@ -383,21 +385,21 @@ export default function MapScreen() {
       // Bind site to the originating session and bounce back.
       updateSession(handoff, { site_id: newSiteId });
       handoffSessionId.current = null;
-      toast(`已綁定地理樣區到記錄`);
+      toast(t('map.boundSite'));
       router.replace(`/session/${handoff}`);
     } else {
-      toast(`已儲存地理樣區：${data.name}`);
+      toast(t('map.savedSite', { name: data.name }));
     }
   };
 
   const handleSiteTap = async (site: SiteWithProject) => {
     const idx = await showActionSheet({
       title: site.name,
-      message: `${DRAW_LABEL[site.geometry_type]} · ${site.project_name}${site.notes ? `\n\n${site.notes}` : ''}`,
-      cancelLabel: '關閉',
+      message: `${t(DRAW_LABEL[site.geometry_type])} · ${site.project_name}${site.notes ? `\n\n${site.notes}` : ''}`,
+      cancelLabel: t('common.close'),
       options: [
-        { label: '跳到此地理樣區' },
-        { label: '刪除', destructive: true },
+        { label: t('map.jumpToSite') },
+        { label: t('common.delete'), destructive: true },
       ],
     });
     if (idx === 0) {
@@ -405,15 +407,15 @@ export default function MapScreen() {
       mapRef.current?.animateToRegion(region, 400);
     } else if (idx === 1) {
       // 2-button confirm — Alert.alert is fine here.
-      Alert.alert('刪除地理樣區？', `「${site.name}」會被移除`, [
-        { text: '取消', style: 'cancel' },
+      Alert.alert(t('sites.deleteTitle'), t('sites.deleteMsg', { name: site.name }), [
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '刪除',
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => {
             deleteSite(site.id);
             reloadSites();
-            toast('已刪除');
+            toast(t('sites.deleted'));
           },
         },
       ]);
@@ -436,19 +438,19 @@ export default function MapScreen() {
 
   const handlePlotTap = async (plot: PlotSurveyWithMeta) => {
     const idx = await showActionSheet({
-      title: plot.plotid || `樣區 #${plot.id}`,
+      title: plot.plotid || t('map.plotMenuTitle', { id: plot.id }),
       message:
-        `${PLOT_TYPE_LABEL[plot.plot_type] ?? plot.plot_type} · 物種 ${plot.species_count} 筆 · ${plot.project_name}` +
-        (plot.status === 'active' ? '\n\n（進行中）' : ''),
-      cancelLabel: '關閉',
-      options: [{ label: '跳回此記錄' }, { label: '跳到此位置' }, { label: '編輯位置' }],
+        t('map.plotSubtitle', { type: PLOT_TYPE_LABEL[plot.plot_type] ? t(PLOT_TYPE_LABEL[plot.plot_type]) : plot.plot_type, count: plot.species_count, project: plot.project_name }) +
+        (plot.status === 'active' ? `\n\n${t('map.inProgress')}` : ''),
+      cancelLabel: t('common.close'),
+      options: [{ label: t('map.jumpBack') }, { label: t('map.jumpToLoc') }, { label: t('map.editLoc') }],
     });
     if (idx === 0) {
       router.push(`/plot/${plot.id}`);
     } else if (idx === 1) {
       const region = plotRegion(plot);
       if (region) mapRef.current?.animateToRegion(region, 400);
-      else toast('此記錄尚無座標');
+      else toast(t('map.noRecordCoord'));
     } else if (idx === 2) {
       enterPlotEdit(plot);
     }
@@ -459,32 +461,32 @@ export default function MapScreen() {
       // Block editing a transect that's actively recording — trackRecorder
       // flushes writePlotTrack every few points and would clobber the edit.
       if (isRecordingTarget({ kind: 'plot', id: plot.id })) {
-        Alert.alert('此穿越線正在錄製中', '請先暫停軌跡錄製再編輯');
+        Alert.alert(t('map.transectRecording'), t('map.transectRecordingMsg'));
         return;
       }
       const segs = parseTrackSegments(plot.track_geojson);
       if (segs.length === 0) {
-        Alert.alert('尚無軌跡', '此穿越線尚未錄製任何軌跡，無法編輯');
+        Alert.alert(t('map.noTrack'), t('map.noTrackMsg'));
         return;
       }
       // Pick a segment when the track has more than one (pause/resume splits).
       let segIdx = 0;
       if (segs.length > 1) {
         segIdx = await showActionSheet({
-          title: '選擇要編輯的軌跡段',
-          cancelLabel: '取消',
-          options: segs.map((s, i) => ({ label: `第 ${i + 1} 段（${s.length} 點）` })),
+          title: t('map.pickSegTitle'),
+          cancelLabel: t('common.cancel'),
+          options: segs.map((s, i) => ({ label: t('map.segLabel', { n: i + 1, count: s.length }) })),
         });
         if (segIdx < 0 || segIdx >= segs.length) return; // cancelled
       }
       if (segs[segIdx].length > TRACK_EDIT_WARN_POINTS) {
         const proceed = await new Promise<boolean>((resolve) => {
           Alert.alert(
-            '軌跡點較多',
-            `此段有 ${segs[segIdx].length} 個點，編輯時地圖可能較卡。仍要編輯嗎？`,
+            t('map.manyPointsTitle'),
+            t('map.manyPointsMsg', { count: segs[segIdx].length }),
             [
-              { text: '取消', style: 'cancel', onPress: () => resolve(false) },
-              { text: '繼續', onPress: () => resolve(true) },
+              { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
+              { text: t('common.continue'), onPress: () => resolve(true) },
             ],
           );
         });
@@ -494,17 +496,17 @@ export default function MapScreen() {
       setEditMode('track');
       setEditSegmentIndex(segIdx);
       setDrawPoints(segs[segIdx].map(([lng, lat]) => ({ latitude: lat, longitude: lng })));
-      toast('拖動頂點調整，點頂點可刪除，完成後按儲存');
+      toast(t('map.dragVertexHint'));
       return;
     }
     if (plot.decimal_latitude === null || plot.decimal_longitude === null) {
-      Alert.alert('尚無座標', '此樣區尚未取得 GPS 座標，無法編輯位置');
+      Alert.alert(t('map.noPlotCoord'), t('map.noPlotCoordMsg'));
       return;
     }
     setEditPlot(plot);
     setEditMode('point');
     setDrawPoints([{ latitude: plot.decimal_latitude, longitude: plot.decimal_longitude }]);
-    toast('拖動標記調整位置，完成後按儲存');
+    toast(t('map.dragMarkerHint'));
   };
 
   const cancelPlotEdit = () => {
@@ -515,17 +517,17 @@ export default function MapScreen() {
 
   const savePlotEdit = () => {
     if (!editPlot || !editMode) return;
-    const label = editPlot.plotid || `樣區 #${editPlot.id}`;
+    const label = editPlot.plotid || t('map.plotMenuTitle', { id: editPlot.id });
 
     if (editMode === 'track') {
       if (drawPoints.length < 2) {
-        toast('軌跡段至少需 2 點');
+        toast(t('map.trackNeed2'));
         return;
       }
-      Alert.alert('儲存軌跡變更？', `「${label}」的穿越線軌跡將被更新`, [
-        { text: '取消', style: 'cancel' },
+      Alert.alert(t('map.saveTrackTitle'), t('map.saveTrackMsg', { label }), [
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '儲存',
+          text: t('common.save'),
           onPress: () => {
             // Re-parse the original track, replace the edited segment, drop any
             // segment left with <2 points.
@@ -537,7 +539,7 @@ export default function MapScreen() {
             );
             cancelPlotEdit();
             reloadPlots();
-            toast('已更新軌跡');
+            toast(t('map.trackUpdated'));
           },
         },
       ]);
@@ -547,10 +549,10 @@ export default function MapScreen() {
     // editMode === 'point'
     if (drawPoints.length === 0) return;
     const pt = drawPoints[0];
-    Alert.alert('儲存位置變更？', `「${label}」的座標將被更新`, [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('map.savePosTitle'), t('map.savePosMsg', { label }), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '儲存',
+        text: t('common.save'),
         onPress: () => {
           updatePlotSurvey(editPlot.id, {
             decimal_latitude: pt.latitude,
@@ -558,7 +560,7 @@ export default function MapScreen() {
           });
           cancelPlotEdit();
           reloadPlots();
-          toast('已更新樣區位置');
+          toast(t('map.posUpdated'));
         },
       },
     ]);
@@ -578,19 +580,19 @@ export default function MapScreen() {
   const handleSessionTap = async (s: SessionWithStats) => {
     const isActive = activeSession?.id === s.id;
     const idx = await showActionSheet({
-      title: s.name || `名錄 #${s.id}`,
+      title: s.name || t('map.sessionMarkerTitle', { id: s.id }),
       message:
-        `名錄 · 物種 ${s.record_count} 筆 · ${s.project_name}` +
-        (isActive ? '\n\n（進行中）' : ''),
-      cancelLabel: '關閉',
-      options: [{ label: '跳回此記錄' }, { label: '跳到此位置' }],
+        t('map.sessionSubtitle', { count: s.record_count, project: s.project_name }) +
+        (isActive ? `\n\n${t('map.inProgress')}` : ''),
+      cancelLabel: t('common.close'),
+      options: [{ label: t('map.jumpBack') }, { label: t('map.jumpToLoc') }],
     });
     if (idx === 0) {
       router.push(`/session/${s.id}`);
     } else if (idx === 1) {
       const region = sessionRegion(s);
       if (region) mapRef.current?.animateToRegion(region, 400);
-      else toast('此記錄尚無座標');
+      else toast(t('map.noRecordCoord'));
     }
   };
 
@@ -602,7 +604,7 @@ export default function MapScreen() {
       setSearchBusy(true);
       const results = await Location.geocodeAsync(q);
       if (results.length === 0) {
-        toast(`找不到「${q}」`);
+        toast(t('map.notFound', { q }));
         return;
       }
       const r = results[0];
@@ -613,7 +615,7 @@ export default function MapScreen() {
       setSearchQuery('');
       setSearchOpen(false);
     } catch (e) {
-      toast(`搜尋失敗：${e instanceof Error ? e.message : String(e)}`);
+      toast(t('map.searchFailed', { error: e instanceof Error ? e.message : String(e) }));
     } finally {
       setSearchBusy(false);
     }
@@ -693,8 +695,8 @@ export default function MapScreen() {
               <Marker
                 key={`sess-m-${session.id}`}
                 coordinate={{ latitude: session.start_lat, longitude: session.start_lng }}
-                title={session.name || `名錄 #${session.id}`}
-                description={`名錄 · 物種 ${session.record_count} 筆`}
+                title={session.name || t('map.sessionMarkerTitle', { id: session.id })}
+                description={t('map.sessionDesc', { count: session.record_count })}
                 pinColor={color}
                 zIndex={3}
                 onPress={() => handleSessionTap(session)}
@@ -800,8 +802,8 @@ export default function MapScreen() {
               key={`plot-m-${plot.id}`}
               coordinate={center}
               pinColor={color}
-              title={plot.plotid || `樣區 #${plot.id}`}
-              description={`${PLOT_TYPE_LABEL[plot.plot_type] ?? plot.plot_type} · 物種 ${plot.species_count} 筆`}
+              title={plot.plotid || t('map.plotMenuTitle', { id: plot.id })}
+              description={t('map.plotDesc', { type: PLOT_TYPE_LABEL[plot.plot_type] ? t(PLOT_TYPE_LABEL[plot.plot_type]) : plot.plot_type, count: plot.species_count })}
               zIndex={5}
               onPress={() => handlePlotTap(plot)}
             />,
@@ -826,10 +828,10 @@ export default function MapScreen() {
                 onPress={() => {
                   // Editing a plot's single point: drag only, never delete.
                   if (editMode === 'point') return;
-                  Alert.alert('編輯點位', `第 ${i + 1} 個點`, [
-                    { text: '取消', style: 'cancel' },
+                  Alert.alert(t('map.editPointTitle'), t('map.pointN', { n: i + 1 }), [
+                    { text: t('common.cancel'), style: 'cancel' },
                     {
-                      text: '刪除此點',
+                      text: t('map.deletePoint'),
                       style: 'destructive',
                       onPress: () => {
                         const next = drawPoints.filter((_, idx) => idx !== i);
@@ -862,8 +864,8 @@ export default function MapScreen() {
           className="items-center justify-center bg-gray-100 dark:bg-gray-800/85"
         >
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text className="mt-3 text-sm text-gray-700 dark:text-gray-300">載入地圖中...</Text>
-          <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">首次開啟需數秒</Text>
+          <Text className="mt-3 text-sm text-gray-700 dark:text-gray-300">{t('map.loadingMap')}</Text>
+          <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('map.firstLoadHint')}</Text>
         </View>
       ) : null}
 
@@ -880,7 +882,7 @@ export default function MapScreen() {
             <TextInput
               ref={searchInputRef}
               className="ml-2 flex-1 text-sm text-gray-900 dark:text-gray-100"
-              placeholder="搜尋地點 / 地址..."
+              placeholder={t('map.searchPlaceholder')}
               placeholderTextColor="#9ca3af"
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -913,20 +915,20 @@ export default function MapScreen() {
             <View className="mt-2 items-end">
               <FabRow
                 icon={basemapMeta(currentBasemap).icon}
-                label={basemapMeta(currentBasemap).label}
+                label={t(basemapMeta(currentBasemap).labelKey)}
                 onPress={handlePickBasemap}
               />
-              <FabRow icon="locate" label="定位" onPress={handleLocateMe} accent />
+              <FabRow icon="locate" label={t('map.locate')} onPress={handleLocateMe} accent />
               <FabRow
                 icon="albums-outline"
-                label={sinicaLayer || nlscLayer ? '圖層 (已疊圖)' : '圖層'}
+                label={sinicaLayer || nlscLayer ? t('map.layersOverlaid') : t('map.layers')}
                 onPress={handleOpenLayers}
                 accent={!!sinicaLayer || !!nlscLayer}
               />
-              <FabRow icon="create-outline" label="繪製地理樣區" onPress={handlePickDrawMode} />
+              <FabRow icon="create-outline" label={t('map.drawSite')} onPress={handlePickDrawMode} />
               <FabRow
                 icon="cloud-upload-outline"
-                label="匯入"
+                label={t('map.import')}
                 onPress={() => {
                   setToolsOpen(false);
                   setImportOpen(true);
@@ -942,10 +944,10 @@ export default function MapScreen() {
         <View className="absolute left-3 right-3" style={{ top: insets.top + 60 }}>
           <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
             <Pressable onPress={cancelDraw} hitSlop={8} className="px-2">
-              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">取消</Text>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
             </Pressable>
             <Text className="flex-1 text-center text-xs text-gray-700 dark:text-gray-300">
-              繪製{DRAW_LABEL[drawMode]} · {drawPoints.length} 點
+              {t('map.drawingLabel', { type: t(DRAW_LABEL[drawMode]), count: drawPoints.length })}
             </Text>
             {drawPoints.length > 0 ? (
               <Pressable onPress={undoLastPoint} hitSlop={8} className="px-2">
@@ -954,14 +956,14 @@ export default function MapScreen() {
             ) : null}
             {drawMode !== 'Point' ? (
               <Pressable onPress={finishDraw} hitSlop={8} className="ml-1 rounded-full bg-blue-500 px-3 py-1 active:bg-blue-600">
-                <Text className="text-xs font-semibold text-white">完成</Text>
+                <Text className="text-xs font-semibold text-white">{t('common.done')}</Text>
               </Pressable>
             ) : null}
           </View>
           {handoffSessionId.current !== null ? (
             <View className="mt-2 rounded-full bg-emerald-500 px-3 py-1.5 shadow-md">
               <Text className="text-center text-xs font-medium text-white">
-                為記錄 #{handoffSessionId.current} 建立地理樣區，完成後自動指派
+                {t('map.handoffHint', { id: handoffSessionId.current })}
               </Text>
             </View>
           ) : null}
@@ -973,17 +975,17 @@ export default function MapScreen() {
         <View className="absolute left-3 right-3" style={{ top: insets.top + 60 }}>
           <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
             <Pressable onPress={cancelPlotEdit} hitSlop={8} className="px-2">
-              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">取消</Text>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
             </Pressable>
             <Text className="flex-1 text-center text-xs text-gray-700 dark:text-gray-300">
-              {editMode === 'track' ? '編輯軌跡 · 拖動/點頂點刪除' : '編輯位置 · 拖動標記'}
+              {editMode === 'track' ? t('map.editTrackHint') : t('map.editPosHint')}
             </Text>
             <Pressable
               onPress={savePlotEdit}
               hitSlop={8}
               className="ml-1 rounded-full bg-blue-500 px-3 py-1 active:bg-blue-600"
             >
-              <Text className="text-xs font-semibold text-white">儲存</Text>
+              <Text className="text-xs font-semibold text-white">{t('common.save')}</Text>
             </Pressable>
           </View>
         </View>
@@ -995,25 +997,25 @@ export default function MapScreen() {
         sources={[
           {
             key: 'nlsc',
-            label: '國土測繪中心',
+            label: t('map.nlsc'),
             layers: NLSC_LAYERS,
             selectedId: nlscLayer,
             opacity: nlscOpacity,
             onSelect: (id) => {
               setNlscLayer(id);
-              if (id) toast('已疊圖');
+              if (id) toast(t('map.overlaid'));
             },
             onOpacityChange: setNlscOpacity,
           },
           {
             key: 'sinica',
-            label: '中研院',
+            label: t('map.sinica'),
             layers: SINICA_LAYERS,
             selectedId: sinicaLayer,
             opacity: sinicaOpacity,
             onSelect: (id) => {
               setSinicaLayer(id);
-              if (id) toast('已疊圖');
+              if (id) toast(t('map.overlaid'));
             },
             onOpacityChange: setSinicaOpacity,
           },
@@ -1035,7 +1037,7 @@ export default function MapScreen() {
         onClose={() => setImportOpen(false)}
         onCommitted={(n) => {
           reloadSites();
-          if (n > 0) toast(`已匯入 ${n} 個地理樣區`);
+          if (n > 0) toast(t('map.imported', { count: n }));
         }}
       />
     </View>

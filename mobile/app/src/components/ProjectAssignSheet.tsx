@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createProject, listProjects, type Project } from '~/db';
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssign }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [projects, setProjects] = useState<Project[]>([]);
 
@@ -30,10 +32,10 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
     onCancel();
     await new Promise((r) => setTimeout(r, 350));
     const name = await promptText({
-      title: '新建專案',
-      message: '輸入專案名稱（其他欄位可之後在「專案管理」頁編輯）',
-      placeholder: '專案名稱',
-      confirmText: '建立',
+      title: t('sheets.newProject'),
+      message: t('sheets.newProjectMsg'),
+      placeholder: t('sheets.projectNamePlaceholder'),
+      confirmText: t('surveyors.create'),
     });
     const trimmed = (name ?? '').trim();
     if (!trimmed) return;
@@ -59,9 +61,9 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
           className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
           <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">指派專案</Text>
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('sheets.assignProject')}</Text>
             <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-              選擇現有專案，或新建一個專案套用到本次記錄
+              {t('sheets.assignProjectDesc')}
             </Text>
           </View>
           <Pressable
@@ -72,8 +74,8 @@ export function ProjectAssignSheet({ visible, currentProjectId, onCancel, onAssi
               <Ionicons name="add" size={20} color="white" />
             </View>
             <View className="flex-1">
-              <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">新建專案</Text>
-              <Text className="text-xs text-blue-600 dark:text-blue-400">建立後自動套用到此記錄</Text>
+              <Text className="text-base font-semibold text-blue-700 dark:text-blue-300">{t('sheets.newProject')}</Text>
+              <Text className="text-xs text-blue-600 dark:text-blue-400">{t('sheets.newProjectDesc')}</Text>
             </View>
           </Pressable>
           <ScrollView className="max-h-96">

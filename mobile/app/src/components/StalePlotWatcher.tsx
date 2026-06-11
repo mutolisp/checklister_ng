@@ -12,6 +12,7 @@
  * The watcher does not auto-stop tracks or plots; it only nudges the user.
  */
 import { useEffect, useRef } from 'react';
+import i18n from '~/i18n';
 import { AppState, type AppStateStatus } from 'react-native';
 import { showActionSheet } from './ActionSheet';
 import { useRouter, type Href } from 'expo-router';
@@ -84,14 +85,14 @@ function maybeWarn(
 
   const minutes = Math.round(idleMs / (60 * 1000));
   const noun =
-    plot.plot_type === 'transect' ? '穿越線' : plot.plot_type === 'point_count' ? '定點計數' : '樣區';
+    plot.plot_type === 'transect' ? i18n.t('map.plotTransect') : plot.plot_type === 'point_count' ? i18n.t('map.plotPointCount') : i18n.t('nav.plot');
   void showActionSheet({
-    title: `${noun}已閒置 ${minutes} 分鐘`,
-    message: `「${plot.plotid}」最近一筆記錄已是 ${minutes} 分鐘前。需要結束嗎？`,
-    cancelLabel: '繼續記錄',
+    title: i18n.t('watcher.plotIdle', { noun, minutes }),
+    message: i18n.t('watcher.plotIdleMsg', { plotid: plot.plotid, minutes }),
+    cancelLabel: i18n.t('watcher.keepRecording'),
     options: [
-      { label: '結束', destructive: true },
-      { label: '前往樣區' },
+      { label: i18n.t('session.end'), destructive: true },
+      { label: i18n.t('watcher.goToPlot') },
     ],
   }).then((idx) => {
     if (idx === 0) {

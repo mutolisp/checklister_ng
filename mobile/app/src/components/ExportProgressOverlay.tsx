@@ -1,4 +1,5 @@
 import { ActivityIndicator, Modal, Text, View } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import type { ExportProgress } from '~/lib/bundleExport';
 
 /**
@@ -7,6 +8,7 @@ import type { ExportProgress } from '~/lib/bundleExport';
  * stage (準備中 / 處理照片 / 壓縮中…) and a progress bar when a count is known.
  */
 export function ExportProgressOverlay({ progress }: { progress: ExportProgress | null }) {
+  const { t } = useTranslation();
   const visible = progress != null;
   const total = progress?.total ?? 0;
   const done = progress?.done ?? 0;
@@ -18,7 +20,7 @@ export function ExportProgressOverlay({ progress }: { progress: ExportProgress |
         <View className="w-full max-w-xs rounded-2xl bg-white dark:bg-gray-900 px-6 py-6">
           <ActivityIndicator size="large" color="#3b82f6" />
           <Text className="mt-4 text-center text-base font-medium text-gray-900 dark:text-gray-100">
-            {progress?.label ?? '匯出中…'}
+            {progress?.label ?? t('export.exporting')}
           </Text>
           {total > 0 ? (
             <>

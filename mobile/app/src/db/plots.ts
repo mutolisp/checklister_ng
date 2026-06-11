@@ -1,5 +1,13 @@
 import { getUserDb, getTaicolDb } from './init';
 import { defaultSurveyorString } from './surveyors';
+import i18n from '~/i18n';
+import {
+  getEnabledRegions,
+  isJpTaxonId,
+  regionOfTaxonId,
+  crossRegionVernacular,
+  composeVernacular,
+} from './regions';
 
 /** Fixed-plot vertical layers (vegetation profile, semantic labels). */
 export type FixedLayer = 'E1' | 'E2' | 'E3' | 'E4' | 'E5' | 'E6';
@@ -12,15 +20,9 @@ export const LAYERS: FixedLayer[] = ['E1', 'E2', 'E3', 'E4', 'E5', 'E6'];
 export const MAX_LAYER_COUNT = 6;
 export const DEFAULT_LAYER_COUNT = 4;
 export const TRANSECT_LAYER: Layer = 'T';
-export const LAYER_LABEL: Record<Layer, string> = {
-  E1: 'E1 苔蘚層',
-  E2: 'E2 草本層',
-  E3: 'E3 灌木層',
-  E4: 'E4 亞喬木層',
-  E5: 'E5 主林冠層',
-  E6: 'E6 突出層',
-  T: 'Transect 穿越線',
-};
+export function layerLabel(layer: Layer): string {
+  return i18n.t('layer.' + layer);
+}
 
 /** Convert layer_index (1..6) ↔ string layer key. */
 export function layerKeyForIndex(idx: number): FixedLayer {
@@ -962,28 +964,42 @@ export function listPlotSpecies(
   if (records.length === 0) return [];
 
   const taxonIds = Array.from(new Set(records.map((r) => r.taxon_id)));
-  const placeholders = taxonIds.map(() => '?').join(',');
-  const taxaRes = taicolDb.executeSync(
-    `SELECT taxon_id, simple_name, name_author, common_name_c,
+  // Resolve names from each dataset's real table (indexed taxon_id), split by
+  // the 't…'/'y…' prefix — never a UNION view (materializing ~270k rows costs
+  // seconds). All-Taiwan plots only touch taicol_names (unchanged).
+  const TAXON_COLS = `taxon_id, simple_name, name_author, common_name_c,
             family, family_c, rank, is_endemic, alien_type, is_hybrid,
             kingdom, kingdom_c, class, class_c, phylum, phylum_c, "order", order_c, genus, genus_c,
-            redlist, iucn, cites, protected
-     FROM taicol_names
-     WHERE taxon_id IN (${placeholders}) AND usage_status = 'accepted'`,
-    taxonIds,
-  );
+            redlist, iucn, cites, protected`;
   const taxonMap = new Map<string, Record<string, unknown>>();
-  for (const row of (taxaRes.rows ?? []) as Array<Record<string, unknown>>) {
-    taxonMap.set(row.taxon_id as string, row);
-  }
+  const fillFrom = (tbl: string, ids: string[]) => {
+    if (ids.length === 0) return;
+    const ph = ids.map(() => '?').join(',');
+    const res = taicolDb.executeSync(
+      `SELECT ${TAXON_COLS} FROM ${tbl} WHERE taxon_id IN (${ph}) AND usage_status = 'accepted'`,
+      ids,
+    );
+    for (const row of (res.rows ?? []) as Array<Record<string, unknown>>) {
+      taxonMap.set(row.taxon_id as string, row);
+    }
+  };
+  fillFrom('taicol_names', taxonIds.filter((id) => !isJpTaxonId(id)));
+  fillFrom('ylist_names', taxonIds.filter(isJpTaxonId));
+
+  const regions = getEnabledRegions();
+  const cross = regions.includes('JP') ? crossRegionVernacular(taxonIds, regions) : null;
 
   return records.map((r) => {
     const t = taxonMap.get(r.taxon_id) ?? {};
+    const ownCname = (t.common_name_c as string) ?? '';
+    const common_name_c = cross
+      ? composeVernacular(ownCname, regionOfTaxonId(r.taxon_id), cross.get(r.taxon_id), regions)
+      : ownCname;
     return {
       ...r,
       simple_name: (t.simple_name as string) ?? '',
       name_author: (t.name_author as string) ?? '',
-      common_name_c: (t.common_name_c as string) ?? '',
+      common_name_c,
       family: (t.family as string) ?? '',
       family_c: (t.family_c as string) ?? '',
       rank: (t.rank as string) ?? '',
@@ -1151,7 +1167,7 @@ export function importPlotSurvey(
     ],
   );
   const plotId = res.insertId ?? 0;
-  if (plotId === 0) throw new Error('匯入樣區失敗：無法建立記錄');
+  if (plotId === 0) throw new Error(i18n.t('plotImport.createFail'));
 
   if (data.plot_type === 'fixed') {
     for (const l of data.layers ?? []) {

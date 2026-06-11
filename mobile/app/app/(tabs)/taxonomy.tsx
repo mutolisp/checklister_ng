@@ -3,6 +3,7 @@ import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useFocusEffect } from 'expo-router';
 import { useIsFocused } from '@react-navigation/native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   ActivityIndicator,
   Alert,
@@ -92,6 +93,7 @@ function flatten(
 }
 
 export default function TaxonomyScreen() {
+  const { t } = useTranslation();
   // Mount-time marker — paired with `taxonomy:first-paint` below.
   // Must fire only ONCE on first render; putting it bare in the function body
   // would re-mark on every re-render and make `first-paint` measure from the
@@ -146,7 +148,7 @@ export default function TaxonomyScreen() {
   // Separate stage labels so the spinner says something concrete (「載入分類樹...」
   // → 「展開上次狀態 (3/8)...」) instead of leaving the user staring at a frozen
   // empty tree while the cascade SQL runs.
-  const [loadStage, setLoadStage] = useState('載入分類樹...');
+  const [loadStage, setLoadStage] = useState(t('taxonomy.loadingTree'));
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [nodeMap, setNodeMap] = useState<Map<string, TaxonNodeData>>(new Map());
   const [childrenMap, setChildrenMap] = useState<Map<string, TaxonNodeData[]>>(new Map());
@@ -212,7 +214,7 @@ export default function TaxonomyScreen() {
     let cancelled = false;
 
     setLoading(true);
-    setLoadStage('載入分類樹...');
+    setLoadStage(t('taxonomy.loadingTree'));
     perf.mark('taxonomy:hydrate-start');
     if (__DEV__) {
       console.log(
@@ -320,7 +322,7 @@ export default function TaxonomyScreen() {
     if (expanded.size === 0) return;
     setExpanded(new Set());
     persistExpanded(new Set());
-    toast('已收合所有節點');
+    toast(t('taxonomy.allCollapsed'));
   };
 
   const flatItems = useMemo(
@@ -438,7 +440,7 @@ export default function TaxonomyScreen() {
       // here would race the FlatList re-render.
       setPendingScrollKey(targetKey);
 
-      if (toastLabel) toast(`已展開 ${toastLabel}`);
+      if (toastLabel) toast(t('taxonomy.expanded', { label: toastLabel }));
     },
     [roots, expanded, nodeMap, childrenMap, speciesMap, persistExpanded, toast],
   );
@@ -588,7 +590,7 @@ export default function TaxonomyScreen() {
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
       <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 pb-3 pt-3">
         <View className="flex-row items-center justify-between">
-          <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">物種</Text>
+          <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('tab.species')}</Text>
           {segment === 'tree' ? (
             <Pressable
               onPress={handleCollapseAll}
@@ -604,7 +606,7 @@ export default function TaxonomyScreen() {
               <Text
                 className={`ml-1 text-xs font-medium ${expanded.size === 0 ? 'text-gray-400 dark:text-gray-500' : 'text-blue-700 dark:text-blue-300'}`}
               >
-                全部收合{expanded.size > 0 ? ` (${expanded.size})` : ''}
+                {t('taxonomy.collapseAll')}{expanded.size > 0 ? ` (${expanded.size})` : ''}
               </Text>
             </Pressable>
           ) : null}
@@ -612,9 +614,9 @@ export default function TaxonomyScreen() {
         <View className="mt-3 flex-row gap-2">
           {(
             [
-              { value: 'tree', label: '分類樹' },
-              { value: 'key', label: '檢索表' },
-              { value: 'search', label: '搜尋' },
+              { value: 'tree', label: t('taxonomy.tree') },
+              { value: 'key', label: t('nav.key') },
+              { value: 'search', label: t('taxonomy.search') },
             ] as const
           ).map((opt) => {
             const on = segment === opt.value;
@@ -727,7 +729,7 @@ export default function TaxonomyScreen() {
                           const a = actions[sub];
                           await copyToClipboard(
                             buildTaxonCopyText(item.node, a.mode),
-                            a.label.replace(/^複製/, ''),
+                            a.label,
                           );
                         }
                       }}
@@ -746,20 +748,20 @@ export default function TaxonomyScreen() {
                         const idx = await showActionSheet({
                           title,
                           options: [
-                            { label: '加入當前記錄' },
-                            { label: fav ? '移除常用名錄' : '加入常用名錄' },
-                            { label: '看詳細資訊' },
-                            { label: '複製...' },
+                            { label: t('taxonomy.addCurrent') },
+                            { label: fav ? t('favorites.remove') : t('favorites.add') },
+                            { label: t('session.viewDetails') },
+                            { label: t('taxonomy.copyMenu') },
                           ],
                         });
                         if (idx === 0) handleQuickAdd(item.species);
                         else if (idx === 1) {
                           if (fav) {
                             useFavorites.getState().remove(sr.taxon_id);
-                            toast('已從常用名錄移除');
+                            toast(t('favorites.removed'));
                           } else {
                             useFavorites.getState().add(sr);
-                            toast('已加入常用名錄');
+                            toast(t('favorites.added'));
                           }
                         } else if (idx === 2)
                           setActiveSpecies(taxonSpeciesToSearchResult(item.species));
@@ -773,7 +775,7 @@ export default function TaxonomyScreen() {
                             const a = actions[sub];
                             await copyToClipboard(
                               buildSpeciesCopyText(item.species, a.mode),
-                              a.label.replace(/^複製/, ''),
+                              a.label,
                             );
                           }
                         }
@@ -855,9 +857,13 @@ function TaxonRow({
    *  this scope's name so user lands on the matching key(s). */
   onOpenKeys?: (scopeName: string) => void;
 }) {
+  const { t } = useTranslation();
+  // Localize the rank-key at render (data layer stores keys, not labels) so the
+  // tree re-localizes on a language switch. Space-separated so e.g. "Phylum 5"
+  // (Latin ranks need the gap; CJK reads fine either way).
   const stats = Object.entries(node.stats)
     .filter(([, v]) => v > 0)
-    .map(([k, v]) => `${k}${v}`)
+    .map(([k, v]) => `${t('rank.' + k)} ${v}`)
     .join(' · ');
 
   // 0/1/2 matching keys per scope; rank_key is 'kingdom'/'phylum'/.../'genus'.
@@ -883,11 +889,11 @@ function TaxonRow({
             <Text className="text-base font-medium text-gray-900 dark:text-gray-100">{node.name_c}</Text>
           ) : null}
           <Text className={`${node.name_c ? 'ml-1' : ''} text-sm text-gray-700 dark:text-gray-300`}>{node.name}</Text>
-          {node.rank ? (() => {
-            const c = rankColor(node.rank);
+          {node.rank_key ? (() => {
+            const c = rankColor(node.rank_key);
             return (
               <View className={`ml-2 rounded px-1.5 py-0.5 ${c.bg}`}>
-                <Text className={`text-[10px] font-medium ${c.text}`}>{node.rank}</Text>
+                <Text className={`text-[10px] font-medium ${c.text}`}>{t('rank.' + node.rank_key)}</Text>
               </View>
             );
           })() : null}
@@ -931,6 +937,7 @@ function SpeciesRow({
   onPress: () => void;
   onLongPress: () => void;
 }) {
+  const { t } = useTranslation();
   const isInfraspecific = ['Subspecies', 'Variety', 'Form'].includes(species.rank);
   return (
     <Pressable
@@ -959,14 +966,14 @@ function SpeciesRow({
           const c = rankColor(species.rank);
           return (
             <View className={`mt-0.5 self-start rounded px-1.5 py-0.5 ${c.bg}`}>
-              <Text className={`text-[10px] font-medium ${c.text}`}>{species.rank}</Text>
+              <Text className={`text-[10px] font-medium ${c.text}`}>{t('rank.' + species.rank.toLowerCase())}</Text>
             </View>
           );
         })() : null}
       </View>
       <View className="ml-2 flex-row items-center" style={{ marginTop: 2 }}>
         {species.is_endemic === 'true' ? (
-          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">特</Text>
+          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('species.endemicShort')}</Text>
         ) : null}
         {(() => {
           const ab = alienBadge(species.alien_type, species.kingdom);
@@ -986,13 +993,14 @@ function SpeciesRow({
 }
 
 function LoadingRow({ depth }: { depth: number }) {
+  const { t } = useTranslation();
   return (
     <View
       className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2"
       style={{ paddingLeft: 16 + depth * 14 }}
     >
       <ActivityIndicator size="small" />
-      <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">載入中...</Text>
+      <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">{t('common.loading')}</Text>
     </View>
   );
 }

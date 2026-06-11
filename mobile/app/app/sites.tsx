@@ -3,6 +3,8 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { File, Paths } from 'expo-file-system';
 import { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { isoDateTime } from '~/lib/datetime';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { showActionSheet } from '~/components/ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -38,12 +40,12 @@ function sanitizeFilename(name: string): string {
 }
 
 const TYPE_LABEL: Record<string, string> = {
-  Point: '點位',
-  LineString: '路線',
-  Polygon: '範圍',
-  MultiPoint: '多點',
-  MultiLineString: '多段路線',
-  MultiPolygon: '多範圍',
+  Point: 'sites.typePoint',
+  LineString: 'sites.typeLineString',
+  Polygon: 'sites.typePolygon',
+  MultiPoint: 'sites.typeMultiPoint',
+  MultiLineString: 'sites.typeMultiLineString',
+  MultiPolygon: 'sites.typeMultiPolygon',
 };
 
 const TYPE_ICON: Record<string, keyof typeof import('@expo/vector-icons').Ionicons.glyphMap> = {
@@ -56,12 +58,11 @@ const TYPE_ICON: Record<string, keyof typeof import('@expo/vector-icons').Ionico
 };
 
 function formatTime(ts: number): string {
-  const d = new Date(ts);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return isoDateTime(ts);
 }
 
 export default function SitesScreen() {
+  const { t } = useTranslation();
   const router = useRouter();
   const setSetting = useSettings((s) => s.set);
   const currentMapView = useSettings((s) => s.map_view);
@@ -72,15 +73,15 @@ export default function SitesScreen() {
   useFocusEffect(useCallback(() => reload(), [reload]));
 
   const handleDelete = (s: SiteWithProject) => {
-    Alert.alert('刪除地理樣區？', `「${s.name}」會被移除`, [
-      { text: '取消', style: 'cancel' },
+    Alert.alert(t('sites.deleteTitle'), t('sites.deleteMsg', { name: s.name }), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '刪除',
+        text: t('common.delete'),
         style: 'destructive',
         onPress: () => {
           deleteSite(s.id);
           reload();
-          toast('已刪除');
+          toast(t('sites.deleted'));
         },
       },
     ]);
@@ -94,7 +95,7 @@ export default function SitesScreen() {
 
   const exportSites = async (subset: SiteWithProject[], format: ExportFormat, baseName: string) => {
     if (subset.length === 0) {
-      toast('沒有可匯出的地理樣區');
+      toast(t('sites.noExport'));
       return;
     }
     try {
@@ -113,7 +114,7 @@ export default function SitesScreen() {
 
       const available = await Sharing.isAvailableAsync();
       if (!available) {
-        Alert.alert('系統 share 不可用', `已產出檔案：${file.uri}`);
+        Alert.alert(t('sites.shareUnavailable'), t('backup.fileGenerated', { uri: file.uri }));
         return;
       }
       await Sharing.shareAsync(file.uri, {
@@ -122,14 +123,14 @@ export default function SitesScreen() {
         UTI: meta.uti,
       });
     } catch (e) {
-      Alert.alert('匯出失敗', e instanceof Error ? e.message : String(e));
+      Alert.alert(t('export.failed'), e instanceof Error ? e.message : String(e));
     }
   };
 
   const askExportFormat = async (subset: SiteWithProject[], baseName: string) => {
     const formats: ExportFormat[] = ['geojson', 'kml', 'gpx', 'wkt'];
     const idx = await showActionSheet({
-      title: `匯出 ${subset.length} 個地理樣區`,
+      title: t('sites.exportTitle', { count: subset.length }),
       options: formats.map((f) => ({ label: EXPORT_LABELS[f].label })),
     });
     if (idx >= 0 && idx < formats.length) exportSites(subset, formats[idx], baseName);
@@ -148,8 +149,8 @@ export default function SitesScreen() {
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
-          title: '地理樣區管理',
-          headerBackTitle: '返回',
+          title: t('sites.title'),
+          headerBackTitle: t('nav.back'),
           headerLeft: BackHeaderLeft,
           headerRight: () =>
             sites.length > 0 ? (
@@ -163,15 +164,15 @@ export default function SitesScreen() {
       {sites.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
           <Ionicons name="map-outline" size={64} color="#9ca3af" />
-          <Text className="mt-4 text-lg font-medium text-gray-700 dark:text-gray-300">還沒有任何地理樣區</Text>
+          <Text className="mt-4 text-lg font-medium text-gray-700 dark:text-gray-300">{t('sites.empty')}</Text>
           <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
-            到「地圖」tab → 工具 ⋮ → 繪製地理樣區 開始建立
+            {t('sites.emptyHint')}
           </Text>
           <Pressable
             onPress={() => router.push('/(tabs)/map')}
             className="mt-4 rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600"
           >
-            <Text className="text-sm font-medium text-white">前往地圖</Text>
+            <Text className="text-sm font-medium text-white">{t('sites.goToMap')}</Text>
           </Pressable>
         </View>
       ) : (
@@ -182,7 +183,7 @@ export default function SitesScreen() {
             <View>
               <View className="flex-row items-center justify-between bg-gray-100 dark:bg-gray-800 px-4 py-2">
                 <Text className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
-                  {projectName} · {list.length} 個地理樣區
+                  {projectName} · {t('sites.projectStats', { count: list.length })}
                 </Text>
                 <Pressable onPress={() => askExportFormat(list, projectName)} hitSlop={6}>
                   <Ionicons name="share-outline" size={16} color="#2563eb" />
@@ -203,7 +204,7 @@ export default function SitesScreen() {
                     <View className="flex-1">
                       <Text className="text-base font-medium text-gray-900 dark:text-gray-100">{s.name}</Text>
                       <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {TYPE_LABEL[s.geometry_type] ?? s.geometry_type} · {formatTime(s.updated_at)}
+                        {TYPE_LABEL[s.geometry_type] ? t(TYPE_LABEL[s.geometry_type]) : s.geometry_type} · {formatTime(s.updated_at)}
                       </Text>
                       {s.notes ? (
                         <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>

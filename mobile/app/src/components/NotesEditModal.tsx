@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +12,9 @@ type Props = {
   onSave: (value: string) => void;
 };
 
-export function NotesEditModal({ visible, initialValue, title = '編輯備註', onCancel, onSave }: Props) {
+export function NotesEditModal({ visible, initialValue, title, onCancel, onSave }: Props) {
+  const { t } = useTranslation();
+  const resolvedTitle = title ?? t('session.editNotes');
   const [value, setValue] = useState(initialValue);
   const insets = useSafeAreaInsets();
 
@@ -24,11 +27,11 @@ export function NotesEditModal({ visible, initialValue, title = '編輯備註', 
       <View className="flex-1 bg-white dark:bg-gray-900" style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}>
         <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
           <Pressable onPress={onCancel} hitSlop={8}>
-            <Text className="text-base text-gray-700 dark:text-gray-300">取消</Text>
+            <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{title}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{resolvedTitle}</Text>
           <Pressable onPress={() => onSave(value.trim())} hitSlop={8}>
-            <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">儲存</Text>
+            <Text className="text-base font-semibold text-blue-600 dark:text-blue-400">{t('common.save')}</Text>
           </Pressable>
         </View>
         <KeyboardAvoidingView className="flex-1" behavior="padding">
@@ -38,7 +41,7 @@ export function NotesEditModal({ visible, initialValue, title = '編輯備註', 
             onChangeText={setValue}
             multiline
             autoFocus
-            placeholder="輸入備註（觀察行為、環境條件等）"
+            placeholder={t('notes.placeholder')}
             placeholderTextColor="#9ca3af"
             textAlignVertical="top"
           />

@@ -6,6 +6,7 @@
  * active simultaneously.
  */
 import { Ionicons } from '@expo/vector-icons';
+import { useTranslation } from 'react-i18next';
 import { usePathname, useRouter, type Href } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +14,7 @@ import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 
 export function ActiveSessionBar() {
+  const { t } = useTranslation();
   const router = useRouter();
   const pathname = usePathname();
   const session = useActiveSession((s) => s.session);
@@ -27,7 +29,7 @@ export function ActiveSessionBar() {
   const plotTs = plot?.start_ts ?? plot?.created_at ?? 0;
   const showPlot = plot && plotTs >= sessionTs;
 
-  const label = showPlot ? `樣區記錄中：${plot!.plotid}` : `記錄中：${session!.name}`;
+  const label = showPlot ? t('activeBar.plotRecording', { id: plot!.plotid }) : t('activeBar.recording', { name: session!.name });
   // This bar is persistent chrome rendered above the stack on EVERY screen,
   // including the record's own detail page. Tapping it must not push a second
   // copy of a screen already on the stack (that turned exiting into many

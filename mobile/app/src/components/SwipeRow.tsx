@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRef, type ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pressable, Text } from 'react-native';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
 
@@ -19,7 +20,9 @@ type Props = {
  * Wraps content in a Swipeable that reveals a red delete BUTTON on the
  * trailing edge. The button must be tapped explicitly to fire `onDelete`.
  */
-export function SwipeRow({ children, onDelete, label = '刪除' }: Props) {
+export function SwipeRow({ children, onDelete, label }: Props) {
+  const { t } = useTranslation();
+  const resolvedLabel = label ?? t('common.delete');
   const ref = useRef<Swipeable>(null);
   return (
     <Swipeable
@@ -38,7 +41,7 @@ export function SwipeRow({ children, onDelete, label = '刪除' }: Props) {
           className="flex-row items-center justify-end bg-red-600 px-6 active:bg-red-700"
         >
           <Ionicons name="trash" size={20} color="white" />
-          <Text className="ml-2 text-sm font-medium text-white">{label}</Text>
+          <Text className="ml-2 text-sm font-medium text-white">{resolvedLabel}</Text>
         </Pressable>
       )}
     >

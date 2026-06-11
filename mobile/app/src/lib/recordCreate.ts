@@ -23,6 +23,7 @@ import { isRecordingTarget, pauseRecording as pauseTrackRecording } from '~/lib/
 import { promptText } from '~/components/TextPromptModal';
 import { showActionSheet } from '~/components/ActionSheet';
 import { readPlotImport } from '~/lib/plotImport';
+import i18n from '~/i18n';
 
 type NewRecordKind = 'session' | 'plot';
 
@@ -43,7 +44,7 @@ function findActiveConflict(): ActiveConflict | null {
   if (plot) {
     return {
       kind: 'plot',
-      label: plot.plotid || '樣區',
+      label: plot.plotid || i18n.t('nav.plot'),
       href: `/plot/${plot.id}` as Href,
       end: () => {
         if (isRecordingTarget({ kind: 'plot', id: plot.id })) pauseTrackRecording();
@@ -68,7 +69,9 @@ function findActiveConflict(): ActiveConflict | null {
   return null;
 }
 
-const NOUN: Record<NewRecordKind, string> = { session: '名錄', plot: '樣區' };
+function nounOf(k: NewRecordKind): string {
+  return i18n.t(k === 'session' ? 'nav.session' : 'nav.plot');
+}
 
 /**
  * Cross-platform action sheet offering: open existing / end + start new
@@ -77,12 +80,12 @@ const NOUN: Record<NewRecordKind, string> = { session: '名錄', plot: '樣區' 
  */
 async function showConflictAlert(conflict: ActiveConflict, wanted: NewRecordKind): Promise<boolean> {
   const idx = await showActionSheet({
-    title: `已有${NOUN[conflict.kind]}記錄中`,
-    message: `「${conflict.label}」正在進行。要先結束它，再開始新的${NOUN[wanted]}嗎？`,
-    cancelLabel: '取消',
+    title: i18n.t('recordCreate.conflictTitle', { noun: nounOf(conflict.kind) }),
+    message: i18n.t('recordCreate.conflictMsg', { label: conflict.label, noun: nounOf(wanted) }),
+    cancelLabel: i18n.t('common.cancel'),
     options: [
-      { label: `前往${NOUN[conflict.kind]}` },
-      { label: `結束並開始新${NOUN[wanted]}`, destructive: true },
+      { label: i18n.t('recordCreate.goTo', { noun: nounOf(conflict.kind) }) },
+      { label: i18n.t('recordCreate.endAndStart', { noun: nounOf(wanted) }), destructive: true },
     ],
   });
   if (idx === 0) {
@@ -128,18 +131,20 @@ export async function startSessionAndOpen(): Promise<void> {
 
 const PLOT_TYPE_META: Record<
   PlotType,
-  { title: string; example: string; protocol: string | null }
+  { titleKey: string; example: string; protocol: string | null }
 > = {
-  fixed: { title: '新植群樣區', example: 'PLOT_2026_001', protocol: null },
-  transect: { title: '新穿越線', example: 'TRANSECT_2026_001', protocol: '穿越線調查法' },
-  point_count: { title: '新定點計數', example: 'POINT_2026_001', protocol: '定點計數法' },
+  // `protocol` is stored on the record + exported, so it stays a fixed literal
+  // (not localized) to keep data consistent across UI languages.
+  fixed: { titleKey: 'recordCreate.newFixed', example: 'PLOT_2026_001', protocol: null },
+  transect: { titleKey: 'recordCreate.newTransect', example: 'TRANSECT_2026_001', protocol: '穿越線調查法' },
+  point_count: { titleKey: 'recordCreate.newPointCount', example: 'POINT_2026_001', protocol: '定點計數法' },
 };
 
 async function promptPlotid(plotType: PlotType): Promise<void> {
   const meta = PLOT_TYPE_META[plotType];
   const raw = await promptText({
-    title: meta.title,
-    message: `輸入 plotid（例：${meta.example}）`,
+    title: i18n.t(meta.titleKey),
+    message: i18n.t('recordCreate.enterPlotid', { example: meta.example }),
     placeholder: meta.example,
     autoCapitalize: 'none',
   });
@@ -162,12 +167,12 @@ async function promptPlotid(plotType: PlotType): Promise<void> {
  */
 export async function createPlotPromptAndOpen(): Promise<void> {
   const idx = await showActionSheet({
-    title: '樣區',
+    title: i18n.t('recordCreate.plotMenuTitle'),
     options: [
-      { label: '固定樣區(分層植群)' },
-      { label: '穿越線(單層、含軌跡)' },
-      { label: '定點計數法(鳥類/動物，含半徑)' },
-      { label: '匯入樣區(.yml / .zip)' },
+      { label: i18n.t('recordCreate.optFixed') },
+      { label: i18n.t('recordCreate.optTransect') },
+      { label: i18n.t('recordCreate.optPointCount') },
+      { label: i18n.t('recordCreate.optImport') },
     ],
   });
   if (idx === 3) {
@@ -197,17 +202,17 @@ export async function importPlotPromptAndOpen(): Promise<void> {
   try {
     data = await readPlotImport(picked.assets[0].uri);
   } catch (e) {
-    Alert.alert('匯入失敗', e instanceof Error ? e.message : String(e));
+    Alert.alert(i18n.t('recordCreate.importFailTitle'), e instanceof Error ? e.message : String(e));
     return;
   }
 
   let newUuid = false;
   if (getPlotSurveyByUuid(data.uuid)) {
     const choice = await showActionSheet({
-      title: '樣區已存在',
-      message: `「${data.plotid}」已在裝置中。要覆蓋更新，還是另存成新副本？`,
-      cancelLabel: '取消',
-      options: [{ label: '覆蓋更新', destructive: true }, { label: '另存新副本' }],
+      title: i18n.t('recordCreate.plotExistsTitle'),
+      message: i18n.t('recordCreate.plotExistsMsg', { plotid: data.plotid }),
+      cancelLabel: i18n.t('common.cancel'),
+      options: [{ label: i18n.t('recordCreate.overwrite'), destructive: true }, { label: i18n.t('recordCreate.saveAsNew') }],
     });
     if (choice === 0) newUuid = false;
     else if (choice === 1) newUuid = true;
@@ -220,6 +225,6 @@ export async function importPlotPromptAndOpen(): Promise<void> {
     useActivePlot.getState().refresh();
     router.push(`/plot/${plotId}` as Href);
   } catch (e) {
-    Alert.alert('匯入失敗', e instanceof Error ? e.message : String(e));
+    Alert.alert(i18n.t('recordCreate.importFailTitle'), e instanceof Error ? e.message : String(e));
   }
 }
