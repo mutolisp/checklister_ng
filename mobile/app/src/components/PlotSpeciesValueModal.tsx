@@ -25,9 +25,9 @@ import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { showActionSheet } from './ActionSheet';
 import { useColorScheme as useNwColorScheme } from 'nativewind';
 import { useRouter } from 'expo-router';
-import { getKeysForScope, parseTrackSegments, type Layer, type Rank, type IdentificationKey } from '~/db';
+import { getKeysForScope, type Layer, type Rank, type IdentificationKey } from '~/db';
 import { ScientificName } from './ScientificName';
-import { PlotPointPreviewModal } from './PlotPointPreviewModal';
+import { RecordLocationMap } from './RecordLocationMap';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import {
   SpeciesAttributesBlock,
@@ -97,6 +97,9 @@ type Props = {
   accuracy?: number | null;
   /** Persist per-record GPS (edit mode only). Omit to hide the GPS button. */
   onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
+  /** Live-commit a coordinate edited on the inline map (no toast); manual edits
+   *  carry no GPS accuracy. Pass alongside onSaveLocation to show the map. */
+  onChangeLocation?: (lat: number, lng: number) => void;
   /** Plot geographic context for the coordinate map preview (centre / track /
    *  point-count radius). Omit to hide the preview button. */
   plotGeo?: {
@@ -129,6 +132,7 @@ export function PlotSpeciesValueModal({
   lng,
   accuracy,
   onSaveLocation,
+  onChangeLocation,
   plotGeo,
   photoUris,
   onAddPhoto,
@@ -150,7 +154,6 @@ export function PlotSpeciesValueModal({
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [detection, setDetection] = useState<string | null>(initial?.detection_type ?? null);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-  const [mapPreviewOpen, setMapPreviewOpen] = useState(false);
   const router = useRouter();
 
   // Braun-Blanquet & DBH only apply to vascular plants. In transect /
@@ -545,16 +548,19 @@ export function PlotSpeciesValueModal({
                     </Text>
                     <Text className="text-[11px] text-gray-400">{lat != null ? t('species.longPressClear') : t('species.tapGps')}</Text>
                   </Pressable>
-                  {lat != null && lng != null ? (
-                    <Pressable
-                      onPress={() => setMapPreviewOpen(true)}
-                      hitSlop={8}
-                      className="rounded-lg border border-gray-200 dark:border-gray-700 p-2.5 active:bg-gray-50 dark:active:bg-gray-800"
-                    >
-                      <Ionicons name="map-outline" size={18} color="#2563eb" />
-                    </Pressable>
-                  ) : null}
                   </View>
+                  {onChangeLocation ? (
+                    <RecordLocationMap
+                      lat={lat ?? null}
+                      lng={lng ?? null}
+                      onChange={onChangeLocation}
+                      reference={
+                        plotGeo && plotGeo.lat != null && plotGeo.lng != null
+                          ? { center: { lat: plotGeo.lat, lng: plotGeo.lng }, radiusM: plotGeo.radiusM }
+                          : undefined
+                      }
+                    />
+                  ) : null}
                 </View>
               ) : null}
 
@@ -604,21 +610,6 @@ export function PlotSpeciesValueModal({
         onClose={() => setViewerIndex(null)}
       />
 
-      {mapPreviewOpen && lat != null && lng != null ? (
-        <PlotPointPreviewModal
-          visible
-          onClose={() => setMapPreviewOpen(false)}
-          title={header?.cname || header?.name || t('plotValue.thisSpecies')}
-          focus={{ lat, lng }}
-          center={
-            plotGeo && plotGeo.lat != null && plotGeo.lng != null
-              ? { lat: plotGeo.lat, lng: plotGeo.lng }
-              : null
-          }
-          segments={parseTrackSegments(plotGeo?.trackGeojson ?? null)}
-          radiusM={plotGeo?.radiusM ?? null}
-        />
-      ) : null}
     </Modal>
   );
 }

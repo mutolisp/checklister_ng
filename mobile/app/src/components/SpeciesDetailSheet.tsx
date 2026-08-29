@@ -31,6 +31,7 @@ import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import { NotesEditModal } from './NotesEditModal';
+import { RecordLocationMap } from './RecordLocationMap';
 import {
   SpeciesAttributesBlock,
   type SpeciesAttributesDraft,
@@ -45,6 +46,9 @@ type Props = {
   onSaveNotes: (newNotes: string) => void;
   /** Save / clear per-record GPS coordinates. Pass null to clear. */
   onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
+  /** Live-commit a coordinate edited on the inline map (no toast). Manual map
+   *  edits carry no GPS accuracy. Pass alongside onSaveLocation to show the map. */
+  onChangeLocation?: (lat: number, lng: number) => void;
   /** Capture or pick a photo for the current record. Parent persists the URI. */
   onAddPhoto?: (mode: 'camera' | 'library') => void;
   /** Remove a single photo URI from the current record. */
@@ -86,6 +90,7 @@ export function SpeciesDetailSheet({
   onRemove,
   onSaveNotes,
   onSaveLocation,
+  onChangeLocation,
   onAddPhoto,
   onRemovePhoto,
   onSaveAttributes,
@@ -382,6 +387,13 @@ export function SpeciesDetailSheet({
                       {record.lat !== null ? t('species.longPressClear') : t('species.tapGps')}
                     </Text>
                   </Pressable>
+                ) : null}
+                {onSaveLocation && onChangeLocation ? (
+                  <RecordLocationMap
+                    lat={record.lat}
+                    lng={record.lng}
+                    onChange={onChangeLocation}
+                  />
                 ) : null}
                 {onSaveAttributes ? (
                   <View className="mt-3">

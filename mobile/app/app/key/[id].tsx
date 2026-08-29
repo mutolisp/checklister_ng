@@ -471,6 +471,15 @@ export default function KeyRunnerScreen() {
     [plotValueTarget, activePlot, router, toast],
   );
 
+  // Must stay above the early returns below — a Hook after a conditional
+  // return changes the per-render hook count once `loaded` flips true and
+  // crashes with "Rendered more hooks than during the previous render".
+  const openTerminalDetail = useCallback(() => {
+    if (state.terminal?.kind !== 'taxon') return;
+    const r = searchByTaxonId(state.terminal.taxonId);
+    if (r) setDetailResult(r);
+  }, [state.terminal]);
+
   // ── Render ───────────────────────────────────────────────────────────
   if (!loaded) {
     return (
@@ -511,12 +520,6 @@ export default function KeyRunnerScreen() {
   const screenTitle = keyData.scope_cname
     ? `${keyData.scope_name} ${keyData.scope_cname}`
     : keyData.scope_name;
-
-  const openTerminalDetail = useCallback(() => {
-    if (state.terminal?.kind !== 'taxon') return;
-    const r = searchByTaxonId(state.terminal.taxonId);
-    if (r) setDetailResult(r);
-  }, [state.terminal]);
 
   let body: React.ReactNode;
   if (state.terminal) {

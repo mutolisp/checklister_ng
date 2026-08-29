@@ -915,7 +915,13 @@
   "speciesSearch": {
     "hint": "下方輸入俗名 / 學名 / 科名搜尋物種，{{br}}選擇結果後在此檢視詳細資訊。"
   },
-  "plotPoint": {
-    "center": "樣區中心"
+  "locMap": {
+    "tapToPlace": "點一下地圖放置位置",
+    "dragHint": "拖曳標記微調位置",
+    "zoomIn": "放大",
+    "zoomOut": "縮小",
+    "expand": "全螢幕",
+    "fullscreenTitle": "編輯位置",
+    "locateMe": "定位目前位置"
   }
 }

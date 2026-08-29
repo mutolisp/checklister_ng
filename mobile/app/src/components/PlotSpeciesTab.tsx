@@ -375,6 +375,16 @@ export function PlotSpeciesTab({
     onChanged();
   };
 
+  const handleChangeModalLocation = (lat: number, lng: number) => {
+    // Inline map edit: persist quietly (no toast). Manual placement → no GPS accuracy.
+    if (!modal || modal.mode !== 'edit') return;
+    const record = modal.record;
+    updatePlotSpeciesLocation(record.id, lat, lng, null);
+    setModal({ mode: 'edit', record: { ...record, lat, lng, accuracy: null } });
+    reload();
+    onChanged();
+  };
+
   const handleChangeLayer = async (r: PlotSpeciesRecordWithTaxon) => {
     const idx = await showActionSheet({
       title: tr('plotSpecies.changeLayer'),
@@ -687,6 +697,7 @@ export function PlotSpeciesTab({
           lng={modal.mode === 'edit' ? modal.record.lng : undefined}
           accuracy={modal.mode === 'edit' ? modal.record.accuracy : undefined}
           onSaveLocation={modal.mode === 'edit' ? handleSaveModalLocation : undefined}
+          onChangeLocation={modal.mode === 'edit' ? handleChangeModalLocation : undefined}
           plotGeo={{
             lat: plot.decimal_latitude,
             lng: plot.decimal_longitude,

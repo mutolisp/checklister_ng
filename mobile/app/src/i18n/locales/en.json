@@ -915,7 +915,13 @@
   "speciesSearch": {
     "hint": "Search species by common / scientific / family name below,{{br}}then view details here after selecting."
   },
-  "plotPoint": {
-    "center": "Plot center"
+  "locMap": {
+    "tapToPlace": "Tap the map to place the point",
+    "dragHint": "Drag the marker to fine-tune",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "expand": "Fullscreen",
+    "fullscreenTitle": "Edit location",
+    "locateMe": "My location"
   }
 }
