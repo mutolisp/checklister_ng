@@ -174,6 +174,23 @@ function collectPhotoSources(): PhotoSource[] {
     }
   }
 
+  const specimens = db.executeSync(
+    `SELECT cs.taxon_id AS taxon_id, cs.photo_paths AS photo_paths,
+            c.id AS owner_id, c.name AS owner_name
+       FROM collection_specimens cs JOIN collection_trips c ON cs.trip_id = c.id
+      WHERE cs.photo_paths IS NOT NULL AND cs.photo_paths != ''`,
+  );
+  for (const r of (specimens.rows ?? []) as Array<Record<string, unknown>>) {
+    const uris = parsePhotoUris(r.photo_paths as string);
+    if (uris.length) {
+      out.push({
+        folder: `collection_${r.owner_id}_${sanitizeFilename(String(r.owner_name ?? ''))}`,
+        taxonId: (r.taxon_id as string) ?? null,
+        uris,
+      });
+    }
+  }
+
   const env = db.executeSync(
     `SELECT p.id AS owner_id, p.plotid AS owner_name, p.env_photos_json AS env_photos_json
        FROM plot_surveys p WHERE p.env_photos_json IS NOT NULL AND p.env_photos_json != ''`,

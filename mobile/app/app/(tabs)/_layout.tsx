@@ -6,23 +6,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { HapticTab } from '@/components/haptic-tab';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { Colors } from '@/constants/theme';
-import { useSettings } from '~/stores/settings';
+import { useSettings, type RecordTypeDefault } from '~/stores/settings';
 import { showActionSheet } from '~/components/ActionSheet';
-import { createPlotPromptAndOpen, startSessionAndOpen } from '~/lib/recordCreate';
+import {
+  createPlotPromptAndOpen,
+  startCollectionAndOpen,
+  startSessionAndOpen,
+} from '~/lib/recordCreate';
 import { perf } from '~/lib/perf';
 import i18n from '~/i18n';
 
 async function showCreateChooser(): Promise<void> {
   const idx = await showActionSheet({
     title: i18n.t('record.createChooserTitle'),
-    options: [{ label: i18n.t('record.kindSession') }, { label: i18n.t('record.kindPlot') }],
+    options: [
+      { label: i18n.t('record.kindSession') },
+      { label: i18n.t('record.kindPlot') },
+      { label: i18n.t('record.kindCollection') },
+    ],
   });
   if (idx === 0) startSessionAndOpen();
   else if (idx === 1) createPlotPromptAndOpen();
+  else if (idx === 2) startCollectionAndOpen();
 }
 
 async function showLongPressMenu(): Promise<void> {
-  const updateDefault = (v: 'session' | 'plot' | 'ask') =>
+  const updateDefault = (v: RecordTypeDefault) =>
     useSettings.getState().set('record_type_default', v);
   const idx = await showActionSheet({
     title: i18n.t('record.createMenuTitle'),
@@ -30,16 +39,20 @@ async function showLongPressMenu(): Promise<void> {
     options: [
       { label: i18n.t('record.kindSession') },
       { label: i18n.t('record.kindPlot') },
+      { label: i18n.t('record.kindCollection') },
       { label: i18n.t('record.defaultAsk') },
       { label: i18n.t('record.defaultSession') },
       { label: i18n.t('record.defaultPlot') },
+      { label: i18n.t('record.defaultCollection') },
     ],
   });
   if (idx === 0) startSessionAndOpen();
   else if (idx === 1) createPlotPromptAndOpen();
-  else if (idx === 2) updateDefault('ask');
-  else if (idx === 3) updateDefault('session');
-  else if (idx === 4) updateDefault('plot');
+  else if (idx === 2) startCollectionAndOpen();
+  else if (idx === 3) updateDefault('ask');
+  else if (idx === 4) updateDefault('session');
+  else if (idx === 5) updateDefault('plot');
+  else if (idx === 6) updateDefault('collection');
 }
 
 function PlusButton() {
@@ -48,6 +61,7 @@ function PlusButton() {
   const onPress = () => {
     if (recordTypeDefault === 'session') startSessionAndOpen();
     else if (recordTypeDefault === 'plot') createPlotPromptAndOpen();
+    else if (recordTypeDefault === 'collection') startCollectionAndOpen();
     else showCreateChooser();
   };
 

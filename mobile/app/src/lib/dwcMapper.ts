@@ -60,8 +60,13 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   notes: 'occurrenceRemarks',
   rank: 'taxonRank',
   // Detection method (point count / animal records). No standard DwC term —
-  // use a custom camelCase key, consistent with verbatimVegetationLayer etc.
+  // use a custom camelCase term, consistent with verbatimVegetationLayer etc.
   detection_type: 'detectionType',
+  // Specimen collection (採集). All standard DwC occurrence terms.
+  record_number: 'recordNumber',
+  basis_of_record: 'basisOfRecord',
+  recorded_by: 'recordedBy',
+  locality: 'locality',
 };
 
 export function convertToDwc(obj: Record<string, unknown>): Record<string, unknown> {

@@ -3,11 +3,12 @@ import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
 import { isoDateTime } from '~/lib/datetime';
 import { ExportPreferenceSheet } from '~/components/ExportPreferenceSheet';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
 import {
+  deleteCollectionTrip,
   deletePlotSurvey,
   deleteSession,
   listRecords,
@@ -17,6 +18,7 @@ import {
   type RecordKind,
 } from '~/db';
 import {
+  bundleCollection,
   bundleMany,
   bundlePlot,
   bundleSession,
@@ -39,7 +41,8 @@ const formatTime = isoDateTime;
 function KindIcon({ kind, active }: { kind: RecordKind; active: boolean }) {
   const tint = active ? '#10b981' : '#94a3b8';
   const bg = active ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-gray-100 dark:bg-gray-800';
-  const iconName = kind === 'session' ? 'list' : 'grid-outline';
+  const iconName =
+    kind === 'session' ? 'list' : kind === 'collection' ? 'leaf-outline' : 'grid-outline';
   return (
     <View className={`mr-3 h-10 w-10 items-center justify-center rounded-lg ${bg}`}>
       <Ionicons name={iconName as never} size={20} color={tint} />
@@ -121,18 +124,25 @@ function RecordRow({
 
 function ProjectHeader({ group }: { group: ProjectGroup }) {
   const { t } = useTranslation();
-  const sessionCount = group.items.filter((x) => x.kind === 'session').length;
-  const plotCount = group.items.filter((x) => x.kind === 'plot').length;
+  const countOf = (k: RecordKind) => group.items.filter((x) => x.kind === k).length;
+  const parts = (
+    [
+      ['session', 'records.sessionCount'],
+      ['plot', 'records.plotCount'],
+      ['collection', 'records.collectionCount'],
+    ] as const
+  )
+    .map(([kind, key]) => {
+      const count = countOf(kind);
+      return count > 0 ? t(key, { count }) : null;
+    })
+    .filter((x): x is string => x !== null);
   return (
     <View className="border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-4 py-2">
       <View className="flex-row items-center">
         <Ionicons name="folder-outline" size={14} color="#4b5563" />
         <Text className="ml-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200">{group.projectName}</Text>
-        <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-          {sessionCount > 0 ? t('records.sessionCount', { count: sessionCount }) : ''}
-          {sessionCount > 0 && plotCount > 0 ? ' · ' : ''}
-          {plotCount > 0 ? t('records.plotCount', { count: plotCount }) : ''}
-        </Text>
+        <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">{parts.join(' · ')}</Text>
       </View>
     </View>
   );
@@ -160,6 +170,7 @@ export default function RecordsListScreen() {
     all: t('records.filterAll'),
     session: t('nav.session'),
     plot: t('nav.plot'),
+    collection: t('nav.collection'),
   };
   const refreshActive = useActiveSession((s) => s.refresh);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
@@ -168,7 +179,12 @@ export default function RecordsListScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('flat');
   const [items, setItems] = useState<RecordItem[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
-  const [counts, setCounts] = useState({ all: 0, session: 0, plot: 0 });
+  const [counts, setCounts] = useState<Record<Filter, number>>({
+    all: 0,
+    session: 0,
+    plot: 0,
+    collection: 0,
+  });
   const [prefOpen, setPrefOpen] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
@@ -192,6 +208,7 @@ export default function RecordsListScreen() {
       all: all.length,
       session: all.filter((x) => x.kind === 'session').length,
       plot: all.filter((x) => x.kind === 'plot').length,
+      collection: all.filter((x) => x.kind === 'collection').length,
     });
     setItems(listRecords(filter));
     setGroups(listRecordsByProject(filter));
@@ -218,6 +235,7 @@ export default function RecordsListScreen() {
 
   const handleOpen = (item: RecordItem) => {
     if (item.kind === 'session') router.push(`/session/${item.id}` as Href);
+    else if (item.kind === 'collection') router.push(`/collection/${item.id}` as Href);
     else router.push(`/plot/${item.id}` as Href);
   };
 
@@ -272,11 +290,12 @@ export default function RecordsListScreen() {
     if (!proceed) return;
 
     const onProgress = (p: ExportProgress) => setExportProgress(p);
-    await shareBundle(() =>
-      item.kind === 'session'
-        ? bundleSession(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress })
-        : bundlePlot(item.id, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
-    );
+    const bundleOpts = { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress };
+    await shareBundle(() => {
+      if (item.kind === 'session') return bundleSession(item.id, bundleOpts);
+      if (item.kind === 'collection') return bundleCollection(item.id, bundleOpts);
+      return bundlePlot(item.id, bundleOpts);
+    });
   };
 
   const handleExportSelection = async () => {
@@ -348,6 +367,7 @@ export default function RecordsListScreen() {
           style: 'destructive',
           onPress: () => {
             if (item.kind === 'session') deleteSession(item.id);
+            else if (item.kind === 'collection') deleteCollectionTrip(item.id);
             else deletePlotSurvey(item.id);
             reload();
           },
@@ -453,16 +473,25 @@ export default function RecordsListScreen() {
         {selectMode ? null : (
           <>
             <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {t('records.stats', { all: counts.all, session: counts.session, plot: counts.plot })}
+              {t('records.stats', {
+                all: counts.all,
+                session: counts.session,
+                plot: counts.plot,
+                collection: counts.collection,
+              })}
             </Text>
-            <View className="mt-3 flex-row gap-2">
-              {(['all', 'session', 'plot'] as Filter[]).map((f) => {
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="mt-3 flex-row gap-2 pr-4"
+            >
+              {(['all', 'session', 'plot', 'collection'] as Filter[]).map((f) => {
                 const on = filter === f;
                 return (
                   <Pressable
                     key={f}
                     onPress={() => setFilter(f)}
-                    className={`flex-1 items-center rounded-lg py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
+                    className={`items-center rounded-lg px-4 py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
                   >
                     <Text className={`text-sm font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                       {filterLabel[f]} ({counts[f]})
@@ -470,7 +499,7 @@ export default function RecordsListScreen() {
                   </Pressable>
                 );
               })}
-            </View>
+            </ScrollView>
           </>
         )}
       </View>

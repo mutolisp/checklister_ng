@@ -361,7 +361,7 @@
 				CODE_SIGN_ENTITLEMENTS = Checklister/Checklister.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = R6QJPK552H;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -402,7 +402,7 @@
 				CODE_SIGN_ENTITLEMENTS = Checklister/Checklister.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = R6QJPK552H;
 				INFOPLIST_FILE = Checklister/Info.plist;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";

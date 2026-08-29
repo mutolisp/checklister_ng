@@ -306,6 +306,7 @@ iOS 與 Android 都要支援。以下 API 是 **iOS-only**，禁止直接呼叫�
 |--------------|---------|
 | `Alert.prompt` | `promptText(opts): Promise<string \| null>` from `src/components/TextPromptModal.tsx` |
 | `ActionSheetIOS.showActionSheetWithOptions` | `showActionSheet(opts): Promise<number>` from `src/components/ActionSheet.tsx`（iOS 內部仍走 native ActionSheetIOS 保 HIG，Android 走 Modal bottom sheet）|
+| `DateTimePicker` 直接使用 | `<DateTimeField value onChange />` from `src/components/DateTimeField.tsx`（`IOSMode` 有 `'datetime'`、`AndroidMode` 只有 `'date' \| 'time'`，Android 必須串兩段對話框）。**刻意是元件而非 `pickDateTime()` 命令式 API**：iOS 的 picker 只能是 view 或 Modal，而 iOS 不允許在既有 Modal 之上再開 Modal，命令式版本在 sheet 內會靜默不跳 |
 
 兩個元件都是 **imperative API + module-level zustand store + host component**（`<TextPromptHost />` / `<ActionSheetHost />`）掛在 `app/_layout.tsx`，整 app 共用。**禁止用 `Platform.OS === 'ios'` if/else 模式**寫多平台分支（除非是 KeyboardAvoidingView behavior 等天然差異）— 之前的 Alert.alert fallback 多次被發現選項數或可用功能在 Android 上退化。
 
@@ -314,8 +315,20 @@ Audit 流程（任何新增彈出/選擇 UI 後跑）：
 ```bash
 cd mobile/app
 grep -rn "Alert.prompt\|ActionSheetIOS" src/ app/   # 只應該出現在 ActionSheet.tsx / TextPromptModal.tsx 內部
-grep -rn "Platform.OS === 'ios'" src/ app/          # 只應出現在 KeyboardAvoidingView behavior + tabBar 高度
+grep -rn "Platform.OS === 'ios'" src/ app/          # 只應出現在跨平台 wrapper 內部（ActionSheet / DateTimeField / KeyboardAvoidingView）+ iOS Modal-before-keyboard 等待
+npm run check:dock                                   # 底部置底搜尋框結構（見下）
 ```
+
+### 底部置底搜尋框（KeyboardStickyView）
+
+`offset.opened` 必須等於 dock **下方**的 chrome，因為那段 chrome 才是把 dock 頂離鍵盤的東西。只有兩種合法配對：
+
+| offset | 前提 |
+|---|---|
+| `insets.bottom` | 畫面 root 是 `<SafeAreaView edges={['bottom']}>` |
+| `tabBarHeight` | 畫面在 bottom tab navigator 內（`useBottomTabBarHeight()`） |
+
+只抄其中一半 → 搜尋框被推到**鍵盤後面**。這個錯已經出貨三次（KeyListView 2026-05-14、favorites 2026-06-07、collection 2026-08-29），每次都是把某個正常畫面的 offset 抄到 chrome 不同的畫面上。**新增置底搜尋框後必跑 `npm run check:dock`**（`scripts/check-bottom-dock.mjs` 檢查這個配對；純文字檢查，因為失敗樣態一定是「兩半對不上」）。結構照抄 `app/session/[id].tsx`。
 
 其他天然跨平台 pattern（這些 OK）：
 - `KeyboardAvoidingView`：iOS `'padding'`、Android `'height'` 或 `undefined`

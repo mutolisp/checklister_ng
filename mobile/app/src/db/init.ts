@@ -118,6 +118,8 @@ export async function clearAllUserData(): Promise<void> {
   db.executeSync(`PRAGMA foreign_keys = OFF;`);
   db.executeSync(`DROP TABLE IF EXISTS checklist_records;`);
   db.executeSync(`DROP TABLE IF EXISTS abundance_records;`);
+  db.executeSync(`DROP TABLE IF EXISTS collection_specimens;`);
+  db.executeSync(`DROP TABLE IF EXISTS collection_trips;`);
   db.executeSync(`DROP TABLE IF EXISTS sessions;`);
   db.executeSync(`DROP TABLE IF EXISTS projects;`);
   db.executeSync(`DROP TABLE IF EXISTS search_history;`);

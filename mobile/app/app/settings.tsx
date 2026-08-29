@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   useSettings,
@@ -12,7 +13,7 @@ import {
   type RegionCode,
   type Language,
 } from '~/stores/settings';
-import { clearAllUserData, clearSearchHistory, clearTaxonomyCache } from '~/db';
+import { clearAllUserData, clearSearchHistory, clearTaxonomyCache, nextRecordNumber } from '~/db';
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 
@@ -52,7 +53,11 @@ export default function SettingsScreen() {
     { value: 'ask', label: t('settings.createAsk') },
     { value: 'session', label: t('record.kindSession') },
     { value: 'plot', label: t('record.kindPlot') },
+    { value: 'collection', label: t('record.kindCollection') },
   ];
+
+  // Recomputed on every render so the hint reflects the prefix/start just typed.
+  const nextNumberPreview = nextRecordNumber().text;
 
   const jpEnabled = settings.enabled_regions.includes('JP');
   const setJp = (on: boolean) => {
@@ -138,6 +143,30 @@ export default function SettingsScreen() {
             </Text>
           </View>
         </Section>
+        <Section title={t('settings.sectionCollection')}>
+          <RowInput
+            label={t('collection.numberPrefix')}
+            value={settings.collection_number_prefix}
+            placeholder={t('settings.numberPrefixPlaceholder')}
+            autoCapitalize="characters"
+            onCommit={(v) => settings.set('collection_number_prefix', v.trim())}
+          />
+          <RowInput
+            label={t('collection.numberStart')}
+            value={String(settings.collection_number_start)}
+            placeholder="1"
+            keyboardType="number-pad"
+            onCommit={(v) => {
+              const n = Math.floor(Number(v));
+              settings.set('collection_number_start', Number.isFinite(n) && n > 0 ? n : 1);
+            }}
+          />
+          <View className="bg-white dark:bg-gray-900 px-4 pb-3">
+            <Text className="text-xs text-gray-500 dark:text-gray-400">
+              {t('settings.collectionNumberDesc', { next: nextNumberPreview })}
+            </Text>
+          </View>
+        </Section>
         <Section title={t('settings.sectionSurvey')}>
           <Pressable
             onPress={() => router.push('/surveyors' as Href)}
@@ -199,6 +228,45 @@ export default function SettingsScreen() {
         </Section>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+/** Uncontrolled text row committed on blur — same interaction as the plot
+ *  env-tab fields, so a half-typed value never lands in settings. */
+function RowInput({
+  label,
+  value,
+  placeholder,
+  keyboardType,
+  autoCapitalize,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  keyboardType?: 'default' | 'number-pad';
+  autoCapitalize?: 'none' | 'characters';
+  onCommit: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => {
+    setDraft(value);
+  }, [value]);
+  return (
+    <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+      <Text className="text-base text-gray-900 dark:text-gray-100">{label}</Text>
+      <TextInput
+        value={draft}
+        onChangeText={setDraft}
+        onBlur={() => onCommit(draft)}
+        placeholder={placeholder}
+        placeholderTextColor="#9ca3af"
+        keyboardType={keyboardType ?? 'default'}
+        autoCapitalize={autoCapitalize ?? 'none'}
+        autoCorrect={false}
+        className="min-w-[120px] rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-right text-base text-gray-900 dark:text-gray-100"
+      />
+    </View>
   );
 }
 

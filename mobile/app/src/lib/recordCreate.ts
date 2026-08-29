@@ -10,9 +10,11 @@ import { router, type Href } from 'expo-router';
 import { Alert } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import {
+  createCollectionTrip,
   createPlotSurvey,
   endPlotSurvey,
   endSession,
+  getActiveCollectionTrip,
   getPlotSurveyByUuid,
   importPlotSurvey,
   type PlotType,
@@ -157,6 +159,19 @@ async function promptPlotid(plotType: PlotType): Promise<void> {
   });
   useActivePlot.getState().refresh();
   router.push(`/plot/${id}` as Href);
+}
+
+/**
+ * Open the current collection trip, or start one, and navigate to it.
+ *
+ * Deliberately skips `ensureNoConflictingActive`: a collection trip is not part
+ * of the app-wide single-active invariant, so starting one must never end an
+ * in-progress checklist or plot survey (and is never blocked by one).
+ */
+export async function startCollectionAndOpen(): Promise<void> {
+  const existing = getActiveCollectionTrip();
+  const id = existing?.id ?? createCollectionTrip();
+  router.push(`/collection/${id}` as Href);
 }
 
 /**

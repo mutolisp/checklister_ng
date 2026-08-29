@@ -28,7 +28,7 @@ export default function FavoritesScreen() {
   const add = useFavorites((s) => s.add);
   const remove = useFavorites((s) => s.remove);
   const toast = useToast((s) => s.show);
-  const { addSpecies, modal: addRecordModal } = useAddToActiveRecord();
+  const { addSpecies, promptAddDestination, modal: addRecordModal } = useAddToActiveRecord();
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [filter, setFilter] = useState('');
@@ -208,6 +208,9 @@ export default function FavoritesScreen() {
           if (selected) addSpecies(selected);
         }}
         addButtonLabel={t('favorites.addToRecord')}
+        onAddLongPress={() => {
+          if (selected) promptAddDestination(selected);
+        }}
       />
       {addRecordModal}
     </SafeAreaView>

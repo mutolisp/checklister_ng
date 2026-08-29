@@ -4,6 +4,8 @@ declare module 'piexifjs' {
   export const GPSIFD: Record<string, number>;
   export const InteropIFD: Record<string, number>;
   export const TagValues: Record<string, Record<string, number>>;
+  /** ifd name ('Image' | '0th' | '1st' | 'Exif' | 'GPS' | 'Interop') → tag number → descriptor. */
+  export const TAGS: Record<string, Record<number, { name: string; type: string }>>;
   export const Version: string;
 
   export type ExifDict = {

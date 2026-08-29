@@ -22,9 +22,17 @@ type Props = {
   onAddToSession: () => void;
   /** Override the add-button label (e.g. 「加入目前樣區」 when a plot is active). */
   addButtonLabel?: string;
+  /** Long-press on the add button — offers the 採集 destination. */
+  onAddLongPress?: () => void;
 };
 
-export function LookupResultSheet({ result, onClose, onAddToSession, addButtonLabel }: Props) {
+export function LookupResultSheet({
+  result,
+  onClose,
+  onAddToSession,
+  addButtonLabel,
+  onAddLongPress,
+}: Props) {
   const [currentResult, setCurrentResult] = useState<SearchResult | null>(result);
 
   // Re-seed local state whenever the parent passes a different taxon (or null
@@ -58,6 +66,14 @@ export function LookupResultSheet({ result, onClose, onAddToSession, addButtonLa
                 onClose();
               }}
               addButtonLabel={addButtonLabel}
+              onAddLongPress={
+                onAddLongPress
+                  ? () => {
+                      onAddLongPress();
+                      onClose();
+                    }
+                  : undefined
+              }
               onClose={onClose}
               onPickSubordinate={(sp) => setCurrentResult(taxonSpeciesToSearchResult(sp))}
             />

@@ -269,6 +269,7 @@
   - 待補：病毒 realm 階層、展開狀態 persist 到 settings、批次加入（接 BatchAddModal）
 - [x] **物種卡片照片**：相機（強制 JPEG + EXIF/UserComment 嵌入 taxon_id/name/cname/family/GPS）/ 相簿多選、寫入 photo_paths JSON array、SpeciesDetailSheet PhotoGrid（tap 全螢幕 viewer + long-press 移除）、SpeciesCard 列表前縮圖 + ×N 角標
 - [ ] **匯出時補 metadata**：DB 是 metadata 真相源；匯出/分享 session 時把 record.lat/lng/notes 嵌到複本 JPEG（不動原檔/原相簿 PHAsset）
+- [x] **相機照片 EXIF 還原（2026-08-29）**：expo-image-picker 在 iOS `quality < 1` 時用 `UIImage.jpegData()` 重編碼，產出的 JPEG **完全不帶 EXIF**（鏡頭/焦距/光圈/ISO/拍攝時間全空）。改由 `asset.exif` 注回 piexif dict；同時修好樣區環境照（原本完全沒過 piexif）。Android 不受影響且自動 no-op。詳見 Update_log.md
 - [x] **Markdown 匯出**：維管束植物 6 類群分流、Magnoliopsida order 拆單/雙子葉、autonym s.l./s.str.、計畫 header 統計
 - [ ] **TaiCOL 資料更新機制**：需 backend public server，啟動 silently check 版本，使用者觸發下載
 
@@ -1170,3 +1171,112 @@ eas submit --platform ios
 
 **TODO（後續可選）**：romaji 諧音層（語音）、匯出 DwC `vernacularName` 多語格式微調、JP fuzzy prewarm、tree 共有種 species_count 統計去重。
 
+
+## Sprint：標本採集記錄（Specimen Collection）+ 照片 EXIF 修復
+
+**目標**：在「記錄」中加入第三種記錄型別 — 標本採集。採集行程（trip）內含多筆標本（specimen），欄位含採集號、採集日期時間、採集地點（簡易地圖點按定位）、採集者、物種學名俗名、物候、備註、照片。同時修好相機照片 metadata 不完整的既有 bug（鏡頭、焦距等欄位空白），該 bug 同時影響名錄與樣區。
+
+**核心約束：不影響既有功能呈現。** 採集**不納入** app 全域的 single-active invariant；分類樹「加入記錄」的短按行為一行不改。
+
+### 設計決策（使用者確認）
+
+| 項目 | 決定 | 理由 |
+|---|---|---|
+| 資料結構 | 容器＋標本清單（trip → specimens） | 與 session→checklist_records 同形，列表/分組/匯出全部沿用既有邏輯 |
+| 採集號 | **全域連號**，可設前綴與起始號，每筆可手改 | 採集者 + 採集號是標本的唯一引用，標本館慣例為連續序列（非每趟重編、非年份+流水號） |
+| single-active | **不納入** | 開/續採集行程永不結束進行中的名錄或樣區，反之亦然。零回歸的核心保證 |
+| 分類樹整合 | 短按維持現狀；**長按**跳 ActionSheet 選名錄或採集 | 既有操作手感零改變 |
+
+> 使用者同時選了「採集無 active 概念」與「長按可建立採集記錄並加入」。若完全無 active 概念，長按每次都新建行程 → 行程爆量。折衷：採集行程有自己的 `status`，但**僅供決定「加入採集」落在哪個行程**，與 session/plot 的 active slot 互不干涉、互不結束。
+
+### DB（migration v19，純新增表）
+
+- `collection_trips`：uuid / name / project_id / status('active'|'done') / started_at / ended_at / recorded_by / locality / notes
+- `collection_specimens`：trip_id(FK CASCADE) / occurrence_id / taxon_id / **record_number** / **record_number_seq** / collected_at / recorded_by / lat / lng / accuracy / locality / reproductive_condition / leaf_phenology / notes / photo_paths
+
+Additive、未動 TaiCOL bundle → **不需要跑 `make mobile-db`**。物候直接沿用既有 `reproductive_condition` / `leaf_phenology`（JSON array），不新增欄位與 enum。
+
+`nextRecordNumber()` = `max(MAX(record_number_seq) + 1, settings.collection_number_start)` + 前綴 — **從 DB 實際最大值推算、不存游標**，刪除或匯入標本都不會讓號碼漂移。手改號碼時抓尾端數字回填 seq，非數字（如 `s.n.`）存 NULL 不破壞序列。
+
+### 新檔
+
+`src/db/collections.ts`（trip / specimen CRUD + 採集號）、`src/db/taxonLookup.ts`（共用 taxon 解析）、`app/collection/[id].tsx`（行程頁 = metadata 列 + 標本列表 + 底部 SearchBox）、`src/components/SpecimenDetailSheet.tsx`（標本明細表單）。
+
+**復用而非重寫**：`RecordLocationMap` / `SurveyorAssignSheet` / `ProjectAssignSheet` / `SearchBox` / `SpeciesAttributesBlock` / `PhotoGrid` / `SwipeRow`。`SpeciesAttributesBlock` 只加兩個 optional prop（`only="phenology"`、`headerLabel`），省略時行為與改動前完全相同。
+
+### 明確不動的檔案（零回歸保證，已 `git diff --quiet` 驗證）
+
+`src/db/sessions.ts`、`src/db/plots.ts`、`src/db/cleanup.ts`、`src/components/ActiveSessionBar.tsx` — 與 HEAD 逐字元相同。`useAddToActiveRecord.addSpecies` 的既有路由分支亦一行未改。`app/key/[id].tsx` 那份重複的路由邏輯本次不動。
+
+### 照片 EXIF 修復（iOS-only，影響既有名錄 + 樣區照片）
+
+根因與修法詳見 Update_log.md。摘要：`quality: 0.9` 讓 expo-image-picker 走 `UIImage.jpegData()` 重編碼，**該 API 完全不寫 EXIF**；一直被丟掉的 `asset.exif` 保有原始 metadata，注回 piexif dict 即可。設計成「只補不覆蓋」+「沒補到就不重寫檔案」，Android 自動 no-op，**不需要 `Platform.OS` 分支**。順帶修好樣區環境照（原本完全沒過 piexif，本專案先前記為「已知限制」）。
+
+### 驗證狀態
+
+`tsc --noEmit` 0 error、跨平台稽核乾淨、i18n 845 keys 對等、DB 斷言與 EXIF round-trip 皆以真實 SQLite / shipped code 跑過。**待實機**：iOS `exiftool` 檢查鏡頭焦距、Android 未退化、single-active 回歸、分類樹短按行為、混合多選匯出。逐項清單見 Update_log.md。
+
+### TODO（後續可選）
+
+- [ ] 採集記錄 round-trip 匯入（目前只有 plot 有 importer；`collection_trips.uuid` 已預留）
+- [ ] 標本份數 / 複份（duplicates）與寄存標本館（`institutionCode` / `otherCatalogNumbers`）
+- [ ] 採集行程綁定 Site（地理樣區），沿用 session 的 `SiteAssignSheet`
+- [ ] 收斂 `records.ts` / `plots.ts` 兩份 taxon 解析到 `taxonLookup.ts`（本次刻意未動，避免影響既有路徑）
+- [x] **明細頁可編輯化 6 項（2026-08-29 續 2）**：日期時間手動輸入（原生 picker）、座標誤差顯示、行程改名、左滑複製、更換物種（再鑑定）、採集號重複檢查。詳見下一節與 Update_log.md
+
+---
+
+## Sprint：置底搜尋框結構的自動檢查（2026-08-29 續 1）
+
+採集頁搜尋框被鍵盤遮住 —— 抄了 `session/[id].tsx` 的 `offset={{opened: insets.bottom}}` 卻沒抄它的 `<SafeAreaView edges={['bottom']}>`，沒東西可抵銷，反而把框往下推進鍵盤。
+
+**這是第三次**（KeyListView 2026-05-14、favorites 2026-06-07、collection 今天），而 memory 早就把這條規則連同 favorites 的錯法逐字寫進去了 —— 文件寫對了但擋不住。所以新增：
+
+- `mobile/app/scripts/check-bottom-dock.mjs` + `npm run check:dock`：檢查每個 `KeyboardStickyView` caller 的 `offset` 與其下方 chrome 是否配對（`insets.bottom` ⟺ `SafeAreaView edges`；`tabBarHeight` ⟺ tab 畫面）
+- 已對檢查本身做回歸測試（把兩次歷史錯誤植回，確認都抓得到再還原）
+- 寫進 `CLAUDE.md` Audit 流程，memory 改成指向這個檢查
+
+**合法配對只有兩種，新增置底搜尋框後必跑 `npm run check:dock`。**
+
+---
+
+## Sprint：採集明細頁可編輯化（2026-08-29 續 2）
+
+實際使用後補的 6 項缺口，集中在「標本明細頁不夠可編輯」。**無 schema 變更**（仍是 v19）。
+
+### ⚠️ 含新的原生模組，必須雙平台重建
+
+`@react-native-community/datetimepicker@8.4.4`。未重建的裝置一開採集明細頁就會崩潰。
+
+```bash
+cd mobile/app
+cd ios && pod install && cd .. && npx expo run:ios
+npx expo prebuild --platform android && npx expo run:android
+```
+
+**config plugin 刻意不加進 `app.config.ts`** —— 讀原始碼確認沒給參數時是完全的 no-op，且它會套的 parent style 只有淺色（`Theme.AppCompat.Light.Dialog`），加了會跟深色模式打架。autolinking 本來就會註冊原生模組。
+
+### 六項
+
+| # | 項目 | 作法 |
+|---|---|---|
+| 1 | 日期時間手動輸入 | 新元件 `src/components/DateTimeField.tsx`。**刻意是元件不是 `pickDateTime()` 命令式 API** — 見下方「踩過的坑」 |
+| 2 | 座標顯示誤差 | 沿用單筆記錄慣例 `(±5m)`（非樣區的 `±5.0 m`）；順帶修好 `locateMe` 丟掉 GPS accuracy 的 bug |
+| 3 | 行程改名 | metadata 列 `pencil-outline` + `promptText({defaultValue})`，沿用 `app/surveyors.tsx` 先例 |
+| 4 | 左滑複製 | `SwipeRow` → 既有 `SwipeRowActions`；`duplicateSpecimen()` **只帶物種與採集者** |
+| 5 | 更換物種（再鑑定） | replace mode 橫幅 + 既有置底 SearchBox；採集號不變 |
+| 6 | 採集號重複檢查 | 自動配號跳過已佔用（結構上不可能撞）+ 手改撞號跳選單 + ⚠ 徽章。**不加 UNIQUE** |
+
+### 踩過的坑（設計階段就寫錯，自己 review 才抓到，未出貨）
+
+原本規劃 `pickDateTime()` + 根層 host Modal（比照 `promptText` / `showActionSheet`）。**那在 iOS 上是壞的** —— 標本明細頁本身就是 `<Modal>`，而 `ProjectAssignSheet.handleCreateInline` 的註解已載明「iOS UIKit refuses to present a second Modal while a presented one is still on-screen」，picker 會靜默不跳。改成元件後 iOS 就地展開 spinner、完全不開第二個 Modal。
+
+（同時查證 `showActionSheet` 從 Modal 內呼叫是**安全**的：`SpeciesDetailSheet` 本身是 Modal 且已在用，iOS 走 UIAlertController 而非 RN Modal。）
+
+### 平台差異的來源
+
+套件型別 `IOSMode = 'date'|'time'|'datetime'|'countdown'` 但 **`AndroidMode = 'date'|'time'`** —— Android 物理上無法一次選日期＋時間，必須串兩段對話框。差異只存在 `DateTimeField.tsx` 內（同 `ActionSheet.tsx` 收斂規則）。
+
+### 驗證狀態
+
+`tsc` 0 error、`check:dock` 通過、eslint 與改動前**同數**（零新增警告）、i18n 856 keys 對等、DB 斷言以真實 SQLite 跑過（含「改前綴不重啟序列」與跳號守衛兩個邊界）。**待實機**：時間 picker 雙平台、誤差顯示、改名同步、複製範圍、再鑑定後號碼不變、撞號三分支。逐項見 Update_log.md。

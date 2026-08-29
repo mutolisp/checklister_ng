@@ -105,7 +105,12 @@ export default function TaxonomyScreen() {
   }
   const refreshActive = useActiveSession((s) => s.refresh);
   const toast = useToast((s) => s.show);
-  const { addSpecies, modal: addRecordModal, targetLabel: addTargetLabel } = useAddToActiveRecord();
+  const {
+    addSpecies,
+    promptAddDestination,
+    modal: addRecordModal,
+    targetLabel: addTargetLabel,
+  } = useAddToActiveRecord();
 
   const persistedExpanded = useSettings((s) => s.taxonomy_expanded);
   const setSetting = useSettings((s) => s.set);
@@ -811,6 +816,9 @@ export default function TaxonomyScreen() {
         onClose={() => setActiveSpecies(null)}
         onAddToSession={handleAddFromSheet}
         addButtonLabel={addTargetLabel}
+        onAddLongPress={() => {
+          if (activeSpecies) promptAddDestination(activeSpecies);
+        }}
       />
       {addRecordModal}
     </View>

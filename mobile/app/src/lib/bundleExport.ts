@@ -1,5 +1,5 @@
 /**
- * Bundle export: pack one or more records (session / plot) into a single zip
+ * Bundle export: pack one or more records (session / plot / collection) into a single zip
  * containing YAML / CSV / Markdown checklist, GeoJSON / GPX / KML for points
  * + tracks + bound site, plus photos copied from the device library.
  *
@@ -26,11 +26,14 @@ import {
   listSessionRecords,
   listPlotSpecies,
   parseEnvPhotos,
+  getCollectionTrip,
+  listSpecimens,
   type FixedLayer,
   type PlotType,
   type PlotSurvey,
   type RecordWithTaxon,
   type PlotSpeciesRecordWithTaxon,
+  type SpecimenWithTaxon,
 } from '~/db';
 import { convertToDwc } from './dwcMapper';
 import { parseMultiAttribute } from './dwcAttributes';
@@ -83,7 +86,8 @@ export type ExportFile = {
 
 export type BundleItem =
   | { kind: 'session'; id: number }
-  | { kind: 'plot'; id: number };
+  | { kind: 'plot'; id: number }
+  | { kind: 'collection'; id: number };
 
 export function sanitizeFilename(name: string): string {
   // Allow Unicode letters (incl. CJK), digits, underscore, hyphen, dot. Without
@@ -193,6 +197,81 @@ function recordToYamlItem(r: RecordWithTaxon): Record<string, unknown> {
   const leaf = multiToPipe(r.leaf_phenology);
   if (leaf) item.leaf_phenology = leaf;
   return item;
+}
+
+/** A specimen is a DwC occurrence with `basisOfRecord: PreservedSpecimen` and a
+ *  collector number (`recordNumber`). Kept literal — a DwC controlled-vocabulary
+ *  value, so it is never localized (same rule as `sampling_protocol`). */
+function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
+  const fullname = sp.name_author ? `${sp.simple_name} ${sp.name_author}` : sp.simple_name;
+  const item: Record<string, unknown> = {
+    occurrence_id: sp.occurrence_id,
+    basis_of_record: 'PreservedSpecimen',
+    record_number: sp.record_number,
+    taxon_id: sp.taxon_id,
+    name: sp.simple_name,
+    fullname,
+    cname: sp.common_name_c,
+    family: sp.family,
+    family_c: sp.family_c,
+    kingdom: sp.kingdom,
+    phylum: sp.phylum,
+    class_name: sp.class,
+    order: sp.order,
+    iucn_category: sp.iucn,
+    redlist: sp.redlist,
+    cites: sp.cites,
+    protected: sp.protected,
+    endemic: sp.is_endemic === 'true' ? 1 : 0,
+    is_hybrid: sp.is_hybrid,
+    eventDate: localIso(sp.collected_at),
+  };
+  if (sp.recorded_by) item.recorded_by = sp.recorded_by;
+  if (sp.lat !== null) item.lat = sp.lat;
+  if (sp.lng !== null) item.lng = sp.lng;
+  if (sp.accuracy !== null) item.accuracy = sp.accuracy;
+  if (sp.locality) item.locality = sp.locality;
+  const repro = multiToPipe(sp.reproductive_condition);
+  if (repro) item.reproductive_condition = repro;
+  const leaf = multiToPipe(sp.leaf_phenology);
+  if (leaf) item.leaf_phenology = leaf;
+  if (sp.notes) item.notes = sp.notes;
+  return item;
+}
+
+function specimenToMarkdownItem(
+  sp: SpecimenWithTaxon,
+): Parameters<typeof generateMarkdown>[0][number] {
+  const fullname = sp.name_author ? `${sp.simple_name} ${sp.name_author}` : sp.simple_name;
+  return {
+    taxon_id: sp.taxon_id,
+    name: sp.simple_name,
+    fullname,
+    cname: sp.common_name_c,
+    family: sp.family,
+    family_c: sp.family_c,
+    family_cname: sp.family_c,
+    kingdom: sp.kingdom,
+    kingdom_c: sp.kingdom_c,
+    phylum: sp.phylum,
+    phylum_c: sp.phylum_c,
+    class_name: sp.class,
+    class_c: sp.class_c,
+    order: sp.order,
+    order_c: sp.order_c,
+    genus: sp.genus,
+    genus_c: sp.genus_c,
+    rank: sp.rank,
+    endemic: sp.is_endemic === 'true' ? 1 : 0,
+    source: mapAlienToSource(sp.alien_type, sp.kingdom),
+    redlist: sp.redlist,
+    iucn_category: sp.iucn,
+    cites: sp.cites,
+    protected: sp.protected,
+    is_hybrid: sp.is_hybrid,
+    nomenclature_name: '',
+    notes: sp.notes,
+  };
 }
 
 function mapAlienToSource(alienType: string, kingdom: string): string {
@@ -425,6 +504,28 @@ function buildSessionPoints(records: RecordWithTaxon[]): { type: 'FeatureCollect
         description: r.simple_name + (r.name_author ? ` ${r.name_author}` : ''),
         taxon_id: r.taxon_id,
         observed_at: localIso(r.observed_at),
+      },
+    });
+  }
+  if (features.length === 0) return null;
+  return { type: 'FeatureCollection', features };
+}
+
+function buildCollectionPoints(
+  specimens: SpecimenWithTaxon[],
+): { type: 'FeatureCollection'; features: PointFeature[] } | null {
+  const features: PointFeature[] = [];
+  for (const sp of specimens) {
+    if (sp.lat === null || sp.lng === null) continue;
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [sp.lng, sp.lat] },
+      properties: {
+        name: `${sp.record_number} ${sp.common_name_c || sp.simple_name}`.trim(),
+        description: sp.simple_name + (sp.name_author ? ` ${sp.name_author}` : ''),
+        taxon_id: sp.taxon_id,
+        recordNumber: sp.record_number,
+        collected_at: localIso(sp.collected_at),
       },
     });
   }
@@ -864,6 +965,123 @@ async function buildPlotEntries(
   return { entries, folderName: base };
 }
 
+async function buildCollectionEntries(
+  tripId: number,
+  opts: BundleOptions,
+  progressCtx: ProgressCtx,
+): Promise<{ entries: BuiltZipEntry[]; folderName: string }> {
+  const trip = getCollectionTrip(tripId);
+  if (!trip) throw new Error(`採集記錄 ${tripId} 不存在`);
+  const project = getProject(trip.project_id);
+  const specimens = listSpecimens(tripId);
+  if (specimens.length === 0) throw new Error(`「${trip.name}」內無標本，無法匯出`);
+
+  const base = sanitizeFilename(`${trip.name}_${project?.name ?? ''}`);
+  const entries: BuiltZipEntry[] = [];
+
+  const startIso = localIso(trip.started_at);
+  const endIso = trip.ended_at !== null ? localIso(trip.ended_at) : null;
+  const eventDate = endIso ? `${startIso}/${endIso}` : startIso;
+
+  // YAML — event block + specimens array (collection order).
+  const dwcItems = specimens.map((sp) => convertToDwc(specimenToYamlItem(sp)));
+  const yamlData: Record<string, unknown> = {
+    event: {
+      eventID: trip.name,
+      eventDate,
+      startedAt: startIso,
+      ...(endIso ? { endedAt: endIso } : {}),
+      ...(trip.recorded_by ? { recordedBy: trip.recorded_by } : {}),
+      ...(trip.locality ? { locality: trip.locality } : {}),
+    },
+    specimens: dwcItems,
+  };
+  if (project?.name) yamlData.project = project.name;
+  entries.push({
+    name: `${base}/${base}.yml`,
+    bytes: strToU8(yaml.dump(yamlData, { lineWidth: -1, noRefs: true })),
+  });
+
+  // _env.csv — tall (term,value), mirrors the session/plot shape.
+  const envRows: Array<{ term: string; value: string }> = [];
+  const pushEnv = (term: string, v: unknown) => {
+    if (v === null || v === undefined) return;
+    const str = String(v);
+    if (!str) return;
+    envRows.push({ term, value: str });
+  };
+  pushEnv('eventID', trip.name);
+  pushEnv('eventType', 'Collection');
+  pushEnv('eventDate', eventDate);
+  pushEnv('startedAt', startIso);
+  pushEnv('endedAt', endIso);
+  pushEnv('datasetName', project?.name ?? '');
+  pushEnv('recordedBy', trip.recorded_by);
+  pushEnv('locality', trip.locality);
+  pushEnv('eventRemarks', trip.notes);
+  const envCsv =
+    '﻿' +
+    ['term,value', ...envRows.map((r) => `${csvEscape(r.term)},${csvEscape(r.value)}`)].join('\n');
+  entries.push({ name: `${base}/${sanitizeFilename(trip.name)}_env.csv`, bytes: strToU8(envCsv) });
+
+  // _sp.csv — DwC occurrence rows, ordered taxonomically (the yml above keeps
+  // collection order, same split as sessions).
+  const csvItems = [...specimens].sort(taxonSortCompare).map((sp) => convertToDwc(specimenToYamlItem(sp)));
+  const allKeys = new Set<string>();
+  for (const row of dwcItems) for (const k of Object.keys(row)) allKeys.add(k);
+  const keys = Array.from(allKeys);
+  const csvLines = [keys.join(',')];
+  for (const row of csvItems) csvLines.push(keys.map((k) => csvEscape(row[k])).join(','));
+  entries.push({
+    name: `${base}/${sanitizeFilename(trip.name)}_sp.csv`,
+    bytes: strToU8('﻿' + csvLines.join('\n')),
+  });
+
+  // Markdown checklist — dedupe by taxon (a trip may hold several duplicates of
+  // the same species, each its own specimen).
+  const seen = new Set<string>();
+  const mdItems = [];
+  for (const sp of specimens) {
+    if (seen.has(sp.taxon_id)) continue;
+    seen.add(sp.taxon_id);
+    mdItems.push(specimenToMarkdownItem(sp));
+  }
+  const md = generateMarkdown(
+    mdItems,
+    { project: project?.id !== 0 ? project?.name : '', site: trip.locality ?? '' },
+    {
+      levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,
+      conservationFields: opts.conservationFields,
+    },
+  );
+  entries.push({ name: `${base}/${base}.md`, bytes: strToU8(md) });
+  if (opts.includeDocx) {
+    entries.push({ name: `${base}/${base}.docx`, bytes: markdownToDocx(md) });
+  }
+
+  // Geo: one point per georeferenced specimen.
+  const points = buildCollectionPoints(specimens);
+  if (points) addGeoEntries(entries, base, 'points', points, opts.geoFormats);
+
+  if (opts.includePhotos) {
+    entries.push(...(await collectPhotos(specimens, base, progressCtx)));
+  }
+
+  const manifest = buildManifest({
+    kind: 'collection',
+    id: tripId,
+    uuid: trip.uuid,
+    name: trip.name,
+    project_name: project?.name ?? '',
+    record_count: specimens.length,
+    photo_count: opts.includePhotos ? countPhotosSession(specimens) : 0,
+    geoFormats: opts.geoFormats,
+  });
+  entries.push({ name: `${base}/manifest.json`, bytes: strToU8(JSON.stringify(manifest, null, 2)) });
+
+  return { entries, folderName: base };
+}
+
 function addGeoEntries(
   out: BuiltZipEntry[],
   folder: string,
@@ -975,8 +1193,17 @@ export async function ensurePhotosReadAccess(): Promise<void> {
   }
 }
 
+/** The minimum shape `collectPhotos` needs — satisfied by session records,
+ *  plot species records and specimens alike. */
+type PhotoBearing = {
+  photo_paths: string | null;
+  taxon_id: string;
+  common_name_c: string;
+  simple_name: string;
+};
+
 async function collectPhotos(
-  records: RecordWithTaxon[],
+  records: PhotoBearing[],
   folder: string,
   ctx: ProgressCtx,
 ): Promise<BuiltZipEntry[]> {
@@ -1102,7 +1329,7 @@ export function base64ToBytes(b64: string): Uint8Array {
 }
 
 function buildManifest(meta: {
-  kind: 'session' | 'plot' | 'bundle';
+  kind: 'session' | 'plot' | 'collection' | 'bundle';
   id?: number;
   /** Plot survey uuid (plot_surveys.uuid) — the stable round-trip key. */
   uuid?: string;
@@ -1123,7 +1350,7 @@ function buildManifest(meta: {
 
 // Count photos before reading so we can publish the total to the progress
 // callback up front.
-function countPhotosSession(records: RecordWithTaxon[]): number {
+function countPhotosSession(records: { photo_paths: string | null }[]): number {
   let n = 0;
   for (const r of records) n += parsePhotoUris(r.photo_paths).length;
   return n;
@@ -1174,6 +1401,18 @@ export async function bundlePlot(
   return finalizeZip(entries, folderName);
 }
 
+export async function bundleCollection(
+  tripId: number,
+  opts: BundleOptions,
+): Promise<ExportFile> {
+  const total = opts.includePhotos ? countPhotosSession(listSpecimens(tripId)) : 0;
+  const ctx = { done: 0, total, onProgress: opts.onProgress };
+  opts.onProgress?.(total > 0 ? { label: '處理照片', done: 0, total } : { label: '準備中…' });
+  const { entries, folderName } = await buildCollectionEntries(tripId, opts, ctx);
+  await reportZipStage(opts.onProgress);
+  return finalizeZip(entries, folderName);
+}
+
 export async function bundleMany(items: BundleItem[], opts: BundleOptions): Promise<ExportFile> {
   if (items.length === 0) throw new Error('沒有選擇任何記錄');
 
@@ -1183,6 +1422,7 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
   if (opts.includePhotos) {
     for (const it of items) {
       if (it.kind === 'session') totalPhotos += countPhotosSession(listSessionRecords(it.id));
+      else if (it.kind === 'collection') totalPhotos += countPhotosSession(listSpecimens(it.id));
       else totalPhotos += countPhotosPlotWithEnv(it.id);
     }
   }
@@ -1201,6 +1441,15 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
         const { entries, folderName } = await buildSessionEntries(it.id, opts, ctx);
         allEntries.push(...entries);
         itemMeta.push({ kind: 'session', id: it.id, folder: folderName });
+      } else if (it.kind === 'collection') {
+        const { entries, folderName } = await buildCollectionEntries(it.id, opts, ctx);
+        allEntries.push(...entries);
+        itemMeta.push({
+          kind: 'collection',
+          id: it.id,
+          uuid: getCollectionTrip(it.id)?.uuid,
+          folder: folderName,
+        });
       } else {
         const { entries, folderName } = await buildPlotEntries(it.id, opts, ctx);
         allEntries.push(...entries);

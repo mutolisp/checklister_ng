@@ -11,6 +11,8 @@ export * from './history';
 export * from './taxonomy';
 export * from './sites';
 export * from './plots';
+export * from './taxonLookup';
+export * from './collections';
 export * from './records_list';
 export * from './keys';
 export * from './favorites';

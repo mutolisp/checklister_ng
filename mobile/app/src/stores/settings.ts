@@ -20,7 +20,7 @@ export type RecordSort = 'observed' | 'cname' | 'name' | 'family';
 export type SortDirection = 'asc' | 'desc';
 export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
 export type MapBasemap = 'standard' | 'satellite' | 'hybrid' | 'terrain';
-export type RecordTypeDefault = 'session' | 'plot' | 'ask';
+export type RecordTypeDefault = 'session' | 'plot' | 'collection' | 'ask';
 
 export type MapViewState = {
   latitude: number;
@@ -85,6 +85,12 @@ type SettingsValues = {
   font_scale: FontScale;
   map_view: MapViewState;
   record_type_default: RecordTypeDefault;
+  /** Collection number (DwC recordNumber) prefix, e.g. 'CTL-'. '' for none. */
+  collection_number_prefix: string;
+  /** Floor for the collection number series, so an existing career series can
+   *  be resumed on a fresh install. The actual next number is
+   *  max(highest stored + 1, this). */
+  collection_number_start: number;
   /** Recently opened identification key ids (most-recent first, capped 10). */
   key_recent_ids: number[];
   /** Per-key runner state, keyed by `String(keyId)`. Only kept for keys in
@@ -126,6 +132,8 @@ const DEFAULTS: SettingsValues = {
   font_scale: 'normal',
   map_view: DEFAULT_MAP_VIEW,
   record_type_default: 'ask',
+  collection_number_prefix: '',
+  collection_number_start: 1,
   key_recent_ids: [],
   key_runner_states: {},
   ai_geomodel_filter: true,
@@ -204,6 +212,10 @@ function readAll(): SettingsValues {
     map_view: mapView,
     record_type_default:
       (map.get('record_type_default') as RecordTypeDefault) ?? DEFAULTS.record_type_default,
+    collection_number_prefix:
+      map.get('collection_number_prefix') ?? DEFAULTS.collection_number_prefix,
+    collection_number_start:
+      Number(map.get('collection_number_start')) || DEFAULTS.collection_number_start,
     key_recent_ids: keyRecentIds,
     key_runner_states: keyRunnerStates,
     ai_geomodel_filter:

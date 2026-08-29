@@ -616,6 +616,70 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    // v19: specimen collection (標本採集). A collection trip (採集行程) groups the
+    // specimens gathered on one outing, mirroring how `sessions` groups
+    // `checklist_records`.
+    //
+    // `status` here is COLLECTION-LOCAL: it only decides which trip an "add to
+    // collection" lands in. It deliberately does NOT participate in the app-wide
+    // single-active invariant, so creating or reopening a trip never ends an
+    // active session or plot survey (and vice versa).
+    version: 19,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS collection_trips (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          uuid TEXT NOT NULL UNIQUE,
+          name TEXT NOT NULL,
+          project_id INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL DEFAULT 'active',
+          started_at INTEGER NOT NULL,
+          ended_at INTEGER,
+          recorded_by TEXT,
+          locality TEXT,
+          notes TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (project_id) REFERENCES projects(id)
+        );
+      `);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_ctrips_started ON collection_trips(started_at DESC);`,
+      );
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_ctrips_project ON collection_trips(project_id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_ctrips_active ON collection_trips(status) WHERE status = 'active';`,
+      );
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS collection_specimens (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL,
+          occurrence_id TEXT,
+          taxon_id TEXT NOT NULL,
+          record_number TEXT NOT NULL,
+          record_number_seq INTEGER,
+          collected_at INTEGER NOT NULL,
+          recorded_by TEXT,
+          lat REAL,
+          lng REAL,
+          accuracy REAL,
+          locality TEXT,
+          reproductive_condition TEXT,
+          leaf_phenology TEXT,
+          notes TEXT,
+          photo_paths TEXT,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (trip_id) REFERENCES collection_trips(id) ON DELETE CASCADE
+        );
+      `);
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_cspec_trip ON collection_specimens(trip_id);`);
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_cspec_taxon ON collection_specimens(taxon_id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_cspec_seq ON collection_specimens(record_number_seq DESC);`,
+      );
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

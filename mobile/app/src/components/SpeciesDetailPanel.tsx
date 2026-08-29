@@ -39,6 +39,9 @@ type Props = {
   /** Override the add button text (e.g. for inline mode you might want
    *  「加入並繼續搜尋」 someday). Defaults to「加到當前記錄」. */
   addButtonLabel?: string;
+  /** Long-press on the add button. Used to offer the alternative destinations
+   *  (採集) without changing what a plain tap does. Omit to disable. */
+  onAddLongPress?: () => void;
   /** Called when the user taps an infraspecies row in the「下級分類群」section.
    *  The caller is expected to swap the visible detail to the picked taxon
    *  (`LookupResultSheet` / `SpeciesSearchPanel` route this to their internal
@@ -69,6 +72,7 @@ export function SpeciesDetailPanel({
   onAddToSession,
   onClose,
   addButtonLabel,
+  onAddLongPress,
   onPickSubordinate,
 }: Props) {
   const { t } = useTranslation();
@@ -363,11 +367,18 @@ export function SpeciesDetailPanel({
         <View className="px-4 pb-6 pt-4">
           <Pressable
             onPress={onAddToSession}
+            onLongPress={onAddLongPress}
+            delayLongPress={350}
             className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"
           >
             <Ionicons name="add" size={18} color="white" />
             <Text className="ml-2 text-sm font-medium text-white">{addButtonLabel ?? t('species.addToRecord')}</Text>
           </Pressable>
+          {onAddLongPress ? (
+            <Text className="mt-1.5 text-center text-[11px] text-gray-400 dark:text-gray-500">
+              {t('addToRecord.longPressHint')}
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
     </View>

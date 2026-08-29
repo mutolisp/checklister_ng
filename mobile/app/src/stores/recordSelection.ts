@@ -7,6 +7,7 @@
  * SwipeRow children can all read/write without prop drilling.
  */
 import { create } from 'zustand';
+import type { RecordKind } from '~/db';
 
 type State = {
   active: boolean;
@@ -34,6 +35,6 @@ export const useRecordSelection = create<State>((set, get) => ({
   clear: () => set({ active: false, selected: new Set<string>() }),
 }));
 
-export function selectionKey(kind: 'session' | 'plot', id: number): string {
+export function selectionKey(kind: RecordKind, id: number): string {
   return `${kind}-${id}`;
 }

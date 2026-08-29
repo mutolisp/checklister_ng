@@ -12,12 +12,7 @@
  *    record. We never block on these because they're dwarfed by photos.
  */
 import * as MediaLibrary from 'expo-media-library';
-import {
-  listPlotSpecies,
-  listSessionRecords,
-  type PlotSpeciesRecordWithTaxon,
-  type RecordWithTaxon,
-} from '~/db';
+import { listPlotSpecies, listSessionRecords, listSpecimens } from '~/db';
 import type { BundleItem } from './bundleExport';
 
 const PHOTO_FALLBACK_BYTES = 3 * 1024 * 1024; // 3 MB per photo when size unknown
@@ -47,17 +42,7 @@ async function photoBytes(uri: string): Promise<number> {
   return PHOTO_FALLBACK_BYTES;
 }
 
-async function sessionPhotoBytes(records: RecordWithTaxon[]): Promise<number> {
-  let total = 0;
-  for (const r of records) {
-    for (const uri of parsePhotoUris(r.photo_paths)) {
-      total += await photoBytes(uri);
-    }
-  }
-  return total;
-}
-
-async function plotPhotoBytes(records: PlotSpeciesRecordWithTaxon[]): Promise<number> {
+async function recordsPhotoBytes(records: { photo_paths: string | null }[]): Promise<number> {
   let total = 0;
   for (const r of records) {
     for (const uri of parsePhotoUris(r.photo_paths)) {
@@ -84,19 +69,15 @@ export async function estimateBundleSize(
   let recordCount = 0;
 
   for (const it of items) {
-    if (it.kind === 'session') {
-      const records = listSessionRecords(it.id);
-      recordCount += records.length;
-      const photos = records.flatMap((r) => parsePhotoUris(r.photo_paths));
-      photoCount += photos.length;
-      if (opts.includePhotos) totalPhotoBytes += await sessionPhotoBytes(records);
-    } else {
-      const records = listPlotSpecies(it.id);
-      recordCount += records.length;
-      const photos = records.flatMap((r) => parsePhotoUris(r.photo_paths));
-      photoCount += photos.length;
-      if (opts.includePhotos) totalPhotoBytes += await plotPhotoBytes(records);
-    }
+    const records: { photo_paths: string | null }[] =
+      it.kind === 'session'
+        ? listSessionRecords(it.id)
+        : it.kind === 'collection'
+          ? listSpecimens(it.id)
+          : listPlotSpecies(it.id);
+    recordCount += records.length;
+    photoCount += records.flatMap((r) => parsePhotoUris(r.photo_paths)).length;
+    if (opts.includePhotos) totalPhotoBytes += await recordsPhotoBytes(records);
   }
 
   const textBytes = recordCount * TEXT_BYTES_PER_RECORD;

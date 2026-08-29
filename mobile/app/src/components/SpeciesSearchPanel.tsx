@@ -26,7 +26,7 @@ type Props = {
 
 export function SpeciesSearchPanel({ autoFocus = false }: Props) {
   const { t } = useTranslation();
-  const { addSpecies, modal, targetLabel } = useAddToActiveRecord();
+  const { addSpecies, promptAddDestination, modal, targetLabel } = useAddToActiveRecord();
   // KSV opened-offset so SearchBox sits flush against the keyboard top (without
   // this it floats `tabBarHeight` above the keyboard — see same fix in
   // taxonomy.tsx tree segment + KeyListView).
@@ -66,6 +66,11 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
             result={active}
             onAddToSession={handleAdd}
             addButtonLabel={targetLabel}
+            onAddLongPress={() => {
+              if (!active) return;
+              promptAddDestination(active);
+              setActive(null);
+            }}
             onClose={() => setActive(null)}
             onPickSubordinate={(sp) => setActive(taxonSpeciesToSearchResult(sp))}
           />

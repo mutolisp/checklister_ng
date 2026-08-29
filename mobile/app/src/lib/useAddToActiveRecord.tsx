@@ -16,7 +16,11 @@ import { useTranslation } from 'react-i18next';
 import {
   addPlotSpecies,
   addRecord,
+  addSpecimen,
+  createCollectionTrip,
+  getActiveCollectionTrip,
   isTaxonInSession,
+  nextRecordNumber,
   type Layer,
   type SearchResult,
 } from '~/db';
@@ -25,6 +29,7 @@ import { useActiveSession } from '~/stores/activeSession';
 import { useToast } from '~/stores/toast';
 import { defaultQuantityTypeFor } from './dwcAbundance';
 import { serializeMultiAttribute } from './dwcAttributes';
+import { showActionSheet } from '~/components/ActionSheet';
 import {
   PlotSpeciesValueModal,
   type PlotModalHeader,
@@ -56,9 +61,19 @@ function headerOf(sp: SearchResult): PlotModalHeader {
 
 export function useAddToActiveRecord(): {
   addSpecies: (sp: SearchResult) => void;
+  /** Explicit collection route, reached by long-pressing the add button.
+   *  Never taken by `addSpecies` — collections stay off the default path so the
+   *  existing plot → session behaviour is unchanged. */
+  addToCollection: (sp: SearchResult) => void;
   modal: React.ReactNode;
   /** Dynamic button label reflecting where the next add will land. */
   targetLabel: string;
+  /** Label for the collection option in the long-press sheet. */
+  collectionLabel: string;
+  /** Long-press companion to `addSpecies`: asks which record the species should
+   *  go to. Wire it to the add button's `onLongPress` so a plain tap keeps its
+   *  existing, unchanged behaviour. */
+  promptAddDestination: (sp: SearchResult) => void;
 } {
   const router = useRouter();
   const { t } = useTranslation();
@@ -69,6 +84,11 @@ export function useAddToActiveRecord(): {
   const [plotTarget, setPlotTarget] = useState<PlotTarget | null>(null);
 
   const targetLabel = plot ? t('addToRecord.toPlot') : session ? t('addToRecord.toSession') : t('addToRecord.newSession');
+  // Read on render so the sheet names the trip the add will actually land in.
+  const activeTrip = getActiveCollectionTrip();
+  const collectionLabel = activeTrip
+    ? t('addToRecord.toCollection', { name: activeTrip.name })
+    : t('addToRecord.newCollection');
 
   const addSpecies = (sp: SearchResult) => {
     if (!sp.taxon_id) {
@@ -95,6 +115,35 @@ export function useAddToActiveRecord(): {
     toast(t('session.added', { name: sp.cname || sp.name }), {
       action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}`) },
     });
+  };
+
+  /**
+   * Add a specimen to the open collection trip, starting one if none is open.
+   * Number / time / collector are prefilled; the rest is filled in afterwards on
+   * the specimen sheet, mirroring how a checklist record is added then detailed.
+   */
+  const addToCollection = (sp: SearchResult) => {
+    if (!sp.taxon_id) {
+      toast(t('addToRecord.noTaxonId'));
+      return;
+    }
+    const trip = getActiveCollectionTrip();
+    const tripId = trip?.id ?? createCollectionTrip();
+    const number = nextRecordNumber().text;
+    addSpecimen({ trip_id: tripId, taxon_id: sp.taxon_id, record_number: number });
+    toast(t('addToRecord.addedToCollection', { number, name: sp.cname || sp.name }), {
+      action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/collection/${tripId}`) },
+    });
+  };
+
+  const promptAddDestination = async (sp: SearchResult) => {
+    const idx = await showActionSheet({
+      title: sp.cname || sp.name,
+      options: [{ label: targetLabel }, { label: collectionLabel }],
+      cancelLabel: t('common.cancel'),
+    });
+    if (idx === 0) addSpecies(sp);
+    else if (idx === 1) addToCollection(sp);
   };
 
   const handlePlotSave = (v: PlotValueDraft) => {
@@ -135,5 +184,12 @@ export function useAddToActiveRecord(): {
     />
   ) : null;
 
-  return { addSpecies, modal, targetLabel };
+  return {
+    addSpecies,
+    addToCollection,
+    promptAddDestination,
+    modal,
+    targetLabel,
+    collectionLabel,
+  };
 }

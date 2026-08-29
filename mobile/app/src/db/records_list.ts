@@ -1,7 +1,8 @@
 /**
- * Unified "records" list combining `sessions` (checklist) + `plot_surveys` (樣區).
+ * Unified "records" list combining `sessions` (checklist), `plot_surveys` (樣區)
+ * and `collection_trips` (採集).
  *
- * The Records tab displays both kinds of field-data entities in one list.
+ * The Records tab displays every kind of field-data entity in one list.
  * Keeping a dedicated helper avoids spreading kind-switching across the UI.
  */
 import { getUserDb } from './init';
@@ -9,8 +10,12 @@ import i18n from '~/i18n';
 import { listPlotSurveys, plotCanAcceptSpecies, type PlotSurvey } from './plots';
 import { listProjects } from './projects';
 import { listSessions, type SessionWithStats } from './sessions';
+import { listCollectionTrips, type CollectionTripWithStats } from './collections';
 
-export type RecordKind = 'session' | 'plot';
+export type RecordKind = 'session' | 'plot' | 'collection';
+
+/** Records-tab filter: a single kind, or every kind. */
+export type RecordFilter = 'all' | RecordKind;
 
 export type RecordItem = {
   kind: RecordKind;
@@ -29,6 +34,8 @@ export type RecordItem = {
   plot?: PlotSurvey;
   /** Session-only: backing SessionWithStats. */
   session?: SessionWithStats;
+  /** Collection-only: backing CollectionTripWithStats. */
+  trip?: CollectionTripWithStats;
 };
 
 function plotRecordCount(plotSurveyId: number): number {
@@ -78,7 +85,25 @@ function plotToItem(p: PlotSurvey, projectNameById: Map<number, string>): Record
   };
 }
 
-export function listRecords(filter: 'all' | 'session' | 'plot' = 'all'): RecordItem[] {
+function tripToItem(c: CollectionTripWithStats): RecordItem {
+  return {
+    kind: 'collection',
+    id: c.id,
+    title: c.name,
+    subtitle: i18n.t('recordsList.collectionSubtitle', {
+      count: c.specimen_count,
+      project: c.project_name,
+    }),
+    active: c.status === 'active',
+    startedAt: c.started_at,
+    recordCount: c.specimen_count,
+    projectId: c.project_id,
+    projectName: c.project_name,
+    trip: c,
+  };
+}
+
+export function listRecords(filter: RecordFilter = 'all'): RecordItem[] {
   const projects = listProjects();
   const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
   const items: RecordItem[] = [];
@@ -87,6 +112,9 @@ export function listRecords(filter: 'all' | 'session' | 'plot' = 'all'): RecordI
   }
   if (filter === 'all' || filter === 'plot') {
     items.push(...listPlotSurveys().map((p) => plotToItem(p, projectNameById)));
+  }
+  if (filter === 'all' || filter === 'collection') {
+    items.push(...listCollectionTrips().map(tripToItem));
   }
   // Active first, then newest by startedAt desc.
   items.sort((a, b) => {
@@ -104,7 +132,7 @@ export type ProjectGroup = {
 
 /** Items grouped by project, preserving "active first → newest first" inside
  *  each group. Groups themselves are ordered by their newest item. */
-export function listRecordsByProject(filter: 'all' | 'session' | 'plot' = 'all'): ProjectGroup[] {
+export function listRecordsByProject(filter: RecordFilter = 'all'): ProjectGroup[] {
   const flat = listRecords(filter);
   const groups = new Map<number, ProjectGroup>();
   for (const it of flat) {

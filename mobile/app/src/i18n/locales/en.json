@@ -114,14 +114,15 @@
     "selectedCount": "{{count}} selected",
     "byProject": "By project",
     "timeline": "Timeline",
-    "stats": "{{all}} total · {{session}} checklists / {{plot}} plots",
+    "stats": "{{all}} total · {{session}} checklists / {{plot}} plots / {{collection}} collections",
     "filterAll": "All",
     "empty": "No records yet",
     "emptyFiltered": "No {{kind}} records",
     "emptyHint": "Tap + below to start a new record",
     "favorites": "Favorites",
     "deleteTitle": "Delete {{noun}}?",
-    "deleteMsg": "\"{{title}}\" and its {{count}} records will be permanently removed."
+    "deleteMsg": "\"{{title}}\" and its {{count}} records will be permanently removed.",
+    "collectionCount": "{{count}} collections"
   },
   "export": {
     "preparing": "Preparing…",
@@ -147,7 +148,8 @@
     "about": "About",
     "favorites": "Favorites",
     "backup": "Backup",
-    "back": "Back"
+    "back": "Back",
+    "collection": "Collection"
   },
   "tab": {
     "menu": "Menu",
@@ -170,7 +172,9 @@
     "createMenuMsg": "Pick an action; the lower three change the default behavior of the + button.",
     "defaultAsk": "Default: ask each time",
     "defaultSession": "Default: quick checklist",
-    "defaultPlot": "Default: plot survey"
+    "defaultPlot": "Default: plot survey",
+    "kindCollection": "Collection",
+    "defaultCollection": "Default: collection"
   },
   "rank": {
     "kingdom": "Kingdom",
@@ -315,7 +319,11 @@
     "noTaxonId": "This species has no taxon_id",
     "alreadyInRecord": "Already in current record: {{name}}",
     "addedToPlot": "Added to plot: {{name}}",
-    "goTo": "Go"
+    "goTo": "Go",
+    "toCollection": "Add to collection: {{name}}",
+    "newCollection": "Start a collection and add",
+    "addedToCollection": "Added to collection {{number}}: {{name}}",
+    "longPressHint": "Long-press to choose checklist or collection"
   },
   "endSession": {
     "minutes": "{{count}} min",
@@ -438,7 +446,10 @@
     "clearAllConfirm2Title": "Confirm again",
     "clearAllConfirm2Msg": "This action cannot be undone.",
     "allCleared": "All data cleared",
-    "clearFailed": "Clear failed: {{error}}"
+    "clearFailed": "Clear failed: {{error}}",
+    "sectionCollection": "Specimen collection",
+    "numberPrefixPlaceholder": "e.g. CTL-",
+    "collectionNumberDesc": "Next collection number: {{next}}. Derived from the highest number stored, so deleting or importing specimens never drifts the series."
   },
   "taxonomy": {
     "loadingTree": "Loading taxonomy tree...",
@@ -900,7 +911,8 @@
   },
   "recordsList": {
     "sessionSubtitle": "{{count}} · {{project}}",
-    "plotSubtitle": "{{count}} · {{protocol}}{{size}}"
+    "plotSubtitle": "{{count}} · {{protocol}}{{size}}",
+    "collectionSubtitle": "{{count}} specimens · {{project}}"
   },
   "plotImport": {
     "invalidYml": "Not a valid plot yml (missing plot block)",
@@ -923,5 +935,42 @@
     "expand": "Fullscreen",
     "fullscreenTitle": "Edit location",
     "locateMe": "My location"
+  },
+  "collection": {
+    "title": "Collection",
+    "missing": "Collection not found",
+    "specimenCount": "{{count}} specimens",
+    "recordNumber": "Collection number",
+    "recordNumberHint": "A collector's numbers run continuously across trips. Edit it freely — later numbers continue from the new one.",
+    "collectedAt": "Collected at",
+    "collector": "Collector",
+    "collectorEmpty": "No collector set",
+    "locality": "Locality",
+    "localityPlaceholder": "Locality description",
+    "noCoord": "No coordinate recorded",
+    "phenology": "Phenology",
+    "remarks": "Collection remarks",
+    "remarksPlaceholder": "Habitat, population, scent, latex, other field notes",
+    "photos": "Photos",
+    "fromLibrary": "Pick from library",
+    "added": "Added {{number}}: {{name}}",
+    "emptyHint": "Use the search box below to add collected species.\nA collection number is assigned automatically.",
+    "endTrip": "Finish",
+    "resume": "Resume",
+    "deleteTitle": "Delete specimen",
+    "deleteMsg": "Delete specimen {{number}}?",
+    "numberPrefix": "Number prefix",
+    "numberStart": "Starting number",
+    "renameTitle": "Rename collection",
+    "duplicate": "Duplicate",
+    "duplicated": "Duplicated as {{number}}: {{name}}",
+    "changeTaxon": "Change species",
+    "changeTaxonBanner": "Changing species for {{number}} — pick one below",
+    "taxonChanged": "{{number}} changed to {{name}}",
+    "dupTitle": "Duplicate collection number",
+    "dupMsg": "{{number}} is already used by another specimen.",
+    "dupUseAnyway": "Use it anyway",
+    "dupUseNext": "Use {{number}} instead",
+    "dupBadge": "This collection number is shared with another specimen"
   }
 }

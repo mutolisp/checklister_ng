@@ -8,11 +8,13 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "check:dock": "node ./scripts/check-bottom-dock.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@op-engineering/op-sqlite": "^15.2.12",
+    "@react-native-community/datetimepicker": "8.4.4",
     "@react-native-community/slider": "5.0.1",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/elements": "^2.6.3",
