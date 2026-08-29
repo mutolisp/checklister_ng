@@ -54,7 +54,11 @@ export type Specimen = {
   /** GPS horizontal accuracy in metres → DwC coordinateUncertaintyInMeters. */
   accuracy: number | null;
   locality: string | null;
-  /** 物候, JSON array string — see dwcAttributes parse/serializeMultiAttribute. */
+  // DwC species attributes (v20 for sex/life_stage, v19 for the phenology
+  // pair). Single-valued enums; the two phenology columns are JSON array
+  // strings — see dwcAttributes parse/serializeMultiAttribute.
+  sex: string | null;
+  life_stage: string | null;
   reproductive_condition: string | null;
   leaf_phenology: string | null;
   notes: string | null;
@@ -65,7 +69,7 @@ export type SpecimenWithTaxon = Specimen & TaxonFields;
 
 const SPECIMEN_COLS = `id, trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
   collected_at, recorded_by, lat, lng, accuracy, locality,
-  reproductive_condition, leaf_phenology, notes, photo_paths`;
+  sex, life_stage, reproductive_condition, leaf_phenology, notes, photo_paths`;
 
 function defaultTripName(now: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -344,7 +348,7 @@ export function addSpecimen(input: AddSpecimenInput): number {
 // not the determination — so the number stays put while the name changes.
 const SPECIMEN_UPDATABLE_KEYS = new Set([
   'taxon_id', 'record_number', 'collected_at', 'recorded_by', 'lat', 'lng', 'accuracy',
-  'locality', 'reproductive_condition', 'leaf_phenology', 'notes',
+  'locality', 'sex', 'life_stage', 'reproductive_condition', 'leaf_phenology', 'notes',
 ]);
 
 export function updateSpecimen(id: number, patch: Partial<Specimen>): void {

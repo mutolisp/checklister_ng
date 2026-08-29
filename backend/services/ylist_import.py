@@ -1,4 +1,14 @@
-"""把使用者整理的日本植物名錄 `dao_jp_ylist` 轉成查詢就緒的 `ylist_names`。
+"""【已停用】舊版日本名錄匯入器 —— 請改用 `backend/services/jp_import.py`。
+
+2026-08-29 起日本側改為「wamei 和名チェックリスト ver.1.10 + dao_jp_ylist」合併，
+產出 `jp_names`（25,839 筆）取代本檔的 `ylist_names`（20,103 筆）。本檔的 `build()`
+若再執行會 **DROP 掉合併結果並回退成純 YList**，因此 CLI 入口已封死；保留本檔僅因
+`jp_import` 沿用其中的共用函式（sci_norm / parse_genus / derive_rank /
+load_family_backbone / TAICOL_COLUMNS / backup_db）。
+
+以下為原始說明（僅供理解共用函式的行為）：
+
+把使用者整理的日本植物名錄 `dao_jp_ylist` 轉成查詢就緒的 `ylist_names`。
 
 設計脈絡見 plans/區域名錄整合：mobile 以台灣 TaiCOL 為基底，偏好設定可開啟
 「區域名錄」（先做日本）。本腳本在 twnamelist.db 內做純 SQL 轉換，產出：
@@ -15,7 +25,7 @@
 階層補齊：
   - genus 由學名第一 token 解析（dao_jp_ylist 無 genus 欄）。
   - phylum/class/order 由 family 經 GBIF backbone 參考檔回填
-    （references/YList/ylist_family_backbone.csv，已對齊 TaiCOL 慣例：
+    （references/JP/YList/ylist_family_backbone.csv，已對齊 TaiCOL 慣例：
      單子葉 class Liliopsida→Magnoliopsida）。dao_jp_ylist 只有 family。
   - plant_type（0蘚苔/1蕨類/2裸子/3雙子葉/4單子葉）僅作交叉檢核 log。
 
@@ -42,7 +52,7 @@ YLIST_NAME_ID_OFFSET = 90_000_000
 
 BACKBONE_CSV = (
     Path(__file__).resolve().parents[2]
-    / "references" / "YList" / "ylist_family_backbone.csv"
+    / "references" / "JP" / "YList" / "ylist_family_backbone.csv"
 )
 
 # taicol_names 完整欄位順序（ylist_names 對齊；region 另外加在最後）
@@ -298,6 +308,18 @@ def build(db_path: Path) -> None:
 
 
 def main(argv: list[str]) -> int:
+    # 封死入口：build() 會 DROP TABLE ylist_names 並重建 species_xref/all_names，
+    # 在合併後的資料庫上執行等於把 wamei 那 5,736 個分類群與 30,340 個和名全部丟掉。
+    print(
+        "此匯入器已停用。日本名錄請執行：\n"
+        "  python -m backend.services.jp_import\n"
+        "（合併 wamei 和名チェックリスト + dao_jp_ylist → jp_names）",
+        file=sys.stderr,
+    )
+    return 2
+
+
+def _main_legacy(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description="dao_jp_ylist → ylist_names + species_xref + all_names"
     )

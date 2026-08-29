@@ -4,7 +4,7 @@ import type { RegionCode } from '~/stores/settings';
 
 /**
  * Regional checklist helpers. Taiwan (TaiCOL) is the always-on base; Japan
- * (YList → `ylist_names`) is an opt-in overlay. When only ['TW'] is enabled the
+ * (YList → `jp_names`) is an opt-in overlay. When only ['TW'] is enabled the
  * whole app behaves exactly as before this feature — every region-aware code
  * path early-returns to its original TaiCOL-only branch.
  *
@@ -15,7 +15,7 @@ import type { RegionCode } from '~/stores/settings';
  *     vernacular lookup is a pure self-join (no big-table / view join).
  *
  * taxon_id namespaces never collide: TaiCOL = 't…', YList = 'y…' — so any
- * taxon_id resolves by querying taicol_names or ylist_names directly.
+ * taxon_id resolves by querying taicol_names or jp_names directly.
  */
 
 /** Read enabled regions straight from the settings table so the DB layer stays
@@ -83,7 +83,7 @@ export function crossRegionVernacular(
     const idPh = ids.map(() => '?').join(',');
     const regPh = regions.map(() => '?').join(',');
     // Pure species_xref self-join — both sides hit an index (PK taxon_id /
-    // idx_xref_sci_norm). Crucially does NOT touch taicol_names/ylist_names or
+    // idx_xref_sci_norm). Crucially does NOT touch taicol_names/jp_names or
     // any UNION view, which would materialize ~270k rows and take seconds.
     const res = db.executeSync(
       `SELECT x0.taxon_id AS orig, x1.region AS region, x1.common_name_c AS cname

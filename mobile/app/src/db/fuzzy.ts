@@ -1,7 +1,7 @@
 import { distance } from 'fastest-levenshtein';
 import { pinyin } from 'pinyin-pro';
 import { getTaicolDb } from './init';
-import { SEARCH_COLUMNS, searchSpecies, searchSpeciesJp, groupFilterClause } from './search';
+import { SEARCH_COLUMNS, searchSpecies, searchSpeciesJp, groupFilterClause, markJpAlias } from './search';
 import { getEnabledRegions, crossRegionVernacular, normalizeSci } from './regions';
 import type { SearchResult, TaxonGroup } from './types';
 
@@ -192,7 +192,7 @@ export function fuzzySearch({
   return results.slice(0, limit);
 }
 
-/** Map a taicol_names / ylist_names row (same column shape) to a fuzzy
+/** Map a taicol_names / jp_names row (same column shape) to a fuzzy
  *  SearchResult. Region is inferred from the 'y…' taxon_id. Shared by the
  *  TaiCOL and YList fuzzy paths. */
 function buildFuzzyResult(
@@ -274,8 +274,8 @@ function loadJpCnameIndex(): JpCnameEntry[] | null {
   }
 }
 
-/** Fuzzy-match 和名 (katakana) against the YList dataset. Mirrors `fuzzySearch`
- *  but over `cname_fuzzy_index_jp` → `ylist_names`; no pinyin path. */
+/** Fuzzy-match 和名 (katakana) against the Japan dataset (接受和名 + 別名). Mirrors `fuzzySearch`
+ *  but over `cname_fuzzy_index_jp` → `jp_names`; no pinyin path. */
 export function fuzzySearchJp({ q, groups, excludeIds, limit = 10 }: FuzzyOptions): SearchResult[] {
   if (!q || q.length < 2) return [];
   const index = loadJpCnameIndex();
@@ -307,7 +307,7 @@ export function fuzzySearchJp({ q, groups, excludeIds, limit = 10 }: FuzzyOption
 
   const db = getTaicolDb();
   const placeholders = matchedNameIds.map(() => '?').join(',');
-  let sql = `SELECT ${SEARCH_COLUMNS} FROM ylist_names WHERE name_id IN (${placeholders})`;
+  let sql = `SELECT ${SEARCH_COLUMNS} FROM jp_names WHERE name_id IN (${placeholders})`;
   const params: (string | number)[] = [...matchedNameIds];
   sql += groupFilterClause(groups, params);
   const res = db.executeSync(sql, params);
@@ -316,7 +316,10 @@ export function fuzzySearchJp({ q, groups, excludeIds, limit = 10 }: FuzzyOption
   for (const row of (res.rows ?? []) as Array<Record<string, unknown>>) {
     const info = fuzzyInfo.get(row.name_id as number);
     if (!info) continue;
-    results.push(buildFuzzyResult(row, q, info));
+    const result = buildFuzzyResult(row, q, info);
+    // 索引同時收接受和名與別名，命中的若不是接受和名就是別名 → 補 ≡ 標記。
+    markJpAlias(result, row.alternative_name_c, info.matched === row.common_name_c, (a) => a === info.matched);
+    results.push(result);
   }
   results.sort((a, b) => (a.fuzzy_match?.score ?? 99) - (b.fuzzy_match?.score ?? 99));
   return results.slice(0, limit);

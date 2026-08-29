@@ -24,3 +24,4 @@ pdfplumber==0.11.9
 gspread==6.2.1
 google-auth==2.52.0
 google-api-python-client==2.196.0
+openpyxl

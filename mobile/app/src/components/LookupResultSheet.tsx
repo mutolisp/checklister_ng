@@ -22,8 +22,9 @@ type Props = {
   onAddToSession: () => void;
   /** Override the add-button label (e.g. 「加入目前樣區」 when a plot is active). */
   addButtonLabel?: string;
-  /** Long-press on the add button — offers the 採集 destination. */
-  onAddLongPress?: () => void;
+  /** Long-press on the add button — offers the 採集 destination. Awaited, so
+   *  the caller can close the sheet only after the chooser resolves. */
+  onAddLongPress?: () => void | Promise<void>;
 };
 
 export function LookupResultSheet({
@@ -66,14 +67,13 @@ export function LookupResultSheet({
                 onClose();
               }}
               addButtonLabel={addButtonLabel}
-              onAddLongPress={
-                onAddLongPress
-                  ? () => {
-                      onAddLongPress();
-                      onClose();
-                    }
-                  : undefined
-              }
+              // Passed straight through: do NOT close the sheet here. The
+              // handler presents an ActionSheet, and iOS cannot present one
+              // from a view controller that is being dismissed in the same
+              // tick — that crashed the app. Presenting *over* this Modal is
+              // fine (SpeciesDetailSheet does it), so the caller closes only
+              // after the handler resolves.
+              onAddLongPress={onAddLongPress}
               onClose={onClose}
               onPickSubordinate={(sp) => setCurrentResult(taxonSpeciesToSearchResult(sp))}
             />

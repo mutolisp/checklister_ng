@@ -79,7 +79,7 @@ export function resolveTaxa(taxonIds: string[]): Map<string, TaxonFields> {
     }
   };
   fillFrom('taicol_names', ids.filter((id) => !isJpTaxonId(id)));
-  fillFrom('ylist_names', ids.filter(isJpTaxonId));
+  fillFrom('jp_names', ids.filter(isJpTaxonId));
 
   const regions = getEnabledRegions();
   const cross = regions.includes('JP') ? crossRegionVernacular(ids, regions) : null;

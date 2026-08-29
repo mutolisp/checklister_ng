@@ -337,7 +337,7 @@ npm run check:dock                                   # 底部置底搜尋框結�
 ### Schema 與 DB
 
 - User DB schema 寫在 `src/db/migrations.ts`，**每次改 schema 加新 migration 版本**（不在現有版本內 patch）。
-- TaiCOL bundle DB 體積 ~118MB，首次啟動會從 asset copy 到 `documentDirectory`。**copy 條件僅檢查檔案存在**，不要在每次 init 都 re-copy。
+- TaiCOL bundle DB 體積 **~157MB**（2026-08-26 TaiCOL 版；隨每次名錄更新成長，原為 118MB），首次啟動會從 asset copy 到 `documentDirectory`。**copy 條件是比對 Metro 的 `asset.hash`**（`src/db/init.ts:21-28`），bundle 換版會自動重新 copy，不需手動 bump 版本；但也不要在每次 init 都無條件 re-copy。
 - DB 層 helpers 要 enforce business invariant：例如 single-active 限制要在 `createSession` / `reopenSession` / `createPlotSurvey` / `reopenPlotSurvey` 內也寫 safety net，不只靠 UI guard。
 - Startup-once cleanup 寫在 `src/db/cleanup.ts`，掛在 `initDb()` migrations 後執行。
 

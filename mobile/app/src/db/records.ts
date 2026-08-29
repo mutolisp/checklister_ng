@@ -208,7 +208,7 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
     }
   };
   fillFrom('taicol_names', taxonIds.filter((id) => !isJpTaxonId(id)));
-  fillFrom('ylist_names', taxonIds.filter(isJpTaxonId));
+  fillFrom('jp_names', taxonIds.filter(isJpTaxonId));
 
   // When Japan is enabled, merge the cross-region vernacular into common_name_c
   // so every downstream display + export shows e.g. "糯米條 / タイワンツクバネウツギ"

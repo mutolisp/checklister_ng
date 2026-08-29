@@ -94,6 +94,12 @@ export type PlotSurvey = {
   rock_cover_pct: number | null;
   gravel_cover_pct: number | null;
   bareland_cover_pct: number | null;
+  /** Living ground cover (v21), complementing the substrate trio above. */
+  vascular_cover_pct: number | null;
+  bryophyte_cover_pct: number | null;
+  lichen_cover_pct: number | null;
+  /** Litterfall / dead organic ground cover (v22). */
+  litter_cover_pct: number | null;
   /** Active vegetation layer count for this plot (1..6, default 4). */
   layer_count: number;
   /** JSON array of env photo URIs ({uri, sequence?, caption?}). */
@@ -268,9 +274,10 @@ export function createPlotSurvey(input: CreatePlotInput): number {
   // with `plot_surveys.layer_count` is enforced by setPlotLayerCount() below.
   if ((input.plot_type ?? 'fixed') === 'fixed' && plotId > 0) {
     for (let i = 1; i <= DEFAULT_LAYER_COUNT; i++) {
-      // E4 (亞喬木層) historically used DBH method; preserve that default so
-      // existing user expectations carry across schemas.
-      const defaultMethod: AbundanceMethod = i === 4 ? 'DBH' : 'BB';
+      // % cover is the default unit for new layers. E4 (亞喬木層) keeps DBH —
+      // stem diameter is the standard measure for a tree layer, and that
+      // default predates this change.
+      const defaultMethod: AbundanceMethod = i === 4 ? 'DBH' : 'percent';
       db.executeSync(
         `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, method) VALUES (?, ?, ?)`,
         [plotId, i, defaultMethod],
@@ -307,7 +314,7 @@ export function getOrCreatePlotLayer(plotId: number, layerIndex: number): PlotLa
   const row = existing.rows?.[0] as unknown as PlotLayer | undefined;
   if (row) return row;
   db.executeSync(
-    `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, method) VALUES (?, ?, 'BB')`,
+    `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, method) VALUES (?, ?, 'percent')`,
     [plotId, layerIndex],
   );
   const reread = db.executeSync(
@@ -594,6 +601,10 @@ const PLOT_UPDATABLE_KEYS: (keyof UpdatePlotPatch)[] = [
   'rock_cover_pct',
   'gravel_cover_pct',
   'bareland_cover_pct',
+  'vascular_cover_pct',
+  'bryophyte_cover_pct',
+  'lichen_cover_pct',
+  'litter_cover_pct',
   'layer_count',
   'env_photos_json',
   // Legacy per-layer columns. Still listed so any in-flight writer from older
@@ -768,12 +779,12 @@ export function plotCanAcceptSpecies(plot: PlotSurvey): boolean {
 
 /** Look up the abundance method configured for a given layer of this plot.
  *  Reads from plot_survey_layers (v12 schema). Transect plots have no per-layer
- *  config — caller falls back to BB. */
+ *  config — caller falls back to the % cover default. */
 export function plotMethodForLayer(plot: PlotSurvey, layer: Layer): AbundanceMethod {
-  if (layer === 'T') return 'BB';
+  if (layer === 'T') return 'percent';
   const idx = layerIndexOf(layer);
   const layers = getPlotLayers(plot.id);
-  return layers.find((l) => l.layer_index === idx)?.method ?? 'BB';
+  return layers.find((l) => l.layer_index === idx)?.method ?? 'percent';
 }
 
 // ---------- species records ----------
@@ -841,6 +852,14 @@ export function deletePlotSpecies(id: number): void {
 }
 
 /** Move a species record to a different vegetation layer (fix mis-entry). */
+/** Re-identify a recorded plant/animal: swap the taxon, keep everything else
+ *  (layer, abundance, attributes, photos, coordinates). Mirrors the specimen
+ *  re-determination path — the observation is the same, only the name changes. */
+export function updatePlotSpeciesTaxon(id: number, taxonId: string): void {
+  const db = getUserDb();
+  db.executeSync(`UPDATE plot_species_records SET taxon_id = ? WHERE id = ?`, [taxonId, id]);
+}
+
 export function updatePlotSpeciesLayer(id: number, layer: Layer): void {
   const db = getUserDb();
   db.executeSync(`UPDATE plot_species_records SET layer = ? WHERE id = ?`, [layer, id]);
@@ -984,7 +1003,7 @@ export function listPlotSpecies(
     }
   };
   fillFrom('taicol_names', taxonIds.filter((id) => !isJpTaxonId(id)));
-  fillFrom('ylist_names', taxonIds.filter(isJpTaxonId));
+  fillFrom('jp_names', taxonIds.filter(isJpTaxonId));
 
   const regions = getEnabledRegions();
   const cross = regions.includes('JP') ? crossRegionVernacular(taxonIds, regions) : null;
@@ -1090,6 +1109,10 @@ export type ImportedPlot = {
   rock_cover_pct?: number | null;
   gravel_cover_pct?: number | null;
   bareland_cover_pct?: number | null;
+  vascular_cover_pct?: number | null;
+  bryophyte_cover_pct?: number | null;
+  lichen_cover_pct?: number | null;
+  litter_cover_pct?: number | null;
   point_radius_m?: number | null;
   track_geojson?: string | null;
   layers?: ImportedPlotLayer[];
@@ -1132,8 +1155,9 @@ export function importPlotSurvey(
        recorded_by, locality, field_note,
        elevation_m, slope_deg, aspect_deg, terrain_position,
        rock_cover_pct, gravel_cover_pct, bareland_cover_pct,
+       vascular_cover_pct, bryophyte_cover_pct, lichen_cover_pct, litter_cover_pct,
        layer_count, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       uuid,
       data.plotid,
@@ -1161,6 +1185,10 @@ export function importPlotSurvey(
       data.rock_cover_pct ?? null,
       data.gravel_cover_pct ?? null,
       data.bareland_cover_pct ?? null,
+      data.vascular_cover_pct ?? null,
+      data.bryophyte_cover_pct ?? null,
+      data.lichen_cover_pct ?? null,
+      data.litter_cover_pct ?? null,
       data.layer_count ?? DEFAULT_LAYER_COUNT,
       now,
       now,

@@ -680,6 +680,50 @@ const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    // v20: sex / life_stage on specimens, so the collection detail sheet can
+    // show the same taxon-driven DwC attribute set as checklist and plot
+    // records — `SpeciesAttributesBlock` gives sex to every kingdom, lifeStage
+    // to animals and phenology to plants. v19 shipped with only the two
+    // phenology columns, which limited specimens to plants in practice.
+    //
+    // Mirrors v8, which added the same four columns to checklist_records and
+    // plot_species_records. Additive ALTERs, no table rebuild; carries the same
+    // known property as v8/v9/v11/v13 — the runner has no transaction wrapper,
+    // so a crash between the two statements re-runs both and ADD COLUMN throws
+    // "duplicate column" (see the v13 note; deliberately not changed here).
+    version: 20,
+    up: (db) => {
+      db.executeSync(`ALTER TABLE collection_specimens ADD COLUMN sex TEXT;`);
+      db.executeSync(`ALTER TABLE collection_specimens ADD COLUMN life_stage TEXT;`);
+    },
+  },
+  {
+    // v21: three more ground-cover fractions on plot surveys, alongside the
+    // existing rock / gravel / bareland trio. These record the *living* cover
+    // (vascular plants, bryophytes, lichens) that the substrate columns don't:
+    //   vascular_cover_pct   維管束植物覆蓋
+    //   bryophyte_cover_pct  苔蘚覆蓋   (surface cover of bryophytes)
+    //   lichen_cover_pct     地表地衣覆蓋 (surface cover of lichens)
+    //
+    // Additive ALTERs, same shape and caveat as v20 (no transaction wrapper;
+    // a crash mid-way re-runs all three and ADD COLUMN throws duplicate column).
+    version: 21,
+    up: (db) => {
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN vascular_cover_pct REAL;`);
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN bryophyte_cover_pct REAL;`);
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN lichen_cover_pct REAL;`);
+    },
+  },
+  {
+    // v22: litterfall cover (枯落物覆蓋) — dead organic matter on the ground,
+    // sitting between the living cover added in v21 and the mineral substrate
+    // (rock / gravel / bareland) that has been there since v5.
+    version: 22,
+    up: (db) => {
+      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN litter_cover_pct REAL;`);
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

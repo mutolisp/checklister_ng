@@ -66,10 +66,9 @@ export function SpeciesSearchPanel({ autoFocus = false }: Props) {
             result={active}
             onAddToSession={handleAdd}
             addButtonLabel={targetLabel}
-            onAddLongPress={() => {
+            onAddLongPress={async () => {
               if (!active) return;
-              promptAddDestination(active);
-              setActive(null);
+              if (await promptAddDestination(active)) setActive(null);
             }}
             onClose={() => setActive(null)}
             onPickSubordinate={(sp) => setActive(taxonSpeciesToSearchResult(sp))}

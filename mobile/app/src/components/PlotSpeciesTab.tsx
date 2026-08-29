@@ -27,6 +27,7 @@ import {
   layerLabel,
   updatePlotSpeciesLocation,
   updatePlotSpeciesLayer,
+  updatePlotSpeciesTaxon,
   updatePlotSpeciesPhotos,
   updatePlotSpeciesValue,
 } from '~/db';
@@ -98,6 +99,11 @@ export function PlotSpeciesTab({
   // Photos taken while adding a NEW species (no record id yet); attached to the
   // record on save. Edit mode writes straight to the record instead.
   const [pendingPhotos, setPendingPhotos] = useState<string[]>([]);
+  // Non-null = the docked SearchBox re-identifies that record instead of adding
+  // a new one. Reuses the search box already on screen rather than putting one
+  // inside a Modal (no precedent in this app, and it would need its own
+  // keyboard handling — see `npm run check:dock`).
+  const [replaceTarget, setReplaceTarget] = useState<PlotSpeciesRecordWithTaxon | null>(null);
 
   // Subplots (小區, fixed plots only). When ≥1 subplot exists the species tab
   // is scoped to the active subplot; otherwise it behaves as before (flat plot).
@@ -221,6 +227,19 @@ export function PlotSpeciesTab({
   };
 
   const handleSelect = async (taxon: SearchResult) => {
+    // Re-identification keeps the record and swaps only the name.
+    if (replaceTarget) {
+      const target = replaceTarget;
+      setReplaceTarget(null);
+      Keyboard.dismiss();
+      updatePlotSpeciesTaxon(target.id, taxon.taxon_id);
+      reload();
+      onChanged();
+      useToast.getState().show(
+        tr('plotSpecies.taxonChanged', { name: taxon.cname || taxon.name }),
+      );
+      return;
+    }
     // iOS UIKit refuses to present a Modal while the keyboard / Chinese IME
     // composition session is still active. Dismiss first, wait one frame,
     // then mount PlotSpeciesValueModal.
@@ -409,12 +428,14 @@ export function PlotSpeciesTab({
     const canChangeLayer = stratified;
     const options = [
       { label: tr('common.edit') },
+      { label: tr('plotSpecies.changeTaxon') },
       ...(canChangeLayer ? [{ label: tr('plotSpecies.changeLayer') }] : []),
       { label: fav ? tr('favorites.remove') : tr('favorites.add') },
       { label: tr('common.delete'), destructive: true },
     ];
     let i = 0;
     const editIdx = i++;
+    const taxonIdx = i++;
     const layerIdx = canChangeLayer ? i++ : -1;
     const favIdx = i++;
     const delIdx = i++;
@@ -423,6 +444,7 @@ export function PlotSpeciesTab({
       options,
     });
     if (idx === editIdx) setModal({ mode: 'edit', record: r });
+    else if (idx === taxonIdx) setReplaceTarget(r);
     else if (idx === layerIdx) handleChangeLayer(r);
     else if (idx === favIdx) {
       const t = useToast.getState().show;
@@ -676,6 +698,22 @@ export function PlotSpeciesTab({
           </View>
         }
       />
+
+      {replaceTarget ? (
+        <View className="flex-row items-center border-t border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-2">
+          <Ionicons name="swap-horizontal" size={14} color="#d97706" />
+          <Text className="ml-2 flex-1 text-xs text-amber-800 dark:text-amber-300" numberOfLines={1}>
+            {tr('plotSpecies.changeTaxonBanner', {
+              name: replaceTarget.common_name_c || replaceTarget.simple_name,
+            })}
+          </Text>
+          <Pressable onPress={() => setReplaceTarget(null)} hitSlop={8} className="active:opacity-70">
+            <Text className="text-xs font-medium text-amber-800 dark:text-amber-300">
+              {tr('common.cancel')}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       {/* SearchBox sticks above the keyboard, follows accessory-bar changes */}
       <KeyboardStickyView offset={{ opened: insets.bottom }}>

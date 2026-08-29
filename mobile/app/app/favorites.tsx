@@ -208,8 +208,9 @@ export default function FavoritesScreen() {
           if (selected) addSpecies(selected);
         }}
         addButtonLabel={t('favorites.addToRecord')}
-        onAddLongPress={() => {
-          if (selected) promptAddDestination(selected);
+        onAddLongPress={async () => {
+          if (!selected) return;
+          if (await promptAddDestination(selected)) setSelected(null);
         }}
       />
       {addRecordModal}

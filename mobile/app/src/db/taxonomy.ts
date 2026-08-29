@@ -18,7 +18,7 @@ import type { SearchResult } from './types';
 
 /**
  * Region scope for tree queries. With Japan enabled we query the `all_names`
- * view (taicol_names ∪ ylist_names) and let YList rows through the Taiwan gate
+ * view (taicol_names ∪ jp_names) and let YList rows through the Taiwan gate
  * via `region='JP'` (they have no is_in_taiwan flag). YList hierarchy columns
  * are aligned to TaiCOL conventions (see ylist_import.py), so shared genera /
  * families merge under the same nodes. Taiwan-only stays on the original
@@ -564,6 +564,15 @@ export function searchTaxonomy(q: string): TaxonSearchHit[] {
   }
 
   hits.sort((a, b) => {
+    // 精確命中的俗名／學名永遠優先於 rank 高低。使用者打「櫸」要的是櫸樹
+    // (Zelkova serrata)，不是櫸屬；而單字查詢會命中大量屬名／科名，高階類群
+    // 在 RANK_PRIORITY 下一律排在 Species 前面 —— 沒有這一層，「芒」的精確列
+    // 會落到第 47 名而被下面的 slice(0, 20) 整個切掉，使用者根本看不到。
+    const exactRank = (h: TaxonSearchHit): number =>
+      h.cname === trimmed ? 0 : h.name === trimmed ? 1 : 2;
+    const ea = exactRank(a);
+    const eb = exactRank(b);
+    if (ea !== eb) return ea - eb;
     const pa = RANK_PRIORITY[a.rank] ?? 9;
     const pb = RANK_PRIORITY[b.rank] ?? 9;
     if (pa !== pb) return pa - pb;

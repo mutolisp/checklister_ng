@@ -231,6 +231,8 @@ function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
   if (sp.lng !== null) item.lng = sp.lng;
   if (sp.accuracy !== null) item.accuracy = sp.accuracy;
   if (sp.locality) item.locality = sp.locality;
+  if (sp.sex) item.sex = sp.sex;
+  if (sp.life_stage) item.life_stage = sp.life_stage;
   const repro = multiToPipe(sp.reproductive_condition);
   if (repro) item.reproductive_condition = repro;
   const leaf = multiToPipe(sp.leaf_phenology);
@@ -405,6 +407,10 @@ function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): A
   push('rockCoverPct', plot.rock_cover_pct);
   push('gravelCoverPct', plot.gravel_cover_pct);
   push('barelandCoverPct', plot.bareland_cover_pct);
+  push('vascularCoverPct', plot.vascular_cover_pct);
+  push('bryophyteCoverPct', plot.bryophyte_cover_pct);
+  push('lichenCoverPct', plot.lichen_cover_pct);
+  push('litterCoverPct', plot.litter_cover_pct);
 
   // Per-layer vegetation cover / height / abundance method (fixed plots only;
   // transect plots have no layer concept and the active layer list is empty).
@@ -776,6 +782,7 @@ async function buildPlotEntries(
     'sample_size_value', 'sample_size_unit', 'decimal_latitude', 'decimal_longitude',
     'coord_uncertainty_m', 'elevation_m', 'slope_deg', 'aspect_deg', 'terrain_position',
     'total_cover_pct', 'rock_cover_pct', 'gravel_cover_pct', 'bareland_cover_pct',
+    'vascular_cover_pct', 'bryophyte_cover_pct', 'lichen_cover_pct', 'litter_cover_pct',
     'point_radius_m', 'track_geojson',
   ];
   for (const k of plotNumOrStr) {

@@ -199,6 +199,20 @@ function fmtClock(ts: number): string {
   return isoTime(ts);
 }
 
+/** The ground-cover fractions that must add up to 100%. `total_cover_pct` is
+ *  NOT one of them — that field lives in 基本資料 and means vegetation cover
+ *  overall, not a share of the ground surface. */
+const COVER_KEYS = [
+  'vascular_cover_pct',
+  'bryophyte_cover_pct',
+  'lichen_cover_pct',
+  'litter_cover_pct',
+  'rock_cover_pct',
+  'gravel_cover_pct',
+  'bareland_cover_pct',
+] as const;
+type CoverKey = (typeof COVER_KEYS)[number];
+
 function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }) {
   const { t } = useTranslation();
 
@@ -214,6 +228,38 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
     updatePlotSurvey(plot.id, p);
     onUpdated();
   };
+
+  /**
+   * Save one ground-cover fraction, then fill in the last blank one if this
+   * completes the other six — 維管束 65 + 岩石 5 + 碎石 3 + 裸露 2 + 苔蘚 10 +
+   * 地衣 10 leaves 枯落物 = 5.
+   *
+   * The auto-fill deliberately never targets the field just edited: otherwise
+   * clearing a value to retype it would immediately restore the old number and
+   * you could never change it.
+   */
+  const patchCover = (key: CoverKey, value: number | null) => {
+    const next = { ...plot, [key]: value } as PlotSurvey;
+    const blanks = COVER_KEYS.filter((k) => next[k] == null);
+    if (blanks.length === 1 && blanks[0] !== key) {
+      const filled = COVER_KEYS.filter((k) => k !== blanks[0]).reduce(
+        (sum, k) => sum + (next[k] ?? 0),
+        0,
+      );
+      // Only when there is actually room left; an over-100 total is a data
+      // problem for the user to resolve, not something to paper over.
+      const remainder = Math.round((100 - filled) * 100) / 100;
+      if (remainder >= 0) {
+        patch({ [key]: value, [blanks[0]]: remainder });
+        return;
+      }
+    }
+    patch({ [key]: value });
+  };
+
+  const coverTotal = COVER_KEYS.reduce((sum, k) => sum + (plot[k] ?? 0), 0);
+  const coverFilled = COVER_KEYS.filter((k) => plot[k] != null).length;
+  const coverRounded = Math.round(coverTotal * 100) / 100;
 
   const captureGps = async () => {
     const perm = await Location.requestForegroundPermissionsAsync();
@@ -432,12 +478,16 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           label={t('plot.slope')}
           suffix="°"
           value={plot.slope_deg}
+          min={0}
+          max={90}
           onSave={(n) => patch({ slope_deg: n })}
         />
         <NumField
           label={t('plot.aspect')}
           suffix="°"
           value={plot.aspect_deg}
+          min={0}
+          max={359}
           onSave={(n) => patch({ aspect_deg: n })}
         />
         <Field
@@ -447,23 +497,79 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           onSave={(v) => patch({ terrain_position: v || null })}
         />
         <NumField
+          label={t('plot.vascularCover')}
+          suffix="%"
+          value={plot.vascular_cover_pct}
+          min={0}
+          max={100}
+          onSave={(n) => patchCover('vascular_cover_pct', n)}
+        />
+        <NumField
+          label={t('plot.bryophyteCover')}
+          suffix="%"
+          value={plot.bryophyte_cover_pct}
+          min={0}
+          max={100}
+          onSave={(n) => patchCover('bryophyte_cover_pct', n)}
+        />
+        <NumField
+          label={t('plot.lichenCover')}
+          suffix="%"
+          value={plot.lichen_cover_pct}
+          min={0}
+          max={100}
+          onSave={(n) => patchCover('lichen_cover_pct', n)}
+        />
+        <NumField
+          label={t('plot.litterCover')}
+          suffix="%"
+          value={plot.litter_cover_pct}
+          min={0}
+          max={100}
+          onSave={(n) => patchCover('litter_cover_pct', n)}
+        />
+        <NumField
           label={t('plot.rockCover')}
           suffix="%"
           value={plot.rock_cover_pct}
-          onSave={(n) => patch({ rock_cover_pct: n })}
+          onSave={(n) => patchCover('rock_cover_pct', n)}
         />
         <NumField
           label={t('plot.gravelCover')}
           suffix="%"
           value={plot.gravel_cover_pct}
-          onSave={(n) => patch({ gravel_cover_pct: n })}
+          onSave={(n) => patchCover('gravel_cover_pct', n)}
         />
         <NumField
           label={t('plot.bareCover')}
           suffix="%"
           value={plot.bareland_cover_pct}
-          onSave={(n) => patch({ bareland_cover_pct: n })}
+          onSave={(n) => patchCover('bareland_cover_pct', n)}
         />
+        {/* Running total for the seven ground-cover fractions. Warn rather than
+            block: in the field you rarely enter them in an order that keeps the
+            running sum valid, and a hard gate would fight the auto-fill. */}
+        <View className="px-4 pb-3 pt-1">
+          <Text
+            className={`text-xs ${
+              coverFilled < COVER_KEYS.length
+                ? 'text-gray-500 dark:text-gray-400'
+                : coverRounded === 100
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-amber-600 dark:text-amber-500'
+            }`}
+          >
+            {coverFilled < COVER_KEYS.length
+              ? t('plot.coverPartial', {
+                  filled: coverFilled,
+                  total: COVER_KEYS.length,
+                  sum: coverRounded,
+                })
+              : coverRounded === 100
+                ? t('plot.coverOk')
+                : t('plot.coverMismatch', { sum: coverRounded })}
+          </Text>
+        </View>
       </CollapsibleSection>
 
       <EnvPhotoSection plot={plot} onUpdated={onUpdated} />
@@ -763,9 +869,10 @@ function NumField({
   suffix?: string;
   value: number | null;
   onSave: (n: number | null) => void;
-  /** Exclusive lower bound — entered value must be strictly greater. */
+  /** Inclusive lower bound. 0 is a real value everywhere this is used —
+   *  0% cover, 0° slope (flat), 0° aspect (due north) — so it must pass. */
   min?: number;
-  /** Inclusive upper bound — entered value must be ≤ this. */
+  /** Inclusive upper bound. */
   max?: number;
 }) {
   const { t } = useTranslation();
@@ -792,7 +899,7 @@ function NumField({
         if (ranged) {
           const ok =
             Number.isFinite(n) &&
-            (min === undefined || n > min) &&
+            (min === undefined || n >= min) &&
             (max === undefined || n <= max);
           if (!ok) {
             toast(t('plot.numRange', { min: min ?? 0, max: max ?? 100 }));
@@ -893,10 +1000,12 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
               color={plot.layer_count >= MAX_LAYER_COUNT ? '#9ca3af' : stepIcon}
             />
           </Pressable>
-          <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">
-            {t('plot.layerHint', { max: MAX_LAYER_COUNT })}
-          </Text>
         </View>
+        {/* Own line, not squeezed into the stepper row: the hint names all six
+            layers and was being clipped mid-string there. */}
+        <Text className="mt-2 text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+          {t('plot.layerHint', { max: MAX_LAYER_COUNT })}
+        </Text>
       </View>
       <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
         {t('plot.layerDesc')}
@@ -967,7 +1076,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
               {t('plot.defaultAbundanceUnit')}
             </Text>
             <View className="mt-1 flex-row gap-2">
-              {(['BB', 'percent', 'DBH'] as AbundanceMethod[]).map((m) => {
+              {(['percent', 'BB', 'DBH'] as AbundanceMethod[]).map((m) => {
                 const on = row?.method === m;
                 return (
                   <Pressable

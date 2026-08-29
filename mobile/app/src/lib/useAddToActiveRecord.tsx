@@ -68,12 +68,15 @@ export function useAddToActiveRecord(): {
   modal: React.ReactNode;
   /** Dynamic button label reflecting where the next add will land. */
   targetLabel: string;
-  /** Label for the collection option in the long-press sheet. */
-  collectionLabel: string;
   /** Long-press companion to `addSpecies`: asks which record the species should
    *  go to. Wire it to the add button's `onLongPress` so a plain tap keeps its
-   *  existing, unchanged behaviour. */
-  promptAddDestination: (sp: SearchResult) => void;
+   *  existing, unchanged behaviour.
+   *
+   *  Await it before dismissing any host sheet — iOS cannot present this over a
+   *  Modal that is being torn down in the same tick. Resolves true when the
+   *  species was added, false when the chooser was cancelled, so the host can
+   *  keep itself open on cancel. */
+  promptAddDestination: (sp: SearchResult) => Promise<boolean>;
 } {
   const router = useRouter();
   const { t } = useTranslation();
@@ -84,11 +87,6 @@ export function useAddToActiveRecord(): {
   const [plotTarget, setPlotTarget] = useState<PlotTarget | null>(null);
 
   const targetLabel = plot ? t('addToRecord.toPlot') : session ? t('addToRecord.toSession') : t('addToRecord.newSession');
-  // Read on render so the sheet names the trip the add will actually land in.
-  const activeTrip = getActiveCollectionTrip();
-  const collectionLabel = activeTrip
-    ? t('addToRecord.toCollection', { name: activeTrip.name })
-    : t('addToRecord.newCollection');
 
   const addSpecies = (sp: SearchResult) => {
     if (!sp.taxon_id) {
@@ -136,14 +134,32 @@ export function useAddToActiveRecord(): {
     });
   };
 
-  const promptAddDestination = async (sp: SearchResult) => {
+  const promptAddDestination = async (sp: SearchResult): Promise<boolean> => {
+    // Resolved here rather than during render: this is a synchronous SQLite
+    // read, and the hook is mounted by the taxonomy tree, which re-renders on
+    // every scroll and expand.
+    const activeTrip = getActiveCollectionTrip();
     const idx = await showActionSheet({
       title: sp.cname || sp.name,
-      options: [{ label: targetLabel }, { label: collectionLabel }],
+      options: [
+        { label: targetLabel },
+        {
+          label: activeTrip
+            ? t('addToRecord.toCollection', { name: activeTrip.name })
+            : t('addToRecord.newCollection'),
+        },
+      ],
       cancelLabel: t('common.cancel'),
     });
-    if (idx === 0) addSpecies(sp);
-    else if (idx === 1) addToCollection(sp);
+    if (idx === 0) {
+      addSpecies(sp);
+      return true;
+    }
+    if (idx === 1) {
+      addToCollection(sp);
+      return true;
+    }
+    return false; // cancelled — the host stays open
   };
 
   const handlePlotSave = (v: PlotValueDraft) => {
@@ -190,6 +206,5 @@ export function useAddToActiveRecord(): {
     promptAddDestination,
     modal,
     targetLabel,
-    collectionLabel,
   };
 }

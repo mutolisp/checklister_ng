@@ -181,7 +181,7 @@ export function searchByTaxonId(taxonId: string): SearchResult | null {
   // Query the dataset's real table directly by 't…'/'y…' prefix (no UNION
   // view). Prefer the accepted row; fall back to any row so synonyms still
   // surface basic metadata.
-  const table = isJpTaxonId(taxonId) ? 'ylist_names' : 'taicol_names';
+  const table = isJpTaxonId(taxonId) ? 'jp_names' : 'taicol_names';
   let res = db.executeSync(
     `SELECT ${SEARCH_COLUMNS} FROM ${table} WHERE taxon_id = ? AND usage_status = 'accepted' LIMIT 1`,
     [taxonId],
@@ -260,46 +260,70 @@ export function searchSpecies({ q, groups, advanced = {}, limit = 30 }: SearchOp
     params.push(pattern, pattern, pattern, pattern, pattern);
   }
 
-  let sql = `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE (${likePatterns.join(' OR ')}) AND is_in_taiwan LIKE '%true%'`;
-
-  sql += groupFilterClause(groups, params);
+  // 篩選子句與其參數獨立累積，好讓底下的「精確列補抓」套用完全相同的條件。
+  const filterParams: (string | number)[] = [];
+  let filterSql = groupFilterClause(groups, filterParams);
 
   if (advanced.rank) {
     if (advanced.rank === 'infraspecies') {
-      sql += ` AND rank IN ('Subspecies','Variety','Form')`;
+      filterSql += ` AND rank IN ('Subspecies','Variety','Form')`;
     } else {
-      sql += ` AND rank = ?`;
-      params.push(advanced.rank);
+      filterSql += ` AND rank = ?`;
+      filterParams.push(advanced.rank);
     }
   }
   if (advanced.endemic === 'true') {
-    sql += ` AND is_endemic = 'true'`;
+    filterSql += ` AND is_endemic = 'true'`;
   }
   if (advanced.alien_type) {
-    sql += ` AND alien_type = ?`;
-    params.push(advanced.alien_type);
+    filterSql += ` AND alien_type = ?`;
+    filterParams.push(advanced.alien_type);
   }
   if (advanced.family) {
-    sql += ` AND family = ?`;
-    params.push(advanced.family);
+    filterSql += ` AND family = ?`;
+    filterParams.push(advanced.family);
   }
   if (advanced.order) {
-    sql += ` AND "order" = ?`;
-    params.push(advanced.order);
+    filterSql += ` AND "order" = ?`;
+    filterParams.push(advanced.order);
   }
   if (advanced.class_name) {
-    sql += ` AND class = ?`;
-    params.push(advanced.class_name);
+    filterSql += ` AND class = ?`;
+    filterParams.push(advanced.class_name);
   }
   if (advanced.genus) {
-    sql += ` AND genus = ?`;
-    params.push(advanced.genus);
+    filterSql += ` AND genus = ?`;
+    filterParams.push(advanced.genus);
   }
 
-  sql += ` LIMIT 100`;
+  const sql =
+    `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE (${likePatterns.join(' OR ')}) ` +
+    `AND is_in_taiwan LIKE '%true%'${filterSql} LIMIT 100`;
 
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as unknown as TaicolRow[];
+  const res = db.executeSync(sql, [...params, ...filterParams]);
+  const likeRows = (res.rows ?? []) as unknown as TaicolRow[];
+
+  // 精確列補抓。上面那道 LIKE 查詢沒有 ORDER BY，命中超過 100 列時，精確匹配
+  // 那一列能不能進到這 100 列純粹取決於 SQLite 的掃描順序（實質上是 rowid），
+  // 而 rowid 每次重建 bundle DB 就會變 —— 這就是「之前搜得到、換了名錄就搜不到」
+  // 的成因：實測 47 個單字俗名中有 7 個（科蓮桃蕨梅貓菱）的精確列被截在 100 外，
+  // 排序階段根本看不到它。
+  //
+  // 不用 ORDER BY 解，是因為排序會強迫 SQLite 走完全部命中列：打單一拉丁字母
+  // （輸入學名時每個按鍵都會發生）命中 20 萬列，實測從 ~0ms 變 89ms，在實機上
+  // 還會再放大數倍。改成另外發一道等值查詢，走 idx_taicol_common_name /
+  // idx_taicol_simple_name，實測 0.1ms 以內。重複的列由下游既有的 taxon_id /
+  // name_id 去重吸收。
+  const exactPairs = variants.map(() => '(common_name_c = ? OR simple_name = ?)').join(' OR ');
+  const exactParams: (string | number)[] = [];
+  for (const v of variants) exactParams.push(v, v);
+  const exactSql =
+    `SELECT ${SEARCH_COLUMNS} FROM taicol_names WHERE (${exactPairs}) ` +
+    `AND is_in_taiwan LIKE '%true%'${filterSql} LIMIT 20`;
+  const exactRes = db.executeSync(exactSql, [...exactParams, ...filterParams]);
+  const exactRows = (exactRes.rows ?? []) as unknown as TaicolRow[];
+
+  const rows = [...exactRows, ...likeRows];
 
   const acceptedEntries: Array<[TaicolRow, TaicolRow | null]> = [];
   const nonAccepted: TaicolRow[] = [];
@@ -418,10 +442,49 @@ export function searchSpecies({ q, groups, advanced = {}, limit = 30 }: SearchOp
   return markSensuLato(top);
 }
 
+/** jp_import 在同名的廣義／狹義分類群和名尾端加了「広義」「狹義」以資區別
+ *  （共 2,267 筆）。做精確比對時要先剝掉，否則使用者打「コタニワタリ」永遠
+ *  等不到「コタニワタリ広義」。只用於比較，顯示仍保留後綴。 */
+function stripSensuSuffix(cname: string): string {
+  return cname.replace(/(広義|狹義)$/, '');
+}
+
 /**
- * Search the Japan (YList) dataset in `ylist_names`. Only called when the Japan
- * region is enabled. Simpler than `searchSpecies`: YList has no synonyms (all
- * rows accepted), no `is_in_taiwan` gate, and no sensu-lato marking. Same column
+ * wamei 的同義和名存放在 `alternative_name_c`（逗號分隔）而不是像 TaiCOL 那樣
+ * 各占一列，因此沒有 `usage_status` 可依循 —— 命中別名時必須自己補上
+ * `matched_as`，UI 既有的 `≡` 標記與「你輸入：…」那一行才會出現
+ * （`SearchBox` / `SpeciesDetailPanel` 都只看這個欄位）。
+ *
+ * `acceptedHit` = 查詢字串本身就命中接受和名（Hub name），此時不算同義。
+ * `pick` 決定哪個別名算命中：一般搜尋用 `includes`、模糊搜尋用與索引詞相等。
+ * 回傳命中的別名，供排序把精確別名往前排。
+ *
+ * 和名是片假名，`ScientificName` 的 `^[A-Z][a-z-]+` 開頭比對不會命中，
+ * 會整串當非斜體輸出 —— 所以沿用既有的 matched_as 渲染不會誤把和名斜體化。
+ */
+export function markJpAlias(
+  result: SearchResult,
+  aliasField: unknown,
+  acceptedHit: boolean,
+  pick: (alias: string) => boolean,
+): string | null {
+  if (acceptedHit) return null;
+  const alias = String(aliasField ?? '')
+    .split(',')
+    .map((a) => a.trim())
+    .filter(Boolean)
+    .find(pick);
+  if (!alias) return null;
+  // status 沿用 TaiCOL 的 'synonym' 字彙，UI 顯示與臺灣側同義詞完全一致。
+  result.matched_as = { name: alias, fullname: alias, status: 'synonym' };
+  return alias;
+}
+
+/**
+ * Search the Japan (YList) dataset in `jp_names`. Only called when the Japan
+ * region is enabled. Simpler than `searchSpecies`: every row is accepted (wamei
+ * 的同義和名是 `alternative_name_c` 欄位而非獨立列，見 `markJpAlias`），no
+ * `is_in_taiwan` gate, and no sensu-lato marking. Same column
  * projection + `rowToResult` as TaiCOL, so results slot into the shared UI; the
  * region is inferred from the 'y…' taxon_id by `rowToResult`.
  */
@@ -434,44 +497,57 @@ export function searchSpeciesJp({ q, groups, advanced = {}, limit = 30 }: Search
   const params: (string | number)[] = [pattern, pattern, pattern, pattern, pattern];
 
   let sql =
-    `SELECT ${SEARCH_COLUMNS} FROM ylist_names WHERE (` +
+    `SELECT ${SEARCH_COLUMNS} FROM jp_names WHERE (` +
     'common_name_c LIKE ? ESCAPE "\\" OR ' +
     'alternative_name_c LIKE ? ESCAPE "\\" OR ' +
     'simple_name LIKE ? ESCAPE "\\" OR ' +
     'family LIKE ? ESCAPE "\\" OR ' +
     'family_c LIKE ? ESCAPE "\\")';
 
-  sql += groupFilterClause(groups, params);
+  const filterParams: (string | number)[] = [];
+  let filterSql = groupFilterClause(groups, filterParams);
 
   if (advanced.rank) {
-    if (advanced.rank === 'infraspecies') sql += ` AND rank IN ('Subspecies','Variety','Form')`;
+    if (advanced.rank === 'infraspecies') filterSql += ` AND rank IN ('Subspecies','Variety','Form')`;
     else {
-      sql += ` AND rank = ?`;
-      params.push(advanced.rank);
+      filterSql += ` AND rank = ?`;
+      filterParams.push(advanced.rank);
     }
   }
-  if (advanced.endemic === 'true') sql += ` AND is_endemic = 'true'`;
+  if (advanced.endemic === 'true') filterSql += ` AND is_endemic = 'true'`;
   if (advanced.family) {
-    sql += ` AND family = ?`;
-    params.push(advanced.family);
+    filterSql += ` AND family = ?`;
+    filterParams.push(advanced.family);
   }
   if (advanced.order) {
-    sql += ` AND "order" = ?`;
-    params.push(advanced.order);
+    filterSql += ` AND "order" = ?`;
+    filterParams.push(advanced.order);
   }
   if (advanced.class_name) {
-    sql += ` AND class = ?`;
-    params.push(advanced.class_name);
+    filterSql += ` AND class = ?`;
+    filterParams.push(advanced.class_name);
   }
   if (advanced.genus) {
-    sql += ` AND genus = ?`;
-    params.push(advanced.genus);
+    filterSql += ` AND genus = ?`;
+    filterParams.push(advanced.genus);
   }
 
-  sql += ` LIMIT 100`;
+  sql += `${filterSql} LIMIT 100`;
 
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as unknown as TaicolRow[];
+  // 精確列補抓，理由同 searchSpecies。日本側的和名還多一層：jp_import 為了區分
+  // 同名的廣義／狹義，在 common_name_c 尾端加了「広義」「狹義」（共 2,267 筆），
+  // 所以等值比對要連帶把加了後綴的那兩種寫法一起找，否則打「コタニワタリ」
+  // 永遠對不上「コタニワタリ広義」。
+  const exactVariants = [trimmed, `${trimmed}広義`, `${trimmed}狹義`];
+  const exactSql =
+    `SELECT ${SEARCH_COLUMNS} FROM jp_names WHERE (` +
+    exactVariants.map(() => 'common_name_c = ?').join(' OR ') +
+    ` OR simple_name = ?)${filterSql} LIMIT 20`;
+  const exactRes = db.executeSync(exactSql, [...exactVariants, trimmed, ...filterParams]);
+  const exactRows = (exactRes.rows ?? []) as unknown as TaicolRow[];
+
+  const res = db.executeSync(sql, [...params, ...filterParams]);
+  const rows = [...exactRows, ...((res.rows ?? []) as unknown as TaicolRow[])];
 
   const seen = new Set<string>();
   const results: SearchResult[] = [];
@@ -479,18 +555,29 @@ export function searchSpeciesJp({ q, groups, advanced = {}, limit = 30 }: Search
     const key = row.taxon_id ?? String(row.name_id);
     if (seen.has(key)) continue;
     seen.add(key);
-    results.push(rowToResult(row));
+    const result = rowToResult(row);
+    markJpAlias(result, row.alternative_name_c, (row.common_name_c ?? '').includes(trimmed), (a) =>
+      a.includes(trimmed),
+    );
+    results.push(result);
   }
 
-  // 和名 ranking: exact → prefix → contains → length.
+  // 和名 ranking: exact → prefix → contains → length。別名命中排在同層接受名之後，
+  // 但精確別名仍要贏過只是「包含」的接受名，否則異名搜尋會被淹沒在 30 筆之外。
   results.sort((a, b) => {
-    const score = (r: SearchResult): number[] => [
-      r._raw_cname === trimmed ? 0 : 1,
-      r.name === trimmed ? 0 : 1,
-      r._raw_cname.startsWith(trimmed) ? 0 : 1,
-      r._raw_cname.includes(trimmed) ? 0 : 1,
-      r._raw_cname.length,
-    ];
+    const score = (r: SearchResult): number[] => {
+      const alias = r.matched_as?.name ?? '';
+      const bare = stripSensuSuffix(r._raw_cname);
+      return [
+        bare === trimmed ? 0 : 1,
+        alias === trimmed ? 0 : 1,
+        r.name === trimmed ? 0 : 1,
+        bare.startsWith(trimmed) ? 0 : 1,
+        alias.startsWith(trimmed) ? 0 : 1,
+        bare.includes(trimmed) ? 0 : 1,
+        bare.length,
+      ];
+    };
     const sa = score(a);
     const sb = score(b);
     for (let i = 0; i < sa.length; i++) if (sa[i] !== sb[i]) return sa[i] - sb[i];

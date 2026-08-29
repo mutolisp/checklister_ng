@@ -211,19 +211,27 @@ def _remap_stale_ik_tids(backup_db_path: Optional[str]) -> dict:
     new_conn = sqlite3.connect(sqlite_file_path)
     new_cur = new_conn.cursor()
 
-    # Stale tids in IK after this import
+    # Stale tids in IK after this import.
+    #
+    # The GLOB keeps raw scientific-name targets (`Bambusoideae`,
+    # `Styloglossum clavata`, …) out — those are legitimately unresolved and
+    # must not be "remapped". It used to be `LIKE 't00%'`, which also silently
+    # excluded every id from t0100000 onward: TaiCOL passed that mark (max id
+    # is t0124636 as of the 2026-08 release), so 161 of 5,800 key references
+    # had become invisible to this remap while `_check_stale_key_taxon_ids`
+    # still reported them — stale refs that were warned about but never fixed.
     new_cur.execute("""
     SELECT DISTINCT lead_a_target_id FROM key_couplets
-     WHERE lead_a_target_type='taxon' AND lead_a_target_id LIKE 't00%'
+     WHERE lead_a_target_type='taxon' AND lead_a_target_id GLOB 't[0-9]*'
     UNION
     SELECT DISTINCT lead_b_target_id FROM key_couplets
-     WHERE lead_b_target_type='taxon' AND lead_b_target_id LIKE 't00%'
+     WHERE lead_b_target_type='taxon' AND lead_b_target_id GLOB 't[0-9]*'
     UNION
     SELECT DISTINCT scope_taxon_id FROM identification_keys
-     WHERE scope_taxon_id LIKE 't00%'
+     WHERE scope_taxon_id GLOB 't[0-9]*'
     UNION
     SELECT DISTINCT taxon_id FROM key_taxon_features
-     WHERE taxon_id LIKE 't00%'
+     WHERE taxon_id GLOB 't[0-9]*'
     """)
     ik_tids = {r[0] for r in new_cur.fetchall() if r[0]}
     new_cur.execute(

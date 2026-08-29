@@ -46,7 +46,13 @@ import { SwipeRowActions } from '~/components/SwipeRowActions';
 import { promptText } from '~/components/TextPromptModal';
 import { BackHeaderLeft } from '~/lib/goBack';
 import { isoDateTime } from '~/lib/datetime';
-import { reproductiveLabel, leafPhenologyLabel, parseMultiAttribute } from '~/lib/dwcAttributes';
+import {
+  reproductiveLabel,
+  leafPhenologyLabel,
+  sexLabel,
+  lifeStageLabel,
+  parseMultiAttribute,
+} from '~/lib/dwcAttributes';
 import { useToast } from '~/stores/toast';
 
 function parsePhotoPaths(s: string | null): string[] {
@@ -60,9 +66,12 @@ function parsePhotoPaths(s: string | null): string[] {
   return [];
 }
 
-/** 物候 chips, flattened to one short line for the row. */
-function phenologySummary(sp: SpecimenWithTaxon): string {
+/** DwC species attributes, flattened to one short line for the row. Ordered to
+ *  match the detail sheet: sex → life stage → phenology. */
+function attributeSummary(sp: SpecimenWithTaxon): string {
   const parts = [
+    sexLabel(sp.sex),
+    lifeStageLabel(sp.life_stage),
     ...parseMultiAttribute(sp.reproductive_condition).map(reproductiveLabel),
     ...parseMultiAttribute(sp.leaf_phenology).map(leafPhenologyLabel),
   ].filter(Boolean);
@@ -80,7 +89,7 @@ function SpecimenRow({
   onPress: () => void;
 }) {
   const photos = parsePhotoPaths(specimen.photo_paths);
-  const phenology = phenologySummary(specimen);
+  const attributes = attributeSummary(specimen);
   return (
     <Pressable
       onPress={onPress}
@@ -136,9 +145,9 @@ function SpecimenRow({
           {specimen.lat !== null ? (
             <Ionicons name="location" size={11} color="#2563eb" style={{ marginLeft: 6 }} />
           ) : null}
-          {phenology ? (
+          {attributes ? (
             <Text className="ml-2 flex-1 text-[11px] text-emerald-700 dark:text-emerald-400" numberOfLines={1}>
-              {phenology}
+              {attributes}
             </Text>
           ) : null}
         </View>

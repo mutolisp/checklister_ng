@@ -13,7 +13,7 @@ import { showActionSheet } from './ActionSheet';
 import { DateTimeField } from './DateTimeField';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isRecordNumberTaken, nextRecordNumber, type SpecimenWithTaxon } from '~/db';
-import { parseMultiAttribute, serializeMultiAttribute } from '~/lib/dwcAttributes';
+import { attributesFromRecord, attributesToColumns, EMPTY_DRAFT } from '~/lib/dwcAttributes';
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { RecordLocationMap } from './RecordLocationMap';
 import { ScientificName } from './ScientificName';
@@ -29,6 +29,8 @@ export type SpecimenPatch = {
   recorded_by?: string | null;
   locality?: string | null;
   notes?: string | null;
+  sex?: string | null;
+  life_stage?: string | null;
   reproductive_condition?: string | null;
   leaf_phenology?: string | null;
 };
@@ -91,12 +93,7 @@ export function SpecimenDetailSheet({
   const [number, setNumber] = useState('');
   const [locality, setLocality] = useState('');
   const [notes, setNotes] = useState('');
-  const [attrs, setAttrs] = useState<SpeciesAttributesDraft>({
-    sex: null,
-    life_stage: null,
-    reproductive_condition: [],
-    leaf_phenology: [],
-  });
+  const [attrs, setAttrs] = useState<SpeciesAttributesDraft>(EMPTY_DRAFT);
   const [surveyorOpen, setSurveyorOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
@@ -111,12 +108,7 @@ export function SpecimenDetailSheet({
     setNumber(specimen.record_number);
     setLocality(specimen.locality ?? '');
     setNotes(specimen.notes ?? '');
-    setAttrs({
-      sex: null,
-      life_stage: null,
-      reproductive_condition: parseMultiAttribute(specimen.reproductive_condition),
-      leaf_phenology: parseMultiAttribute(specimen.leaf_phenology),
-    });
+    setAttrs(attributesFromRecord(specimen));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specimen?.id]);
 
@@ -161,10 +153,9 @@ export function SpecimenDetailSheet({
 
   const commitAttrs = (next: SpeciesAttributesDraft) => {
     setAttrs(next);
-    onSave({
-      reproductive_condition: serializeMultiAttribute(next.reproductive_condition),
-      leaf_phenology: serializeMultiAttribute(next.leaf_phenology),
-    });
+    // `attributesToColumns` serializes all four columns. Spelling this out by
+    // hand is what previously dropped sex / life_stage on save.
+    onSave(attributesToColumns(next));
   };
 
   const locateMe = async () => {
@@ -253,8 +244,19 @@ export function SpecimenDetailSheet({
             </Text>
           </Field>
 
-          <Field label={t('collection.collectedAt')}>
+          {/* 日期與時間分成兩欄，但底下仍是同一個 collected_at timestamp —— 各自
+              只改自己那一半（見 DateTimeField 的 mergePart），不需要動 schema。 */}
+          <Field label={t('collection.collectedDate')}>
             <DateTimeField
+              mode="date"
+              value={specimen.collected_at}
+              onChange={(ts) => onSave({ collected_at: ts })}
+            />
+          </Field>
+
+          <Field label={t('collection.collectedTime')}>
+            <DateTimeField
+              mode="time"
               value={specimen.collected_at}
               onChange={(ts) => onSave({ collected_at: ts })}
             />
@@ -311,16 +313,15 @@ export function SpecimenDetailSheet({
             />
           </Field>
 
-          <Field label={t('collection.phenology')}>
+          <View className="mt-4">
             <SpeciesAttributesBlock
               kingdom={specimen.kingdom}
               className={specimen.class}
               value={attrs}
               onChange={commitAttrs}
-              only="phenology"
-              headerLabel={t('collection.phenology')}
+              headerLabel={t('collection.attributes')}
             />
-          </Field>
+          </View>
 
           <Field label={t('collection.remarks')}>
             <TextInput

@@ -761,7 +761,7 @@ Phase 3 Schema 版本：v9。
 
 ### TaiCOL 主資料
 
-- **完整 bundle 進 APP**（118MB after VACUUM）
+- **完整 bundle 進 APP**（157MB after VACUUM，2026-08-26 TaiCOL 版；原 118MB，隨名錄更新成長）
 - 首次啟動：copy `assets/db/twnamelist.db` 到 `FileSystem.documentDirectory`，後續可寫
 - **資料更新機制**：MVP 不做（無公開 server），Phase 2+ 再加
 
@@ -1075,7 +1075,7 @@ Ficus caulocarpa Miq.
 
 ## 風險與待解問題
 
-1. **TaiCOL DB 體積**：✅ 118MB 可接受，已驗證 simulator 能跑
+1. **TaiCOL DB 體積**：✅ 原 118MB 可接受，已驗證 simulator 能跑；2026-08-26 名錄更新後為 **157MB**，仍在可接受範圍但需留意成長
 2. **匯出格式一致性**：✅ YAML / CSV 對齊 backend dwc_field_map
 3. **Fuzzy search 效能**：✅ 預先 build cname_fuzzy_index 表，runtime ~10-30ms
 4. **iOS / Android UI 差異**：⏰ Android 還沒驗證
@@ -1149,7 +1149,7 @@ eas submit --platform ios
 - 來源 = 使用者親爬的 `dao_jp_ylist`（20,103 筆，ylist.info）。`plant_type` 為本表自有對照：0蘚苔/1蕨類/2裸子/3雙子葉/4單子葉。
 - `backend/services/ylist_import.py`（新增 CLI）：SQL 轉換 `dao_jp_ylist → ylist_names`（欄位對齊 taicol_names + region），含：
   - genus = 學名第一 token（解析失敗 0 筆）。
-  - phylum/class/order 由 family 經 **GBIF backbone** 回填（`references/YList/ylist_family_backbone.csv`，421 科全覆蓋；class 把 Liliopsida→Magnoliopsida 對齊 TaiCOL 慣例，單/雙子葉在 order 層區分）。
+  - phylum/class/order 由 family 經 **GBIF backbone** 回填（`references/JP/YList/ylist_family_backbone.csv`，421 科全覆蓋；class 把 Liliopsida→Magnoliopsida 對齊 TaiCOL 慣例，單/雙子葉在 order 層區分）。
   - taxon_id = `y`+pad、name_id = 90000000+id（避免與 taicol 撞）。
   - 同檔建 `species_xref(taxon_id,region,sci_norm)` 交叉表 + `all_names` view（taicol ∪ ylist）。
   - 與 TaiCOL 共有種 5,411。
@@ -1280,3 +1280,126 @@ npx expo prebuild --platform android && npx expo run:android
 ### 驗證狀態
 
 `tsc` 0 error、`check:dock` 通過、eslint 與改動前**同數**（零新增警告）、i18n 856 keys 對等、DB 斷言以真實 SQLite 跑過（含「改前綴不重啟序列」與跳號守衛兩個邊界）。**待實機**：時間 picker 雙平台、誤差顯示、改名同步、複製範圍、再鑑定後號碼不變、撞號三分支。逐項見 Update_log.md。
+
+
+## Sprint：TaiCOL 名錄更新至 2026-08-26（2026-08-29 續 3）
+
+`taicol_names` 251,540 → 269,824 列，accepted 96,179 → 96,677。完整過程、驗證數字與回復點見 Update_log.md。
+
+### 這次的重點是「先驗再匯」
+
+匯入程式 **先 `DROP TABLE` 並立即 commit、才第一次開啟 CSV**，且每 5000 筆各自 commit、無交易保護。所以任何錯誤都是「舊資料已沒了」而非「匯入失敗」。事前排除三種**靜默**失效（每一種都是不報錯的）：
+
+| 風險 | 若中招 |
+|---|---|
+| UTF-8 BOM | 匯入 **0 列**，程式正常結束 |
+| 欄位改名 | 該欄 **25 萬列全變 NULL**，無警告 |
+| 值域改變（`is_in_taiwan` / `usage_status`） | 全 app 20+ 處寫死的查詢**全部回傳 0 列** |
+
+三項皆通過。副本試跑期間真 DB 的 md5 全程未變。
+
+### 修掉兩個 bug
+
+1. **`_remap_stale_ik_tids` 的 `LIKE 't00%'` 盲區**（`taicol_import.py:213-226`）。TaiCOL 最大 id 已達 `t0124636`，所有 ≥ `t0100000` 的引用都被排除在自動修復之外——而 stale **檢查**用的是另一組正確查詢，於是那些引用「被警告但永遠不被修好」。檢索表 5,800 個引用中 **161 個**在盲區內。改為 `GLOB 't[0-9]*'`（仍正確排除 `Bambusoideae` 這類合法裸學名目標）。
+2. **`ylist_import` 的 backbone 路徑**：`references/YList/` 已移到 `references/JP/YList/`，常數未跟上 → `FileNotFoundError`。
+
+### 必記：`species_xref` 不會自己更新
+
+`species_xref` 是從 `taicol_names` accepted 集合**凍結出來的快照**，`taicol_import.py` 完全不碰它（全檔 grep 零命中）。**TaiCOL 換版後必須另外跑 `python -m backend.services.ylist_import`**，否則日本區域名錄的和名對照會**靜默給錯**（`regions.ts:85-92` 的 `sci_norm` 自連接）。
+
+偵測方式：`species_xref` 的 TW 列數應恆等於 `taicol_names` 的 accepted 數。本次匯入後一度落後（96,179 vs 96,677），重建後回到同步。
+
+### 標準作業順序（下次照這個跑）
+
+```bash
+# 0. 基準快照（列數 / QA 9 項 / 檢索表引用）
+# 1. 副本試跑 —— 真 DB 不動
+cp backend/twnamelist.db /tmp/dry.db
+CHECKLISTER_DB_PATH=/tmp/dry.db backend/venv/bin/python -m backend.services.taicol_import \
+  references/TaiCOL_name_<日期>.csv references/TaiCOL_taxon_<日期>.csv
+# 2. Go/No-Go：列數符合、backfilled>0、accepted 數符合、10 索引、stale-remap 無 unresolved、pytest 過
+# 3. 正式匯入（同指令，不帶 CHECKLISTER_DB_PATH）
+# 4. 重建衍生資料（必要！）
+backend/venv/bin/python -m backend.services.ylist_import
+# 5. 同步 bundle（三步一起，缺 fuzzy index 會讓中文搜尋 crash Hermes）
+make mobile-db
+# 6. 驗收：pytest、QA 前後差、species_xref==accepted、抽查 remap
+```
+
+**不要用 `make taicol`**：Makefile 以 `ls -t`（mtime）挑 name CSV，但 `_find_taxon_csv` 以**檔名倒序**挑 taxon CSV——兩套規則不同，`touch` 過舊檔就會靜默配出不成對的組合。明確傳兩個路徑。
+
+### 待辦
+
+- [ ] `identification_keys.scope_name` 有 13 個不是 accepted Genus——字串連結、不在 stale check 守備範圍，數字未惡化（14→13），觀察即可
+- [ ] `Form` / `Forma` 在 `taxonomy_api.py` 與 `qa_api.py` 之間不一致（既有技術債；新版 TaiCOL 仍只用 `Form`）
+
+---
+
+## Sprint：樣區調查物種替換 + 地表覆蓋七項（2026-08-29 續 4）
+
+已 ship。詳見 `Update_log.md`。
+
+- 物種長按開 popup search 替換（豐度值保留）
+- 地表覆蓋擴充為七項：維管束 / 地表苔蘚 / 地表地衣 / 枯落物 / 岩石 / 碎石 / 裸露（migration **v21 + v22**）
+- 七項加總 100 的自動補算（只補「不是正在編輯的那一格」的最後一個空欄，餘數為負不補）
+- 坡向 0–359、坡度 0–90；連帶修掉 `NumField.min` 的排他比較（原本輸入不了 0）
+- 分層數量說明截斷、豐度方法預設改百分比並置前
+
+---
+
+## Sprint：日本名錄改用 JBIF 和名チェックリスト（2026-08-29 續 5）
+
+已 ship。完整脈絡見 `Update_log.md`。
+
+`ylist_names`（20,103）→ **`jp_names`（25,839）**，同義和名 0 → 6,711 個分類群，模糊索引 19,135 → 30,517 詞。
+
+### 決策：合併而不是取代
+
+wamei 只收維管束植物且無保育／來源屬性，純取代會靜默丟掉苔蘚 1,909、特有 786、IUCN 1,719、外來註記 8,780 與臺灣 fallback 915。所以 **wamei 當和名層 + YList 補缺**，以 `sci_norm` 合併。授權從「爬取、不明」變成 **CC BY 4.0**。
+
+### 硬性要求（設計的第一原則）
+
+**19,851 個舊 `taxon_id` 100% 仍可解析。** 記錄／樣區／標本都持久化 taxon_id，而解析失敗**不報錯、只顯示空白**（`taxonLookup.ts:85`）。第一次試跑就因 sci_norm 去重掉了 252 個 id ——而**總列數是增加的，看總數完全看不出來**。修法：第二輪回填改用 taxon_id 判斷已吸收，不用 sci_norm。
+
+> 以後任何動到 `jp_names` / `taicol_names` 的重建，驗證第一條都是「拿匯入前的 taxon_id 清單逐一查，必須 0 失敗」，不是比總列數。
+
+### 新增／變更的檔案
+
+- **新** `backend/services/jp_import.py` —— 合併匯入器（wamei xlsx + `dao_jp_ylist` → `jp_names` + `species_xref` + `all_names`）
+- **封存** `backend/services/ylist_import.py` —— CLI 已封死（`main()` 回傳 2）。**不能刪**，`jp_import` 沿用它的 `sci_norm` / `parse_genus` / `derive_rank` / `load_family_backbone` / `TAICOL_COLUMNS` / `backup_db`
+- `references/JP/YList/ylist_family_backbone.csv` —— 從 GBIF backbone 補 12 科（→ 433 科，wamei 覆蓋 311/311）
+- `search.ts` —— 新增 `markJpAlias()`；`fuzzy.ts` 共用
+- `build_mobile_fuzzy_index.py` —— `_build_jp_index()` 一併收 `alternative_name_c`
+- 表名 `ylist_names` → `jp_names`（8 檔 + view 定義）
+- `requirements.txt` —— 加 `openpyxl`
+
+### 仍待處理
+
+- [ ] **重建 app**：bundle asset 已換（**161MB**）＋ 續 2 的原生模組 `@react-native-community/datetimepicker`，兩者都要重 build 才會進裝置
+- [ ] 桌面前端還沒跟上表名 —— 桌面目前**沒有**日本區功能（`grep -r ylist frontend/src` 無命中），所以不影響；日後做跨區時直接用 `jp_names`
+- [ ] 未來 wamei 出新版時：`jp_import` 可直接重跑（會自動偵測來源表叫 `ylist_names` 還是 `jp_names`），但重跑後**必須重驗 taxon_id 全保留**
+
+---
+
+## Sprint：精確俗名優先 + 分類樹定位（2026-08-29 續 6）
+
+已 ship（定位部分待實機驗證）。完整脈絡見 `Update_log.md`。
+
+### 搜尋排序
+
+三個獨立缺陷，全部修掉：`searchTaxonomy` 的比較器只看 rank 不看匹配品質（「芒」的精確列落在第 47 名而被切掉）、`searchSpecies`/`searchSpeciesJp` 的 `LIMIT 100` 無 `ORDER BY`（精確列能否進來取決於 rowid，換 DB 就變）、日本和名的 `広義/狹義` 後綴讓等值比對永遠失敗。
+
+**別用 `ORDER BY` 修 LIMIT 問題**：實測打單一拉丁字母命中 20 萬列，排序讓查詢從 ~0ms 變 89ms（實機再放大數倍）。正解是另發一道走索引的等值查詢補抓精確列，0.1ms。
+
+### 分類樹定位
+
+根因是 `getItemLayout` 讀可變的 `heightCacheRef`，違反 RN「必須是 `(data, index)` 純函式」的要求，讓 FlatList 的 frame 表和實際畫面脫節；行高又刻意估低，誤差隨目標 index 累積。改成 `useMemo` 前綴和表（順帶把 O(n²) 變 O(1)）+ 行高自我校準 + viewport 用實測值。
+
+> **不變式：`getItemLayout` 必須對 `(data, index)` 純粹。** 不要在裡面讀任何會被 `onLayout` 改動的 ref —— 那正是這個 bug 反覆出現的原因。新增 row kind 時，改的是 `rowLayout` 這個 memo，不是 `getItemLayout` 本身。
+
+### 待驗證（實機）
+
+- [ ] 分類樹搜尋「櫸」→ 點結果 → 目標節點應落在畫面上緣約 ¼ 處
+- [ ] **關鍵回歸情境**：先大量展開（Lepidoptera → Erebidae，使 `flatItems` 上千）再定位，仍須準確 —— 這正是舊版會歪掉的情境
+- [ ] 定位失敗一次後，切換 segment 的捲動還原仍正常
+- [ ] 主搜尋與分類樹搜尋各打 芒／櫸／カンスゲ／蓮／蕨／梅／貓，第一筆都要是精確那筆

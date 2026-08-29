@@ -388,7 +388,7 @@
     "width": "Width (m)",
     "length": "Length (m)",
     "subplotName": "Subplot {{idx}} name",
-    "numRange": "Value must be > {{min}} and ≤ {{max}}",
+    "numRange": "Value must be between {{min}} and {{max}} (inclusive)",
     "speciesGate": "First fill in plotid, GPS coordinates and accuracy on the Environment tab",
     "layerSection": "Layers (layer)",
     "layerCount": "Layer count",
@@ -402,7 +402,14 @@
     "takePhotoFail": "Photo capture failed",
     "pickPhotoFail": "Photo selection failed",
     "envPhotos": "Environment photos",
-    "envPhotoNaming": "Auto-named on export as {{plotid}}_YYYYMMDD_env-N.jpg"
+    "envPhotoNaming": "Auto-named on export as {{plotid}}_YYYYMMDD_env-N.jpg",
+    "vascularCover": "Vascular plant cover",
+    "bryophyteCover": "Surface bryophyte cover",
+    "lichenCover": "Surface lichen cover",
+    "litterCover": "Litterfall cover",
+    "coverPartial": "Ground cover totals {{sum}}% ({{filled}}/{{total}} entered; the last one is filled in automatically)",
+    "coverOk": "Ground cover totals 100% ✓",
+    "coverMismatch": "Ground cover totals {{sum}}%, should be 100%"
   },
   "settings": {
     "title": "Settings",
@@ -429,7 +436,7 @@
     "undoSeconds": "{{count}} s",
     "defaultCreate": "+ Default create",
     "createAsk": "Ask each time",
-    "regionJapan": "Japan (YList flora)",
+    "regionJapan": "Japan",
     "regionJapanDesc": "Based on Taiwan's TaiCOL. When enabled, you can search Japanese species by katakana, browse the Japanese taxonomy tree, and add records; shared species show both the Chinese and Japanese vernacular names.",
     "on": "On",
     "off": "Off",
@@ -767,7 +774,10 @@
     "hybridShort": "H",
     "subplotCoverHeight": "Per-layer cover / height of this subplot",
     "cover": "Cover",
-    "height": "Ht"
+    "height": "Ht",
+    "changeTaxon": "Change species",
+    "changeTaxonBanner": "Changing species for \"{{name}}\" — pick one below",
+    "taxonChanged": "Changed to {{name}}"
   },
   "sheets": {
     "assignSite": "Assign geographic site",
@@ -942,13 +952,11 @@
     "specimenCount": "{{count}} specimens",
     "recordNumber": "Collection number",
     "recordNumberHint": "A collector's numbers run continuously across trips. Edit it freely — later numbers continue from the new one.",
-    "collectedAt": "Collected at",
     "collector": "Collector",
     "collectorEmpty": "No collector set",
     "locality": "Locality",
     "localityPlaceholder": "Locality description",
     "noCoord": "No coordinate recorded",
-    "phenology": "Phenology",
     "remarks": "Collection remarks",
     "remarksPlaceholder": "Habitat, population, scent, latex, other field notes",
     "photos": "Photos",
@@ -971,6 +979,9 @@
     "dupMsg": "{{number}} is already used by another specimen.",
     "dupUseAnyway": "Use it anyway",
     "dupUseNext": "Use {{number}} instead",
-    "dupBadge": "This collection number is shared with another specimen"
+    "dupBadge": "This collection number is shared with another specimen",
+    "attributes": "Species attributes / phenology",
+    "collectedDate": "Collection date",
+    "collectedTime": "Collection time"
   }
 }

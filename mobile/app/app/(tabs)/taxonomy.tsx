@@ -59,6 +59,18 @@ type FlatItem =
   | { kind: 'species'; key: string; species: TaxonSpecies; depth: number }
   | { kind: 'loading'; key: string; depth: number };
 
+// Per-kind row-height seeds, used only until real measurements arrive.
+// Deliberately NOT biased low — the old code biased low so the first scroll
+// would land before the target, but that was compensating for an impure
+// getItemLayout (now fixed), and a systematic per-row error multiplied by the
+// target index is exactly what made deep locates land in the wrong place.
+// Module scope so the memo/callback below need no dependency on it.
+const DEFAULT_ROW_HEIGHT: Record<FlatItem['kind'], number> = {
+  taxon: 60,
+  species: 40,
+  loading: 32,
+};
+
 function flatten(
   roots: TaxonNodeData[],
   expanded: Set<string>,
@@ -174,12 +186,22 @@ export default function TaxonomyScreen() {
   // resolves it against the latest flatItems and runs a multi-attempt scroll
   // (FlatList virtualization can delay the target row's mount; one-shot
   // scrollToIndex would land on the wrong offset via the fallback estimate).
-  const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
-  // Row-height cache for getItemLayout. Populated by each row's onLayout the
-  // first time it renders, so subsequent scrollToIndex calls have accurate
-  // offsets even for previously-unrendered rows. Ref (not state) — onLayout
-  // writes do not need to trigger a re-render; FlatList reads the latest map
-  // every time it calls getItemLayout.
+  // 捲動目標。種階層命中時要捲到「那一列物種」而不是它所屬的屬節點 ——
+  // 屬底下可能有數百種（jp_names 的 Carex 有 550 種，カンスゲ 排第 300），
+  // 捲到屬節點等於只看得到最前面幾種，這正是使用者回報的症狀。
+  //
+  // 用學名而不是 taxon_id 比對：日本區開啟時 getSpeciesUnder 會把 TW/JP 共有種
+  // 收合成一列並**保留 TaiCOL 的 taxon_id**（全域 5,969 種、光 Carex 就 82 種），
+  // 所以 JP 搜尋命中帶的 y… id 對不上樹上那一列。學名才是兩邊共同的鍵。
+  const [pendingScrollTarget, setPendingScrollTarget] = useState<{
+    speciesName?: string;
+    nodeKey: string;
+  } | null>(null);
+  // Row-height cache feeding the prefix-sum table below. Populated by each
+  // row's onLayout the first time it renders, so offsets stay accurate for
+  // previously-unrendered rows. A ref because onLayout fires per row during
+  // a scroll; new measurements are folded in via the trailing-debounced
+  // `heightEpoch` bump rather than a render per row (see noteRowHeight).
   const heightCacheRef = useRef<Map<string, number>>(new Map());
   const hydratedRef = useRef(false);
   // FlatList milestone tracking — each fires at most once so we measure the
@@ -188,6 +210,9 @@ export default function TaxonomyScreen() {
   // native ScrollView received its child views and laid them out (good proxy
   // for "user sees something").
   const flatListMarkedRef = useRef({ layout: false, firstRow: false, content: false });
+  // 樹的實際可視高度（FlatList onLayout 量得）。捲動定位要用它換算 viewPosition，
+  // 寫死的 600 在現在的手機上普遍偏小，會讓目標落在比預期更下面的位置。
+  const treeViewportHeightRef = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
@@ -340,43 +365,91 @@ export default function TaxonomyScreen() {
     [roots, expanded, childrenMap, speciesMap],
   );
 
-  // Per-kind row-height defaults for getItemLayout. Used for any row whose
-  // actual height has not been measured yet (no onLayout fired). Calibrated
-  // by spot-measuring real renders. Note: TaiCOL taxa pretty much always
-  // have non-zero stats so the "with stats line" case is dominant, hence the
-  // ~60 default for taxon (rather than the 50 median between the two
-  // extremes). Slightly biased LOW so first scroll lands BEFORE target
-  // (visible below the viewPosition mark) rather than past it (off-screen
-  // above). Multi-attempt refines once real measurements land in cache.
-  const DEFAULT_ROW_HEIGHT: Record<FlatItem['kind'], number> = {
-    taxon: 60,
-    species: 40,
-    loading: 32,
-  };
-  const getItemLayout = useCallback(
-    (data: ArrayLike<FlatItem> | null | undefined, index: number) => {
-      const fallback = DEFAULT_ROW_HEIGHT.taxon;
-      if (!data || index < 0) {
-        return { length: fallback, offset: 0, index };
-      }
-      // Sum offsets up to index. O(n) per call but FlatList caches the
-      // result and only re-invokes on data change / explicit scrollToIndex;
-      // for our list of ~5k items this is <1ms on Hermes.
-      const list = data as readonly FlatItem[];
-      let offset = 0;
-      for (let i = 0; i < index; i++) {
-        const it = list[i];
-        if (!it) continue;
-        offset += heightCacheRef.current.get(it.key) ?? DEFAULT_ROW_HEIGHT[it.kind];
-      }
-      const item = list[index];
-      const length = item
-        ? (heightCacheRef.current.get(item.key) ?? DEFAULT_ROW_HEIGHT[item.kind])
-        : fallback;
-      return { length, offset, index };
+  // Running mean of actually-measured heights per kind. Unmeasured rows are
+  // estimated with this instead of the hard-coded seed, so the estimate is
+  // unbiased on average rather than systematically short. Self-calibrating:
+  // no magic constant to keep in sync with the row styling.
+  const heightSamplesRef = useRef<Record<FlatItem['kind'], { sum: number; n: number }>>({
+    taxon: { sum: 0, n: 0 },
+    species: { sum: 0, n: 0 },
+    loading: { sum: 0, n: 0 },
+  });
+  // Bumped (trailing-debounced) whenever new measurements land, so the
+  // prefix-sum table below recomputes. Debounced because every row's
+  // onLayout fires during a scroll and we do not want a render per row.
+  const [heightEpoch, setHeightEpoch] = useState(0);
+  const epochTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const noteRowHeight = useCallback((key: string, kind: FlatItem['kind'], h: number) => {
+    if (h <= 0) return;
+    const prev = heightCacheRef.current.get(key);
+    if (prev === h) return;
+    heightCacheRef.current.set(key, h);
+    if (prev === undefined) {
+      const s = heightSamplesRef.current[kind];
+      s.sum += h;
+      s.n += 1;
+    }
+    if (epochTimerRef.current) return;
+    epochTimerRef.current = setTimeout(() => {
+      epochTimerRef.current = null;
+      setHeightEpoch((v) => v + 1);
+    }, 100);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (epochTimerRef.current) clearTimeout(epochTimerRef.current);
     },
-    // heightCacheRef is a ref so the callback identity is stable; safe to
-    // pass empty deps.
+    [],
+  );
+
+  // Precomputed prefix-sum offsets. getItemLayout MUST be a pure function of
+  // (data, index): VirtualizedList stores what it returns in its internal
+  // frame table and drives virtualization and every scroll computation from
+  // it. The previous implementation summed heightCacheRef — a mutable Map
+  // that each row's onLayout rewrites — so the same (data, index) returned
+  // different offsets over time, desynchronising FlatList's frame table from
+  // the real rows. That is why "定位" landed in the wrong place, and it got
+  // worse the longer the list, because the error is per-row and accumulates.
+  //
+  // Building the table once per (flatItems, heightEpoch) also turns the old
+  // O(n) per call — invoked per row, i.e. O(n²) — into O(1) lookups.
+  const rowLayout = useMemo(() => {
+    const samples = heightSamplesRef.current;
+    const seedFor = (kind: FlatItem['kind']) => {
+      const s = samples[kind];
+      return s.n > 0 ? s.sum / s.n : DEFAULT_ROW_HEIGHT[kind];
+    };
+    const lengths = new Array<number>(flatItems.length);
+    const offsets = new Array<number>(flatItems.length);
+    let acc = 0;
+    for (let i = 0; i < flatItems.length; i++) {
+      const it = flatItems[i];
+      const h = heightCacheRef.current.get(it.key) ?? seedFor(it.kind);
+      offsets[i] = acc;
+      lengths[i] = h;
+      acc += h;
+    }
+    return { lengths, offsets };
+    // heightEpoch is the signal that heightCacheRef/heightSamplesRef changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [flatItems, heightEpoch]);
+
+  // Latest table, readable from inside the scroll loop without making the
+  // loop's effect re-run (which would restart the attempt counter forever as
+  // measurements keep arriving).
+  const rowLayoutRef = useRef(rowLayout);
+  rowLayoutRef.current = rowLayout;
+
+  const getItemLayout = useCallback(
+    (_data: ArrayLike<FlatItem> | null | undefined, index: number) => {
+      const { lengths, offsets } = rowLayoutRef.current;
+      if (index < 0 || index >= lengths.length) {
+        return { length: DEFAULT_ROW_HEIGHT.taxon, offset: 0, index };
+      }
+      return { length: lengths[index], offset: offsets[index], index };
+    },
     [],
   );
 
@@ -384,7 +457,7 @@ export default function TaxonomyScreen() {
    *  entry. Used by both the in-tab search hit handler and the
    *  cross-screen taxonomy jump (rank chip on SpeciesDetailPanel). */
   const expandToPath = useCallback(
-    (path: Array<{ rank: Rank; value: string }>, toastLabel?: string) => {
+    (path: Array<{ rank: Rank; value: string }>, toastLabel?: string, speciesName?: string) => {
       if (path.length === 0 || roots.length === 0) return;
 
       const wantExpanded = new Set(expanded);
@@ -443,15 +516,19 @@ export default function TaxonomyScreen() {
       // recomputed against the new state — virtualization needs the new
       // children rows mounted before scrollToIndex can land. Direct rAF
       // here would race the FlatList re-render.
-      setPendingScrollKey(targetKey);
+      // 種階層命中時優先捲到那一列物種，找不到才退回屬節點。
+      setPendingScrollTarget({ speciesName, nodeKey: targetKey });
 
       if (toastLabel) toast(t('taxonomy.expanded', { label: toastLabel }));
     },
     [roots, expanded, nodeMap, childrenMap, speciesMap, persistExpanded, toast],
   );
 
+  const SPECIES_RANKS = ['Species', 'Subspecies', 'Variety', 'Form'];
+
   const handleSearchPick = (hit: TaxonSearchHit) => {
-    expandToPath(hit.path, hit.cname || hit.name);
+    const speciesName = SPECIES_RANKS.includes(hit.rank) ? hit.name : undefined;
+    expandToPath(hit.path, hit.cname || hit.name, speciesName);
   };
 
   // Cross-screen taxonomy jump: SpeciesDetailPanel's rank chip writes a
@@ -481,12 +558,23 @@ export default function TaxonomyScreen() {
   // attempts as more rows render + onLayout-measure, so subsequent offset
   // estimates converge to truth.
   useEffect(() => {
-    if (!pendingScrollKey) return;
-    const idx = flatItems.findIndex(
-      (item) => item.kind === 'taxon' && item.key === pendingScrollKey,
-    );
+    if (!pendingScrollTarget) return;
+    const { speciesName, nodeKey } = pendingScrollTarget;
+    // 先找物種列（比對學名，見 pendingScrollTarget 的說明），找不到才退回屬節點。
+    let idx = speciesName
+      ? flatItems.findIndex(
+          (item) => item.kind === 'species' && item.species.simple_name === speciesName,
+        )
+      : -1;
+    if (idx < 0) idx = flatItems.findIndex((item) => item.key === nodeKey);
     if (idx < 0) {
-      if (__DEV__) console.log(`[scroll] target key not in flatItems: ${pendingScrollKey}`);
+      // 找不到目標就必須把請求清掉。原本只 return 不清，它會永遠停在非 null，
+      // 於是底下「切換 segment 時還原捲動位置」那段的
+      // `if (pendingScrollTarget || pendingJumpPath) return;` 被永久短路 ——
+      // 一次失敗的定位會污染這個 session 之後所有的捲動還原。
+      if (__DEV__)
+        console.log(`[scroll] no candidate in flatItems: ${speciesName ?? ''} | ${nodeKey}`);
+      setPendingScrollTarget(null);
       return;
     }
 
@@ -494,20 +582,19 @@ export default function TaxonomyScreen() {
     let n = 0;
     const MAX_ATTEMPTS = 8;
     const INTERVAL_MS = 220;
-    // Approximation: phone viewport minus segment tabs (~120px) and search
-    // box (~60px). We don't need a real value to land at the top quarter —
-    // any reasonable number does, and the inaccuracy just shifts the
-    // landing band by a row or two.
-    const VIEWPORT_HEIGHT_APPROX = 600;
+    // 用 FlatList onLayout 量到的真實高度；還沒量到才退回粗估值。
+    const VIEWPORT_FALLBACK = 600;
     const VIEW_POSITION = 0.25;
 
     const tick = () => {
       if (cancelled) return;
-      const { offset, length } = getItemLayout(flatItems, idx);
-      const targetY = Math.max(
-        0,
-        offset - VIEW_POSITION * (VIEWPORT_HEIGHT_APPROX - length),
-      );
+      // 每次重試都讀當下最新的前綴和表：這一輪捲動又量到了一批真實行高，
+      // 估計值會逐次收斂。effect 不依賴 rowLayout，所以不會重啟計數器。
+      const { offsets, lengths } = rowLayoutRef.current;
+      const offset = offsets[idx] ?? 0;
+      const length = lengths[idx] ?? 0;
+      const viewport = treeViewportHeightRef.current || VIEWPORT_FALLBACK;
+      const targetY = Math.max(0, offset - VIEW_POSITION * (viewport - length));
       const beforeY = treeScrollOffsetRef.current;
       try {
         listRef.current?.scrollToOffset({ offset: targetY, animated: false });
@@ -532,7 +619,13 @@ export default function TaxonomyScreen() {
       if (n < MAX_ATTEMPTS) {
         setTimeout(tick, INTERVAL_MS);
       } else {
-        setPendingScrollKey(null);
+        if (__DEV__) {
+          console.warn(
+            `[scroll] gave up after ${MAX_ATTEMPTS} attempts; idx=${idx} ` +
+              `measured=${heightCacheRef.current.size}/${flatItems.length} rows`,
+          );
+        }
+        setPendingScrollTarget(null);
       }
     };
 
@@ -548,14 +641,14 @@ export default function TaxonomyScreen() {
       cancelled = true;
       clearTimeout(initial);
     };
-  }, [flatItems, pendingScrollKey, getItemLayout]);
+  }, [flatItems, pendingScrollTarget]);
 
   // ── Bug 2 (scroll position survives segment switch) ─────────────────────
   // The 'tree' segment's FlatList unmounts when user switches to 'key' or
   // 'search' (conditional ternary in render). Save the last-known scroll
   // offset in a ref (survives the unmount — TaxonomyScreen itself stays
   // mounted) and restore it the next time 'tree' becomes active. Skipped
-  // when a cross-screen jump is pending — that flow sets pendingScrollKey
+  // when a cross-screen jump is pending — that flow sets pendingScrollTarget
   // and the scroll-to-target effect above handles positioning instead.
   const treeScrollOffsetRef = useRef(0);
   const treeScrollRestoredRef = useRef(false);
@@ -566,7 +659,7 @@ export default function TaxonomyScreen() {
       return;
     }
     if (treeScrollRestoredRef.current) return;
-    if (pendingScrollKey || pendingJumpPath) return;
+    if (pendingScrollTarget || pendingJumpPath) return;
     const offset = treeScrollOffsetRef.current;
     if (offset <= 0) {
       treeScrollRestoredRef.current = true;
@@ -578,7 +671,7 @@ export default function TaxonomyScreen() {
         treeScrollRestoredRef.current = true;
       }),
     );
-  }, [segment, loading, pendingScrollKey, pendingJumpPath]);
+  }, [segment, loading, pendingScrollTarget, pendingJumpPath]);
 
   // Smart-routes to the active plot (opens abundance modal) or session.
   const handleQuickAdd = (sp: TaxonSpecies) => {
@@ -660,7 +753,9 @@ export default function TaxonomyScreen() {
                 treeScrollOffsetRef.current = e.nativeEvent.contentOffset.y;
               }}
               scrollEventThrottle={32}
-              onLayout={() => {
+              onLayout={(e) => {
+                // 真實可視高度，供捲動定位計算 viewPosition 用（取代寫死的 600）。
+                treeViewportHeightRef.current = e.nativeEvent.layout.height;
                 if (flatListMarkedRef.current.layout) return;
                 flatListMarkedRef.current.layout = true;
                 perf.measure('taxonomy:flatlist-layout', 'taxonomy:render-start');
@@ -709,10 +804,7 @@ export default function TaxonomyScreen() {
                 // once on mount + on size change; the cache is keyed by
                 // item.key so it survives re-renders of the same item.
                 const measure = (e: { nativeEvent: { layout: { height: number } } }) => {
-                  const h = Math.round(e.nativeEvent.layout.height);
-                  if (h > 0 && heightCacheRef.current.get(item.key) !== h) {
-                    heightCacheRef.current.set(item.key, h);
-                  }
+                  noteRowHeight(item.key, item.kind, Math.round(e.nativeEvent.layout.height));
                 };
                 let row: React.ReactNode;
                 if (item.kind === 'taxon') {
@@ -816,8 +908,11 @@ export default function TaxonomyScreen() {
         onClose={() => setActiveSpecies(null)}
         onAddToSession={handleAddFromSheet}
         addButtonLabel={addTargetLabel}
-        onAddLongPress={() => {
-          if (activeSpecies) promptAddDestination(activeSpecies);
+        onAddLongPress={async () => {
+          if (!activeSpecies) return;
+          // Await the chooser before dismissing: closing the sheet while the
+          // ActionSheet is being presented crashes iOS.
+          if (await promptAddDestination(activeSpecies)) setActiveSpecies(null);
         }}
       />
       {addRecordModal}

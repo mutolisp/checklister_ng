@@ -42,13 +42,9 @@ type Props = {
   onChange: (next: SpeciesAttributesDraft) => void;
   /** Default collapsed; auto-expand when any attribute already set. */
   defaultOpen?: boolean;
-  /** Restrict which attributes are offered. Omit for the taxon-driven default
-   *  (sex everywhere, lifeStage for animals, phenology for plants). Specimen
-   *  collection passes ['phenology'] — it stores 物候 only. */
-  only?: 'phenology';
-  /** Replace the collapsible header with a plain heading (or nothing when the
-   *  host already provides one). Omit to keep the collapsible behaviour. */
-  headerLabel?: string | null;
+  /** Override the collapsible header's text. The header stays collapsible
+   *  either way; omit to use 「進階（物種屬性）」. */
+  headerLabel?: string;
 };
 
 export function SpeciesAttributesBlock({
@@ -57,18 +53,14 @@ export function SpeciesAttributesBlock({
   value,
   onChange,
   defaultOpen,
-  only,
   headerLabel,
 }: Props) {
   const { t } = useTranslation();
-  const phenologyOnly = only === 'phenology';
   const initial = defaultOpen ?? hasAttributes(value);
   const [open, setOpen] = useState(initial);
 
-  // In phenology-only mode both blocks always show: a specimen's 物候 is the
-  // point of the field, not something gated on kingdom.
-  const isPlant = phenologyOnly || (kingdom || '').toLowerCase() === 'plantae';
-  const isAnimal = !phenologyOnly && (kingdom || '').toLowerCase() === 'animalia';
+  const isPlant = (kingdom || '').toLowerCase() === 'plantae';
+  const isAnimal = (kingdom || '').toLowerCase() === 'animalia';
 
   const setSingle = (key: 'sex' | 'life_stage', next: string) => {
     onChange({ ...value, [key]: value[key] === next ? null : next });
@@ -79,8 +71,8 @@ export function SpeciesAttributesBlock({
   };
 
   const filledCount =
-    (phenologyOnly || !value.sex ? 0 : 1) +
-    (phenologyOnly || !value.life_stage ? 0 : 1) +
+    (value.sex ? 1 : 0) +
+    (value.life_stage ? 1 : 0) +
     (value.reproductive_condition.length > 0 ? 1 : 0) +
     (value.leaf_phenology.length > 0 ? 1 : 0);
 
@@ -105,15 +97,13 @@ export function SpeciesAttributesBlock({
 
       {open ? (
         <View className="mt-2 gap-3">
-          {phenologyOnly ? null : (
-            <FieldRow label={t('attr.sexLabel')}>
-              <SingleChipGroup
-                options={sexOptions()}
-                value={value.sex}
-                onChange={(v) => setSingle('sex', v)}
-              />
-            </FieldRow>
-          )}
+          <FieldRow label={t('attr.sexLabel')}>
+            <SingleChipGroup
+              options={sexOptions()}
+              value={value.sex}
+              onChange={(v) => setSingle('sex', v)}
+            />
+          </FieldRow>
 
           {isAnimal ? (
             <FieldRow label={t('attr.lifeStageLabel')}>
