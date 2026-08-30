@@ -22,7 +22,12 @@ import {
   isTaxonInSession,
   type SearchResult,
 } from '~/db';
-import { parseInput, resolveBatch, type CategorizedImport } from '~/lib/batchImport';
+import {
+  parseInput,
+  resolveBatch,
+  type CategorizedImport,
+  type ParsedEntry,
+} from '~/lib/batchImport';
 import { splitVoiceInput } from '~/lib/voiceSplit';
 import { ScientificName } from './ScientificName';
 
@@ -61,16 +66,24 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
   const [step, setStep] = useState<Step>('input');
   const [inputMode, setInputMode] = useState<InputMode>('paste');
   const [text, setText] = useState('');
+  // A picked file is parsed on read and kept as entries — never poured into the
+  // TextInput (a checklist .yml is thousands of lines; rendering it in a
+  // multiline input hangs the UI, and its yml keys aren't names).
+  const [pickedFile, setPickedFile] = useState<{ name: string; entries: ParsedEntry[] } | null>(null);
   const [resolved, setResolved] = useState<CategorizedImport | null>(null);
   // For exact entries: track which to skip (default: all selected)
   const [skipExact, setSkipExact] = useState<Set<number>>(new Set());
   // For ambiguous entries: track which match was picked (or null for skip)
   const [ambiguousPicks, setAmbiguousPicks] = useState<Map<number, SearchResult | null>>(new Map());
 
+  // A picked file replaces the typed text; voice mode never uses it.
+  const usingFile = inputMode === 'paste' && pickedFile !== null;
+
   const reset = () => {
     setStep('input');
     setInputMode('paste');
     setText('');
+    setPickedFile(null);
     setResolved(null);
     setSkipExact(new Set());
     setAmbiguousPicks(new Map());
@@ -92,7 +105,12 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
       if (!asset?.uri) return;
       const file = new File(asset.uri);
       const content = await file.text();
-      setText(content);
+      const entries = parseInput(content);
+      if (entries.length === 0) {
+        Alert.alert(t('batchImport.noNames'), t('batchImport.noNamesFile'));
+        return;
+      }
+      setPickedFile({ name: asset.name || t('batchImport.pickedFileFallback'), entries });
     } catch (e) {
       Alert.alert(t('batchImport.readFail'), e instanceof Error ? e.message : String(e));
     }
@@ -100,7 +118,11 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
 
   const handlePreview = () => {
     const voice = inputMode === 'voice';
-    const names = voice ? splitVoiceInput(text) : parseInput(text);
+    const names: (string | ParsedEntry)[] = usingFile
+      ? pickedFile!.entries
+      : voice
+        ? splitVoiceInput(text)
+        : parseInput(text);
     if (names.length === 0) {
       Alert.alert(
         t('batchImport.noNames'),
@@ -222,20 +244,45 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
                 </Text>
               )}
             </View>
-            <TextInput
-              className="flex-1 px-4 py-3 text-base text-gray-900 dark:text-gray-100"
-              value={text}
-              onChangeText={setText}
-              multiline
-              autoFocus
-              placeholder={
-                inputMode === 'voice'
-                  ? t('batchImport.exampleVoice')
-                  : t('batchImport.exampleText')
-              }
-              placeholderTextColor="#9ca3af"
-              textAlignVertical="top"
-            />
+            {usingFile ? (
+              <View className="flex-1 px-4 py-4">
+                <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950 px-3 py-3">
+                  <Ionicons name="document-text-outline" size={20} color="#2563eb" />
+                  <View className="ml-2 flex-1">
+                    <Text
+                      numberOfLines={1}
+                      className="text-sm font-medium text-gray-900 dark:text-gray-100"
+                    >
+                      {pickedFile!.name}
+                    </Text>
+                    <Text className="text-xs text-gray-500 dark:text-gray-400">
+                      {t('batchImport.fileLoaded', { count: pickedFile!.entries.length })}
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => setPickedFile(null)} hitSlop={8}>
+                    <Ionicons name="close-circle" size={20} color="#9ca3af" />
+                  </Pressable>
+                </View>
+                <Text className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                  {t('batchImport.fileHint')}
+                </Text>
+              </View>
+            ) : (
+              <TextInput
+                className="flex-1 px-4 py-3 text-base text-gray-900 dark:text-gray-100"
+                value={text}
+                onChangeText={setText}
+                multiline
+                autoFocus
+                placeholder={
+                  inputMode === 'voice'
+                    ? t('batchImport.exampleVoice')
+                    : t('batchImport.exampleText')
+                }
+                placeholderTextColor="#9ca3af"
+                textAlignVertical="top"
+              />
+            )}
           </KeyboardAvoidingView>
         ) : (
           <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
