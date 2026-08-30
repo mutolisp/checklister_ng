@@ -91,6 +91,10 @@ type SettingsValues = {
    *  be resumed on a fresh install. The actual next number is
    *  max(highest stored + 1, this). */
   collection_number_start: number;
+  /** Zero-pad width for the numeric part of the collection number, e.g. 4 →
+   *  'CTL-0001'. 0 disables padding. Only affects numbers generated from now
+   *  on — already-issued numbers are physical labels and are never rewritten. */
+  collection_number_pad: number;
   /** Recently opened identification key ids (most-recent first, capped 10). */
   key_recent_ids: number[];
   /** Per-key runner state, keyed by `String(keyId)`. Only kept for keys in
@@ -134,6 +138,7 @@ const DEFAULTS: SettingsValues = {
   record_type_default: 'ask',
   collection_number_prefix: '',
   collection_number_start: 1,
+  collection_number_pad: 4,
   key_recent_ids: [],
   key_runner_states: {},
   ai_geomodel_filter: true,
@@ -216,6 +221,12 @@ function readAll(): SettingsValues {
       map.get('collection_number_prefix') ?? DEFAULTS.collection_number_prefix,
     collection_number_start:
       Number(map.get('collection_number_start')) || DEFAULTS.collection_number_start,
+    // 0 是合法值（不補零），所以不能用 or-fallback —— 那會把 0 換成預設的 4。
+    collection_number_pad: (() => {
+      const raw = map.get('collection_number_pad');
+      const n = Math.floor(Number(raw));
+      return raw != null && Number.isFinite(n) && n >= 0 ? n : DEFAULTS.collection_number_pad;
+    })(),
     key_recent_ids: keyRecentIds,
     key_runner_states: keyRunnerStates,
     ai_geomodel_filter:

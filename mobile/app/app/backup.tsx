@@ -1,12 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { showActionSheet } from '~/components/ActionSheet';
-import { createBackup, createPhotoBackup, restoreBackup } from '~/lib/backup';
+import {
+  createBackup,
+  createPhotoBackup,
+  deleteSafetyBackup,
+  restoreBackup,
+  restoreSafetyBackup,
+} from '~/lib/backup';
+import { listSafetyBackups } from '~/db';
 import type { ExportFile } from '~/lib/bundleExport';
 
 type Busy = null | 'backup' | 'photos' | 'restore';
@@ -15,6 +22,46 @@ export default function BackupScreen() {
   const { t } = useTranslation();
   const [busy, setBusy] = useState<Busy>(null);
   const [progress, setProgress] = useState('');
+
+  // 自動安全備份：cleanup.ts 在執行會改寫既有列的修復前留下的快照。
+  // 它們寫在 app 私有目錄，DocumentPicker 看不到，所以必須由這一頁提供入口，
+  // 否則備份存在卻無法還原，等於只做一半。
+  const [safety, setSafety] = useState<{ name: string; uri: string; size: number }[]>([]);
+  const refreshSafety = useCallback(() => setSafety(listSafetyBackups()), []);
+  useEffect(refreshSafety, [refreshSafety]);
+
+  const handleRestoreSafety = (name: string) => {
+    Alert.alert(t('backup.safetyRestoreConfirmTitle'), t('backup.safetyRestoreConfirmMsg', { name }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('backup.restore'),
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            setBusy('restore');
+            await restoreSafetyBackup(name);
+          } catch (e) {
+            setBusy(null);
+            Alert.alert(t('backup.restoreFailed'), e instanceof Error ? e.message : String(e));
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteSafety = (name: string) => {
+    Alert.alert(t('backup.safetyDeleteConfirmTitle'), t('backup.safetyDeleteConfirmMsg', { name }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.delete'),
+        style: 'destructive',
+        onPress: () => {
+          deleteSafetyBackup(name);
+          refreshSafety();
+        },
+      },
+    ]);
+  };
 
   const share = async (file: ExportFile) => {
     if (!(await Sharing.isAvailableAsync())) {
@@ -128,6 +175,48 @@ export default function BackupScreen() {
             destructive
           />
         </Section>
+
+        {safety.length > 0 ? (
+          <Section
+            icon="shield-checkmark-outline"
+            title={t('backup.safetyTitle')}
+            desc={t('backup.safetyDesc')}
+          >
+            {safety.map((f) => (
+              <View
+                key={f.name}
+                className="mt-2 flex-row items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
+              >
+                <View className="flex-1 pr-2">
+                  <Text className="text-sm text-gray-900 dark:text-gray-100" numberOfLines={1}>
+                    {f.name.replace(/^safety-backup-|\.db$/g, '')}
+                  </Text>
+                  <Text className="text-xs text-gray-500 dark:text-gray-400">
+                    {(f.size / 1024).toFixed(0)} KB
+                  </Text>
+                </View>
+                <Pressable
+                  onPress={() => handleRestoreSafety(f.name)}
+                  disabled={busy !== null}
+                  hitSlop={8}
+                  className="mr-3 active:opacity-60"
+                >
+                  <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                    {t('backup.restore')}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleDeleteSafety(f.name)}
+                  disabled={busy !== null}
+                  hitSlop={8}
+                  className="active:opacity-60"
+                >
+                  <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                </Pressable>
+              </View>
+            ))}
+          </Section>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );

@@ -85,7 +85,8 @@ export function listCollectionTrips(): CollectionTripWithStats[] {
            p.name AS project_name,
            (SELECT COUNT(*) FROM collection_specimens s WHERE s.trip_id = c.id) AS specimen_count
     FROM collection_trips c
-    JOIN projects p ON p.id = c.project_id
+    -- LEFT JOIN，理由同 listSites / listPlotSurveysWithMeta。
+    LEFT JOIN projects p ON p.id = c.project_id
     ORDER BY c.started_at DESC
   `);
   return ((res.rows ?? []) as unknown) as CollectionTripWithStats[];
@@ -184,6 +185,12 @@ export function updateCollectionTrip(id: number, patch: Partial<CollectionTrip>)
 
 export function deleteCollectionTrip(id: number): void {
   const db = getUserDb();
+  // ON DELETE CASCADE 在這個 app 是失效的：PRAGMA foreign_keys 從未在連線開啟時
+  // 設定，而 op-sqlite 沒有定義 SQLITE_DEFAULT_FOREIGN_KEYS，所以 SQLite 走預設的
+  // OFF。子列必須自己刪，否則會變成看不見卻仍佔用編號的孤兒列。
+  // 採集標本尤其要緊：殘留的列仍會被 maxRecordNumberSeq() 與 isRecordNumberTaken()
+  // 算進去，導致採集號一直往上跳、也無法重設回來。
+  db.executeSync(`DELETE FROM collection_specimens WHERE trip_id = ?`, [id]);
   db.executeSync(`DELETE FROM collection_trips WHERE id = ?`, [id]);
 }
 
@@ -262,18 +269,37 @@ const MAX_NUMBER_SCAN = 10000;
  * duplicate, import) is collision-free by construction — a hand-typed number is
  * the only way to create a duplicate, and that path warns.
  */
-export function nextRecordNumber(): { text: string; seq: number } {
+/** 目前資料庫中最大的採集序號；尚無記錄時回傳 0。 */
+export function maxRecordNumberSeq(): number {
   const db = getUserDb();
   const res = db.executeSync(`SELECT MAX(record_number_seq) AS m FROM collection_specimens`);
-  const maxSeq = Number((res.rows?.[0] as { m?: number | null })?.m ?? 0);
-  const start = Number(readSetting('collection_number_start') ?? '1') || 1;
+  return Number((res.rows?.[0] as { m?: number | null })?.m ?? 0);
+}
+
+/**
+ * 依目前的前綴與補零設定，把序號格式化成完整採集號。
+ *
+ * 補零位數 0 是合法值（不補零），所以不能用 or-fallback 取預設值 —— 那會把
+ * 使用者刻意設的 0 換成 4。位數不足時 padStart 是 no-op，序號超過設定位數
+ * 會自然變長而不會被截斷。
+ */
+export function formatRecordNumber(seq: number): string {
   const prefix = readSetting('collection_number_prefix') ?? '';
+  const rawPad = readSetting('collection_number_pad');
+  const padNum = Math.floor(Number(rawPad));
+  const pad = rawPad != null && Number.isFinite(padNum) && padNum >= 0 ? padNum : 4;
+  return `${prefix}${String(seq).padStart(pad, '0')}`;
+}
+
+export function nextRecordNumber(): { text: string; seq: number } {
+  const maxSeq = maxRecordNumberSeq();
+  const start = Number(readSetting('collection_number_start') ?? '1') || 1;
 
   let seq = Math.max(maxSeq + 1, start);
-  for (let i = 0; i < MAX_NUMBER_SCAN && isRecordNumberTaken(`${prefix}${seq}`); i++) {
+  for (let i = 0; i < MAX_NUMBER_SCAN && isRecordNumberTaken(formatRecordNumber(seq)); i++) {
     seq += 1;
   }
-  return { text: `${prefix}${seq}`, seq };
+  return { text: formatRecordNumber(seq), seq };
 }
 
 // ───────────────────────────── specimens ─────────────────────────────

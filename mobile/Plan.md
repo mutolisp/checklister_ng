@@ -1375,7 +1375,7 @@ wamei 只收維管束植物且無保育／來源屬性，純取代會靜默丟�
 
 ### 仍待處理
 
-- [ ] **重建 app**：bundle asset 已換（**161MB**）＋ 續 2 的原生模組 `@react-native-community/datetimepicker`，兩者都要重 build 才會進裝置
+- [x] **重建 app**：已完成，0.4.1 (6) 已 archive 並上傳 App Store Connect（bundle asset 161MB ＋ 續 2 的原生模組 `@react-native-community/datetimepicker`）
 - [ ] 桌面前端還沒跟上表名 —— 桌面目前**沒有**日本區功能（`grep -r ylist frontend/src` 無命中），所以不影響；日後做跨區時直接用 `jp_names`
 - [ ] 未來 wamei 出新版時：`jp_import` 可直接重跑（會自動偵測來源表叫 `ylist_names` 還是 `jp_names`），但重跑後**必須重驗 taxon_id 全保留**
 
@@ -1383,7 +1383,7 @@ wamei 只收維管束植物且無保育／來源屬性，純取代會靜默丟�
 
 ## Sprint：精確俗名優先 + 分類樹定位（2026-08-29 續 6）
 
-已 ship（定位部分待實機驗證）。完整脈絡見 `Update_log.md`。
+已 ship，**使用者實機確認正常**。完整脈絡見 `Update_log.md`。
 
 ### 搜尋排序
 
@@ -1397,9 +1397,89 @@ wamei 只收維管束植物且無保育／來源屬性，純取代會靜默丟�
 
 > **不變式：`getItemLayout` 必須對 `(data, index)` 純粹。** 不要在裡面讀任何會被 `onLayout` 改動的 ref —— 那正是這個 bug 反覆出現的原因。新增 row kind 時，改的是 `rowLayout` 這個 memo，不是 `getItemLayout` 本身。
 
-### 待驗證（實機）
+### 但真正的症狀是目標節點錯了（第一輪沒抓到）
 
-- [ ] 分類樹搜尋「櫸」→ 點結果 → 目標節點應落在畫面上緣約 ¼ 處
-- [ ] **關鍵回歸情境**：先大量展開（Lepidoptera → Erebidae，使 `flatItems` 上千）再定位，仍須準確 —— 這正是舊版會歪掉的情境
-- [ ] 定位失敗一次後，切換 segment 的捲動還原仍正常
-- [ ] 主搜尋與分類樹搜尋各打 芒／櫸／カンスゲ／蓮／蕨／梅／貓，第一筆都要是精確那筆
+上面那些修完，使用者回報**還是壞的**：「カンスゲ只會顯示 Carex 的前面幾個」。
+
+捲動一直是準的，錯的是**目標**：`RANK_ORDER` 只到 genus，所以搜尋命中給的 `path` 最深只到屬，`expandToPath` 就把目標設成屬節點。而 `jp_names` 的 **Carex 有 550 種、カンスゲ 排第 300** —— 停在屬節點當然只看得到前面幾個。
+
+種階層命中時目標改成那一列物種，屬節點降為備援。**比對用學名不能用 taxon_id**：日本區開啟時 `getSpeciesUnder` 會把 TW/JP 共有種收合成一列並保留 TaiCOL 的 `t…` id（全域 5,969 種、光 Carex 屬下就 82 種），JP 命中帶的 `y…` 對不上。收合本身就是用 `normalizeSci(simple_name)` 做的，學名才是共同鍵。
+
+> **教訓：捲動類 bug 要分開驗證「捲動數學」與「捲動目標」。** 第一輪只驗了前者，所以修的都是真的（列數多時偏移確實會累積），但沒碰到使用者實際遇到的問題。
+
+### 驗證（已完成）
+
+- [x] 分類樹搜尋 櫸／カンスゲ → 點結果 → 正確定位到該物種（使用者實機確認）
+- [x] 主搜尋與分類樹搜尋：芒／櫸／カンスゲ／蓮／蕨／梅／貓 第一筆都是精確那筆（47 個單字俗名全掃驗證）
+
+---
+
+## Sprint：採集日期／時間拆成兩欄（2026-08-29 續 7）
+
+已 ship。詳見 `Update_log.md`。
+
+`SpecimenDetailSheet` 的「採集日期時間」拆成**採集日期**＋**採集時間**兩欄，**底層仍是同一個 `collected_at` timestamp，沒有 migration**。`DateTimeField` 加 `mode?: 'date' | 'time' | 'datetime'`（預設 `datetime`，既有呼叫者不受影響），各欄只用 `mergePart()` 改自己那一半。
+
+Android 端順帶簡化：單一模式只開一個系統對話框，只有 `datetime` 才需要原本的兩段串接。
+
+**匯出未動**：`bundleExport` 仍輸出合併的 `eventDate`（DwC 的 `eventDate` 本就可帶完整 ISO 日期時間）。要拆成 `eventDate` + `eventTime` 的話，匯出與樣區匯入的 round-trip 兩邊都要改 —— 尚未決定要不要做。
+
+---
+
+## 發布筆記：archive 上傳的 dSYM 警告（常態，不用處理）
+
+上傳到 App Store Connect 時會出現三則 **「Upload Symbols Failed」**（`React.framework` / `ReactNativeDependencies.framework` / `hermes.framework`）。
+
+**這不是失敗**——對話框標題是「Upload completed with **warnings**」，build 本身已經上傳成功。
+
+成因：`ios/Podfile:17-18` 因 `newArchEnabled: true` 且未設 `ios.buildReactNativeFromSource`，自動開啟 `RCT_USE_RN_DEP=1` 與 `RCT_USE_PREBUILT_RNCORE=1`，改用 Meta 預編的 XCFramework。實際翻過那些檔案，預編二進位就是不附 dSYM（三者皆為 0 個）。自己的程式碼 dSYM 正常產生（專案沒覆寫 `DEBUG_INFORMATION_FORMAT`，Release 走預設 `dwarf-with-dsym`）。
+
+影響：僅 crash report 中落在 React／Hermes 內部的 frame 不會符號化，自家 native 與 JS 堆疊照常。
+
+若哪天真的需要完整符號化：`ios/Podfile.properties.json` 加 `"ios.buildReactNativeFromSource": "true"` 再 `pod install`，代價是編譯時間從幾分鐘變幾十分鐘。**目前決定維持現狀。**
+
+---
+
+## Sprint：技術債清理（2026-08-30）
+
+已 ship。完整脈絡見 `Update_log.md`。範圍是「只修現在就會壞的」+「資料完整性」。
+
+用使用者真實的 `user.db`（917 列 / 16 張表）驗證：**逐表零變動、657 筆 occurrence_id 逐列相同、`foreign_key_check` 0 筆違規**。
+
+### 修掉的
+
+| 項目 | 症狀 |
+|---|---|
+| `clearAllUserData` 只 DROP 8/16 張表 | 清除後資料還在 → v6 拋 `duplicate column name` → **下次開機永久停在紅色錯誤畫面，且該畫面沒有路徑走到還原** |
+| `deleteProject` 漏 `sites` / `collection_trips` | 刪計畫後樣點與採集記錄**從清單消失但資料還在**（內連接）|
+| `PRAGMA foreign_keys` 從未開啟 | schema 裡每個 `ON DELETE CASCADE` 都是失效的 |
+| 4 個 i18n key 缺失 | 長按選單顯示原始字串 `favorites.add` |
+| 兩份 `Math.random` UUID | DwC occurrenceID 用非密碼學 PRNG |
+| 匯入路徑 | 覆寫留孤兒；「另存新檔」沿用來源 occurrence_id 保證重複 |
+| `useZoologicalFormat` 命名 | 全專案唯一的 lint error |
+
+### 三條必須記住的不變式
+
+> **1. `ADD COLUMN` 一律走 `addColumnIfMissing()`。** migrations.ts 內 30 處已全部改用。裸 `ADD COLUMN` 讓任何重跑（清除資料、crash 中途）都會炸掉。
+>
+> **2. FK 的開關順序不能動：migration OFF → cleanup OFF → 之後才 ON。** migration 期間開著，還原舊版備份時 v3 的 `RENAME` 具破壞性；cleanup 期間開著，待修復的懸空參照會拋錯而不是被治好。
+>
+> **3. 刪除容器一律手動刪子列。** 即使現在 FK 開了，`deletePlotSurvey` / `deleteSession` / `deleteCollectionTrip` / 覆寫匯入仍保留手動刪除——不倚賴 cascade，因為 migration 與 cleanup 期間 FK 是關的。
+
+### 新增的防線
+
+- **`npm run check:i18n`**（833 keys，兩份 locale 結構同步）——已回歸測試
+- 設定頁「**資料檢查**」：唯讀盤點重複 occurrenceID／孤兒列／懸空 project_id，**不修改任何東西**
+- **自動安全備份**：修復前 `VACUUM INTO` 快照 + 備份頁的還原入口（沒有入口等於備份無法還原）
+
+### 刻意不做
+
+- 不 dedupe 舊的 `occurrence_id`、不建 unique index（使用者決定）：那是對外發布的識別碼，重新配號會與已交付的匯出檔對不起來。改為提供檢查工具讓使用者看數字自己決定。
+- 不加 `expo-crypto`（原生模組，會逼出另一次原生重建）；改用 SQLite `randomblob`，與 v16 backfill 同源。
+
+### 仍未處理
+
+- [ ] **FK 開啟尚未實機驗證** —— 本批風險最高的一項
+- [ ] 重複的 taxon 解析（`records.ts` / `plots.ts` 各一份，`taxonLookup.ts` 才是共用實作，目前只有 `collections.ts` 在用）。`plots.ts` 那份與共用版完全等價、可直接替換
+- [ ] 零測試框架（`find . -name '*.test.ts*'` 是空的）——目前只靠 `check:dock` / `check:i18n` 兩支靜態檢查
+- [ ] `plot_species_records.subplot_id` 沒宣告 FK，開了 FK 也保護不到

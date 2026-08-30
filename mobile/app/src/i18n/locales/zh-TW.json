@@ -37,7 +37,12 @@
     "searchPlaceholder": "在常用名錄內搜尋...",
     "empty": "尚無常用名錄。用下方搜尋框加入,或在物種詳細 / 分類樹 / 記錄中長按加入。",
     "noMatch": "沒有符合的項目",
-    "added": "已加入常用名錄：{{name}}"
+    "added": "已加入常用名錄",
+    "add": "加入常用名錄",
+    "remove": "移除常用名錄",
+    "removed": "已從常用名錄移除",
+    "addFail": "無法加入常用名錄",
+    "addedNamed": "已加入常用名錄：{{name}}"
   },
   "gps": {
     "permTitle": "需要定位權限",
@@ -456,7 +461,25 @@
     "clearFailed": "清除失敗：{{error}}",
     "sectionCollection": "標本採集",
     "numberPrefixPlaceholder": "例：CTL-",
-    "collectionNumberDesc": "下一個採集號：{{next}}。編號從資料庫中最大的號碼推算，刪除或匯入標本都不會讓號碼跑掉。"
+    "collectionNumberDesc": "下一個採集號：{{next}}。編號從資料庫中最大的號碼推算，刪除或匯入標本都不會讓號碼跑掉。",
+    "setNextNumberTitle": "設定下一個採集號",
+    "setNextNumberMsg": "資料庫目前最大採集號為 {{max}}，下一個會是 {{next}}。\n輸入新的採集號以強制指定。",
+    "setNextNumberMsgEmpty": "目前尚無採集記錄，下一個會是 {{next}}。\n輸入新的採集號以強制指定。",
+    "setNextNumberInvalid": "請輸入大於 0 的整數",
+    "setNextNumberTooLowTitle": "無法往回設定",
+    "setNextNumberTooLowMsg": "採集號只會往前。資料庫已有 {{max}}，設為 {{value}} 不會生效，下一個仍是 {{next}}。",
+    "setNextNumberConfirmTitle": "確定重設採集號？",
+    "setNextNumberConfirmMsg": "之後建立的採集記錄將從 {{value}} 開始。已建立的記錄不受影響。",
+    "setNextNumberDone": "下一個採集號已設為 {{value}}",
+    "integrityCheck": "資料檢查",
+    "integrityDesc": "唯讀盤點重複識別碼與孤兒資料，不會修改任何東西",
+    "integrityTitle": "資料檢查結果",
+    "integrityClean": "沒有發現問題。",
+    "integrityDup": "{{table}}：{{groups}} 組重複 occurrenceID（共 {{rows}} 筆）",
+    "integrityOrphan": "{{table}}：{{n}} 筆孤兒資料",
+    "integrityProject": "{{table}}：{{n}} 筆指向已刪除的計畫",
+    "integrityFk": "外鍵違規 {{n}} 筆",
+    "integrityFailed": "資料檢查失敗：{{error}}"
   },
   "taxonomy": {
     "loadingTree": "載入分類樹...",
@@ -503,7 +526,14 @@
     "invalidFile": "這不是有效的備份檔（缺少 user.db 或 manifest.json）",
     "corrupt": "備份檔損毀（manifest.json 無法解析）",
     "notChecklister": "這不是 Checklister 的備份檔",
-    "tooNew": "此備份由較新版本的 app 建立（資料結構 v{{version}}），請先更新 app 再回復。"
+    "tooNew": "此備份由較新版本的 app 建立（資料結構 v{{version}}），請先更新 app 再回復。",
+    "safetyTitle": "自動安全備份",
+    "safetyDesc": "App 在修復資料前自動建立的快照。確認資料無誤後可以刪除。",
+    "restore": "還原",
+    "safetyRestoreConfirmTitle": "還原安全備份？",
+    "safetyRestoreConfirmMsg": "目前的資料會被 {{name}} 取代，App 會重新啟動。此動作無法復原。",
+    "safetyDeleteConfirmTitle": "刪除安全備份？",
+    "safetyDeleteConfirmMsg": "將永久刪除 {{name}}。"
   },
   "about": {
     "subtitle": "次世代名錄產生器",
@@ -968,7 +998,8 @@
     "deleteTitle": "刪除標本",
     "deleteMsg": "確定要刪除 {{number}} 這份標本記錄嗎？",
     "numberPrefix": "採集號前綴",
-    "numberStart": "採集號起始",
+    "numberStart": "下一個採集號",
+    "numberPad": "採集號位數（補零）",
     "renameTitle": "重新命名採集記錄",
     "duplicate": "複製",
     "duplicated": "已複製為 {{number}}：{{name}}",

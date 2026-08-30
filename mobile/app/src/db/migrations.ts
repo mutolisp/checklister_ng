@@ -142,7 +142,7 @@ const MIGRATIONS: Migration[] = [
     // Most sessions will have NULL site_id; site capture is opt-in.
     version: 4,
     up: (db) => {
-      db.executeSync(`ALTER TABLE sessions ADD COLUMN site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL;`);
+      addColumnIfMissing(db, `ALTER TABLE sessions ADD COLUMN site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL;`);
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_sessions_site ON sessions(site_id);`);
     },
   },
@@ -238,8 +238,8 @@ const MIGRATIONS: Migration[] = [
     //     SQLite 不支援 ALTER CHECK，因此 rename+create+copy 重建表。
     version: 6,
     up: (db) => {
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN plot_type TEXT NOT NULL DEFAULT 'fixed';`);
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN track_geojson TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN plot_type TEXT NOT NULL DEFAULT 'fixed';`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN track_geojson TEXT;`);
 
       db.executeSync(`ALTER TABLE plot_species_records RENAME TO plot_species_records_old;`);
       db.executeSync(`
@@ -277,8 +277,7 @@ const MIGRATIONS: Migration[] = [
     //     由 code 層處理；DB schema 不變（TEXT GeoJSON）。
     version: 7,
     up: (db) => {
-      db.executeSync(
-        `ALTER TABLE plot_surveys ADD COLUMN track_finalized INTEGER NOT NULL DEFAULT 0;`,
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN track_finalized INTEGER NOT NULL DEFAULT 0;`,
       );
     },
   },
@@ -292,10 +291,10 @@ const MIGRATIONS: Migration[] = [
     version: 8,
     up: (db) => {
       for (const tbl of ['checklist_records', 'plot_species_records']) {
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN sex TEXT;`);
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN life_stage TEXT;`);
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN reproductive_condition TEXT;`);
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN leaf_phenology TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN sex TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN life_stage TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN reproductive_condition TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN leaf_phenology TEXT;`);
       }
     },
   },
@@ -310,8 +309,8 @@ const MIGRATIONS: Migration[] = [
     version: 9,
     up: (db) => {
       for (const tbl of ['checklist_records', 'plot_species_records']) {
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN organism_quantity TEXT;`);
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN organism_quantity_type TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN organism_quantity TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN organism_quantity_type TEXT;`);
       }
       // Migrate plot_species_records (only this table has the legacy abundance
       // columns; checklist_records never carried abundance data).
@@ -342,7 +341,7 @@ const MIGRATIONS: Migration[] = [
     // to land it in we were dropping it on the floor.
     version: 10,
     up: (db) => {
-      db.executeSync(`ALTER TABLE checklist_records ADD COLUMN accuracy REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE checklist_records ADD COLUMN accuracy REAL;`);
     },
   },
   {
@@ -355,8 +354,8 @@ const MIGRATIONS: Migration[] = [
     // ACTIVE session has genuinely been idle/running too long.
     version: 11,
     up: (db) => {
-      db.executeSync(`ALTER TABLE sessions ADD COLUMN resumed_at INTEGER;`);
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN resumed_at INTEGER;`);
+      addColumnIfMissing(db, `ALTER TABLE sessions ADD COLUMN resumed_at INTEGER;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN resumed_at INTEGER;`);
     },
   },
   {
@@ -397,10 +396,9 @@ const MIGRATIONS: Migration[] = [
       // layer_count default 4 = existing plots keep 4 layers (E1-E4). User can
       // bump to 6 via the env tab; lowered count just hides the trailing
       // layers in UI, the data stays for safety.
-      db.executeSync(
-        `ALTER TABLE plot_surveys ADD COLUMN layer_count INTEGER NOT NULL DEFAULT 4 CHECK (layer_count BETWEEN 1 AND 6);`,
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN layer_count INTEGER NOT NULL DEFAULT 4 CHECK (layer_count BETWEEN 1 AND 6);`,
       );
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN env_photos_json TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN env_photos_json TEXT;`);
 
       // Backfill: every existing FIXED plot gets 4 layer rows from its
       // e0_*..e3_* columns (transect plots have no layer concept).
@@ -491,11 +489,11 @@ const MIGRATIONS: Migration[] = [
     // runUserMigrations is the existing self-heal.
     version: 13,
     up: (db) => {
-      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN lat REAL;`);
-      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN lng REAL;`);
-      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN accuracy REAL;`);
-      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN detection_type TEXT;`);
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN point_radius_m REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_species_records ADD COLUMN lat REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_species_records ADD COLUMN lng REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_species_records ADD COLUMN accuracy REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_species_records ADD COLUMN detection_type TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN point_radius_m REAL;`);
     },
   },
   {
@@ -536,7 +534,7 @@ const MIGRATIONS: Migration[] = [
           created_at INTEGER NOT NULL
         );
       `);
-      db.executeSync(`ALTER TABLE sessions ADD COLUMN recorded_by TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE sessions ADD COLUMN recorded_by TEXT;`);
     },
   },
   {
@@ -554,7 +552,7 @@ const MIGRATIONS: Migration[] = [
         hex(randomblob(6))
       )`;
       for (const tbl of ['checklist_records', 'plot_species_records']) {
-        db.executeSync(`ALTER TABLE ${tbl} ADD COLUMN occurrence_id TEXT;`);
+        addColumnIfMissing(db, `ALTER TABLE ${tbl} ADD COLUMN occurrence_id TEXT;`);
         db.executeSync(
           `UPDATE ${tbl} SET occurrence_id = ${uuidExpr} WHERE occurrence_id IS NULL;`,
         );
@@ -567,8 +565,7 @@ const MIGRATIONS: Migration[] = [
     // env tab and which column name + value the export emits.
     version: 17,
     up: (db) => {
-      db.executeSync(
-        `ALTER TABLE plot_survey_layers ADD COLUMN height_unit TEXT NOT NULL DEFAULT 'cm';`,
+      addColumnIfMissing(db, `ALTER TABLE plot_survey_layers ADD COLUMN height_unit TEXT NOT NULL DEFAULT 'cm';`,
       );
     },
   },
@@ -610,7 +607,7 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_subplot_layers_subplot ON subplot_layers(subplot_id);`,
       );
-      db.executeSync(`ALTER TABLE plot_species_records ADD COLUMN subplot_id INTEGER;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_species_records ADD COLUMN subplot_id INTEGER;`);
       db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_plot_records_subplot ON plot_species_records(subplot_id);`,
       );
@@ -694,8 +691,8 @@ const MIGRATIONS: Migration[] = [
     // "duplicate column" (see the v13 note; deliberately not changed here).
     version: 20,
     up: (db) => {
-      db.executeSync(`ALTER TABLE collection_specimens ADD COLUMN sex TEXT;`);
-      db.executeSync(`ALTER TABLE collection_specimens ADD COLUMN life_stage TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE collection_specimens ADD COLUMN sex TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE collection_specimens ADD COLUMN life_stage TEXT;`);
     },
   },
   {
@@ -710,9 +707,9 @@ const MIGRATIONS: Migration[] = [
     // a crash mid-way re-runs all three and ADD COLUMN throws duplicate column).
     version: 21,
     up: (db) => {
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN vascular_cover_pct REAL;`);
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN bryophyte_cover_pct REAL;`);
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN lichen_cover_pct REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN vascular_cover_pct REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN bryophyte_cover_pct REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN lichen_cover_pct REAL;`);
     },
   },
   {
@@ -721,7 +718,7 @@ const MIGRATIONS: Migration[] = [
     // (rock / gravel / bareland) that has been there since v5.
     version: 22,
     up: (db) => {
-      db.executeSync(`ALTER TABLE plot_surveys ADD COLUMN litter_cover_pct REAL;`);
+      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN litter_cover_pct REAL;`);
     },
   },
 ];
@@ -729,6 +726,39 @@ const MIGRATIONS: Migration[] = [
 /** Highest schema version this build knows how to produce. Backup/restore uses
  *  it to refuse a backup made by a newer app (whose schema this build can't
  *  satisfy). */
+/** Column names of `table`; empty when the table does not exist. */
+function columnsOf(db: DB, table: string): Set<string> {
+  // PRAGMA cannot be parameterised; the table name always comes from our own
+  // SQL literals in this file, never from user input.
+  const res = db.executeSync(`PRAGMA table_info(${table});`);
+  return new Set(
+    ((res.rows ?? []) as { name?: string }[]).map((r) => String(r.name ?? '')),
+  );
+}
+
+/**
+ * Re-runnable `ALTER TABLE … ADD COLUMN`.
+ *
+ * Every ADD COLUMN in this file used to be bare, so replaying a migration
+ * against a table that already had the column threw `duplicate column name`.
+ * That is not hypothetical: the old `clearAllUserData` dropped only some
+ * tables and then replayed from v1, dying at v6 on `plot_type` and leaving a
+ * DB that bricked the app on next launch. The v13 / v20 / v21 comments in this
+ * file already flag the same hazard for a crash mid-migration.
+ *
+ * Skipping when the column exists makes every migration idempotent, which is
+ * what lets a half-applied schema heal itself on the next run.
+ */
+function addColumnIfMissing(db: DB, sql: string): void {
+  const m = sql.match(/ALTER\s+TABLE\s+"?(\w+)"?\s+ADD\s+COLUMN\s+"?(\w+)"?/i);
+  if (!m) {
+    db.executeSync(sql);
+    return;
+  }
+  if (columnsOf(db, m[1]).has(m[2])) return;
+  db.executeSync(sql);
+}
+
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
 
 export async function runUserMigrations(db: DB): Promise<void> {

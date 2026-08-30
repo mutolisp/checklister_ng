@@ -6,7 +6,7 @@
  * Mirrors backend/api/formatter.py.
  */
 
-function useZoologicalFormat(nomenclatureName: string, kingdom: string): boolean {
+function isZoologicalFormat(nomenclatureName: string, kingdom: string): boolean {
   if (nomenclatureName) return nomenclatureName.toUpperCase() === 'ICZN';
   return (kingdom || '') === 'Animalia';
 }
@@ -60,6 +60,6 @@ export function formatScientificNameMarkdown(
 ): string {
   const trimmed = fullname.trim();
   if (!trimmed) return fullname;
-  if (useZoologicalFormat(nomenclatureName, kingdom)) return formatAnimal(trimmed);
+  if (isZoologicalFormat(nomenclatureName, kingdom)) return formatAnimal(trimmed);
   return formatBotanical(trimmed);
 }

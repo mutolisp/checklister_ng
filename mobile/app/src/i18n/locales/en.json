@@ -37,7 +37,12 @@
     "searchPlaceholder": "Search within favorites...",
     "empty": "No favorites yet. Add via the search box below, or long-press in species details / taxonomy tree / records.",
     "noMatch": "No matching items",
-    "added": "Added to favorites: {{name}}"
+    "added": "Added to favourites",
+    "add": "Add to favourites",
+    "remove": "Remove from favourites",
+    "removed": "Removed from favourites",
+    "addFail": "Could not add to favourites",
+    "addedNamed": "Added to favourites: {{name}}"
   },
   "gps": {
     "permTitle": "Location permission needed",
@@ -456,7 +461,25 @@
     "clearFailed": "Clear failed: {{error}}",
     "sectionCollection": "Specimen collection",
     "numberPrefixPlaceholder": "e.g. CTL-",
-    "collectionNumberDesc": "Next collection number: {{next}}. Derived from the highest number stored, so deleting or importing specimens never drifts the series."
+    "collectionNumberDesc": "Next collection number: {{next}}. Derived from the highest number stored, so deleting or importing specimens never drifts the series.",
+    "setNextNumberTitle": "Set next collection number",
+    "setNextNumberMsg": "The highest number on record is {{max}}; the next would be {{next}}.\nEnter a new number to override.",
+    "setNextNumberMsgEmpty": "No specimens recorded yet; the next would be {{next}}.\nEnter a new number to override.",
+    "setNextNumberInvalid": "Enter a whole number greater than 0",
+    "setNextNumberTooLowTitle": "Cannot go backwards",
+    "setNextNumberTooLowMsg": "Collection numbers only move forward. {{max}} already exists, so {{value}} has no effect — the next is still {{next}}.",
+    "setNextNumberConfirmTitle": "Reset collection number?",
+    "setNextNumberConfirmMsg": "Specimens created from now on will start at {{value}}. Existing records are unchanged.",
+    "setNextNumberDone": "Next collection number set to {{value}}",
+    "integrityCheck": "Data check",
+    "integrityDesc": "Read-only scan for duplicate identifiers and orphaned rows; changes nothing",
+    "integrityTitle": "Data check results",
+    "integrityClean": "No problems found.",
+    "integrityDup": "{{table}}: {{groups}} duplicate occurrenceID group(s), {{rows}} row(s)",
+    "integrityOrphan": "{{table}}: {{n}} orphaned row(s)",
+    "integrityProject": "{{table}}: {{n}} row(s) pointing at a deleted project",
+    "integrityFk": "{{n}} foreign-key violation(s)",
+    "integrityFailed": "Data check failed: {{error}}"
   },
   "taxonomy": {
     "loadingTree": "Loading taxonomy tree...",
@@ -503,7 +526,14 @@
     "invalidFile": "Not a valid backup file (missing user.db or manifest.json)",
     "corrupt": "Backup file corrupt (manifest.json unparseable)",
     "notChecklister": "Not a Checklister backup file",
-    "tooNew": "This backup was made by a newer app (schema v{{version}}); please update the app before restoring."
+    "tooNew": "This backup was made by a newer app (schema v{{version}}); please update the app before restoring.",
+    "safetyTitle": "Automatic safety backups",
+    "safetyDesc": "Snapshots the app took before repairing data. Safe to delete once you have checked your data.",
+    "restore": "Restore",
+    "safetyRestoreConfirmTitle": "Restore safety backup?",
+    "safetyRestoreConfirmMsg": "Your current data will be replaced by {{name}} and the app will restart. This cannot be undone.",
+    "safetyDeleteConfirmTitle": "Delete safety backup?",
+    "safetyDeleteConfirmMsg": "{{name}} will be permanently deleted."
   },
   "about": {
     "subtitle": "Next-gen checklist generator",
@@ -968,7 +998,8 @@
     "deleteTitle": "Delete specimen",
     "deleteMsg": "Delete specimen {{number}}?",
     "numberPrefix": "Number prefix",
-    "numberStart": "Starting number",
+    "numberStart": "Next collection number",
+    "numberPad": "Number width (zero-pad)",
     "renameTitle": "Rename collection",
     "duplicate": "Duplicate",
     "duplicated": "Duplicated as {{number}}: {{name}}",

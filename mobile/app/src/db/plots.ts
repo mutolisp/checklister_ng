@@ -1,3 +1,4 @@
+import { generateUuid } from './uuid';
 import { getUserDb, getTaicolDb } from './init';
 import { defaultSurveyorString } from './surveyors';
 import i18n from '~/i18n';
@@ -202,15 +203,8 @@ export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & {
   protected: string;
 };
 
-export function generateUuid(): string {
-  // Simple v4-ish UUID; not crypto-grade but fine for local plot identifiers.
-  const hex = (n: number) =>
-    Math.floor(Math.random() * 0xffffffff)
-      .toString(16)
-      .padStart(8, '0')
-      .slice(0, n);
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(8)}${hex(4)}`;
-}
+// 實作移到 ./uuid（SQLite CSPRNG）。這裡 re-export 讓既有 import 路徑不變。
+export { generateUuid };
 
 export type CreatePlotInput = {
   plotid: string;
@@ -755,6 +749,18 @@ export function reopenPlotSurvey(id: number): void {
 
 export function deletePlotSurvey(id: number): void {
   const db = getUserDb();
+  // ON DELETE CASCADE 在這個 app 是失效的：PRAGMA foreign_keys 從未在連線開啟時
+  // 設定，而 op-sqlite 沒有定義 SQLITE_DEFAULT_FOREIGN_KEYS，所以 SQLite 走預設的
+  // OFF。子列必須自己刪，否則會變成看不見卻仍佔用編號的孤兒列。
+  // subplot_layers 掛在 plot_subplots 底下，所以要先於 plot_subplots 刪。
+  db.executeSync(
+    `DELETE FROM subplot_layers WHERE subplot_id IN
+       (SELECT id FROM plot_subplots WHERE plot_survey_id = ?)`,
+    [id],
+  );
+  db.executeSync(`DELETE FROM plot_subplots WHERE plot_survey_id = ?`, [id]);
+  db.executeSync(`DELETE FROM plot_species_records WHERE plot_survey_id = ?`, [id]);
+  db.executeSync(`DELETE FROM plot_survey_layers WHERE plot_survey_id = ?`, [id]);
   db.executeSync(`DELETE FROM plot_surveys WHERE id = ?`, [id]);
 }
 
@@ -1133,10 +1139,15 @@ export function importPlotSurvey(
   const now = Date.now();
   const uuid = opts.newUuid ? generateUuid() : data.uuid;
 
-  // Overwrite mode: drop any existing plot with this uuid first; the FK
-  // cascades remove its layers / subplots / subplot_layers / species.
+  // Overwrite mode: drop any existing plot with this uuid first. The FK
+  // cascades do NOT fire (PRAGMA foreign_keys is off), so children must be
+  // deleted by hand exactly as deletePlotSurvey does — otherwise the previous
+  // version's species rows survive as orphans carrying the very occurrence_ids
+  // that are about to be re-inserted.
   if (!opts.newUuid) {
-    db.executeSync(`DELETE FROM plot_surveys WHERE uuid = ?`, [uuid]);
+    const prev = db.executeSync(`SELECT id FROM plot_surveys WHERE uuid = ?`, [uuid]);
+    const prevId = (prev.rows?.[0] as { id?: number } | undefined)?.id;
+    if (prevId != null) deletePlotSurvey(prevId);
   }
 
   // Resolve project by name; unknown → 0 (未指定).
@@ -1237,7 +1248,9 @@ export function importPlotSurvey(
       [
         plotId,
         sp.taxon_id,
-        sp.occurrence_id ?? generateUuid(),
+        // 另存新檔＝一份新的 occurrence，必須重新配號；沿用來源檔的 id 會讓
+        // 同一個 occurrenceID 出現在兩筆記錄上（DwC 識別碼必須唯一）。
+        opts.newUuid ? generateUuid() : (sp.occurrence_id ?? generateUuid()),
         subplotId,
         sp.layer ?? fallbackLayer,
         sp.organism_quantity ?? null,

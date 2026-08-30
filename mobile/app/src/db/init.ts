@@ -3,7 +3,7 @@ import i18n from '~/i18n';
 import { File, Paths } from 'expo-file-system';
 import { open, type DB } from '@op-engineering/op-sqlite';
 import { runUserMigrations } from './migrations';
-import { enforceSingleActiveOnStartup } from './cleanup';
+import { enforceSingleActiveOnStartup, purgeOrphanRows } from './cleanup';
 import { perf } from '~/lib/perf';
 
 let taicolDb: DB | null = null;
@@ -81,12 +81,37 @@ export async function initDb(
   taicolDb = open({ name: TAICOL_DB_NAME, location: Paths.document.uri });
   userDb = open({ name: USER_DB_NAME, location: Paths.document.uri });
 
+  // Migrations and the repair passes run with FK enforcement OFF, then it is
+  // switched on for the rest of the session. Order matters both ways:
+  //
+  //  - OFF during migrations: restoreBackup() re-runs migrations against a
+  //    restored older-schema DB, and with FK on, v3's `ALTER TABLE sites
+  //    RENAME` rewrites plot_surveys' REFERENCES clause and its DROP fires
+  //    ON DELETE SET NULL across every plot. Destructive.
+  //  - OFF during cleanup: purgeOrphanRows/repair fix rows that currently have
+  //    dangling references. SQLite validates FK on every row it modifies, so
+  //    with FK already on, updating such a row would throw instead of healing.
+  //  - ON afterwards: this is what finally makes ON DELETE CASCADE / SET NULL
+  //    actually fire. Until now every cascade in the schema was inert, which
+  //    is why the delete helpers all delete children by hand.
+  userDb.executeSync('PRAGMA foreign_keys = OFF;');
+
   onProgress?.(i18n.t('splash.migrating'));
   await runUserMigrations(userDb);
 
   onProgress?.(i18n.t('splash.cleanup'));
   // Idempotent: mops up any leftover multi-active records from older builds.
   enforceSingleActiveOnStartup();
+  purgeOrphanRows();
+
+  userDb.executeSync('PRAGMA foreign_keys = ON;');
+  if (__DEV__) {
+    // Report, never auto-delete: a surviving violation is a bug to look at,
+    // not something to silently destroy user data over.
+    const bad = userDb.executeSync('PRAGMA foreign_key_check;');
+    const n = bad.rows?.length ?? 0;
+    if (n > 0) console.warn(`[db] ${n} foreign-key violation(s) remain`, bad.rows);
+  }
 
   return { taicol: taicolDb, user: userDb };
 }
@@ -109,22 +134,33 @@ export function closeDbs(): void {
 }
 
 /**
- * Drop all user data (sessions, records, projects, settings, search_history)
- * and re-run migrations. TaiCOL DB is untouched.
+ * Wipe every user table and rebuild an empty DB. TaiCOL DB is untouched.
+ *
+ * Implemented as delete-the-file rather than a list of DROP TABLEs, because
+ * the list is exactly what went wrong before: it named 9 tables (one of them,
+ * `abundance_records`, never existed) while the schema had 16, so 樣區 / 樣點 /
+ * 常用名錄 / 常用調查者 all survived "清除所有資料". Worse, it also dropped
+ * `schema_version`, so migrations replayed from v1 against the surviving
+ * tables and died at v6 on `duplicate column name: plot_type`, leaving a
+ * half-migrated DB that bricked the app on the next launch with no route to
+ * the restore screen.
+ *
+ * Deleting the file cannot miss a table and needs no maintenance when a new
+ * one is added. This is the same sequence `restoreBackup` already uses
+ * (backup.ts), which is proven in production.
  */
 export async function clearAllUserData(): Promise<void> {
-  if (!userDb) await initDb();
-  const db = userDb!;
-  db.executeSync(`PRAGMA foreign_keys = OFF;`);
-  db.executeSync(`DROP TABLE IF EXISTS checklist_records;`);
-  db.executeSync(`DROP TABLE IF EXISTS abundance_records;`);
-  db.executeSync(`DROP TABLE IF EXISTS collection_specimens;`);
-  db.executeSync(`DROP TABLE IF EXISTS collection_trips;`);
-  db.executeSync(`DROP TABLE IF EXISTS sessions;`);
-  db.executeSync(`DROP TABLE IF EXISTS projects;`);
-  db.executeSync(`DROP TABLE IF EXISTS search_history;`);
-  db.executeSync(`DROP TABLE IF EXISTS settings;`);
-  db.executeSync(`DROP TABLE IF EXISTS schema_version;`);
-  db.executeSync(`PRAGMA foreign_keys = ON;`);
-  await runUserMigrations(db);
+  // Release op-sqlite handles before unlinking the file on disk.
+  closeDbs();
+
+  const dest = new File(Paths.document, USER_DB_NAME);
+  if (dest.exists) dest.delete();
+  // Stale journal sidecars would otherwise replay rows back into the new file.
+  for (const sidecar of [`${USER_DB_NAME}-wal`, `${USER_DB_NAME}-shm`]) {
+    const f = new File(Paths.document, sidecar);
+    if (f.exists) f.delete();
+  }
+
+  // Re-open and migrate from scratch; initDb() re-seeds the 未分類 project.
+  await initDb();
 }

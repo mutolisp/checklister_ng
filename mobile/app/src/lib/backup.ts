@@ -110,23 +110,57 @@ export async function restoreBackup(zipUri: string): Promise<void> {
     );
   }
 
-  // Release op-sqlite handles before overwriting the file on disk.
+  await replaceUserDb((dest) => {
+    dest.create();
+    dest.write(dbBytes);
+  });
+}
+
+/**
+ * Swap user.db for something else, then re-open and restart the app.
+ *
+ * Shared by `restoreBackup` (zip) and `restoreSafetyBackup` (raw snapshot).
+ * The op-sqlite handles must be released first, and the -wal/-shm sidecars
+ * deleted, or the old journal replays over the file that was just written.
+ */
+async function replaceUserDb(write: (dest: File) => void): Promise<void> {
   closeDbs();
 
   const dest = new File(Paths.document, USER_DB_NAME);
   if (dest.exists) dest.delete();
-  // Stale journal sidecars would otherwise replay over the restored file.
   for (const sidecar of [`${USER_DB_NAME}-wal`, `${USER_DB_NAME}-shm`]) {
     const f = new File(Paths.document, sidecar);
     if (f.exists) f.delete();
   }
-  dest.create();
-  dest.write(dbBytes);
+  write(dest);
 
-  // Re-open + run migrations (upgrades an older-schema backup) so a botched
-  // reload still leaves a usable DB; then restart so every store re-seeds.
+  // Re-open + run migrations (upgrades an older-schema DB) so a botched reload
+  // still leaves a usable DB; then restart so every store re-seeds.
   await initDb();
   await reloadAppAsync();
+}
+
+/**
+ * Restore one of the automatic pre-repair snapshots taken by `cleanup.ts`.
+ *
+ * Those are raw `VACUUM INTO` copies of user.db, not zips — they are written
+ * on the cold-start path, where zipping (base64 of the whole DB through a JS
+ * string) would be far too heavy. So there is no manifest to validate; the
+ * file was produced by this app moments before a repair, and `initDb()` will
+ * migrate it forward if it is somehow older.
+ */
+export async function restoreSafetyBackup(name: string): Promise<void> {
+  const src = new File(Paths.document, name);
+  if (!src.exists) throw new Error(i18n.t('backup.invalidFile'));
+  await replaceUserDb((dest) => {
+    src.copy(dest);
+  });
+}
+
+/** Delete one automatic snapshot. */
+export function deleteSafetyBackup(name: string): void {
+  const f = new File(Paths.document, name);
+  if (f.exists) f.delete();
 }
 
 type PhotoSource = {

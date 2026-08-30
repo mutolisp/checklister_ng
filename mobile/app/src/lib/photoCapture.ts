@@ -24,6 +24,7 @@ import i18n from '~/i18n';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import piexif from 'piexifjs';
+import { generateUuid } from '~/db';
 import type { PlotSpeciesRecordWithTaxon, RecordWithTaxon, SpecimenWithTaxon } from '~/db';
 
 export type PhotoSpeciesContext = {
@@ -517,7 +518,7 @@ async function persistPickedPhoto(asset: ImagePicker.ImagePickerAsset): Promise<
     // already exists; ignore
   }
   const ext = guessPickerExt(src, asset.mimeType);
-  const target = `${APP_PHOTOS_DIR}${randomUuid()}.${ext}`;
+  const target = `${APP_PHOTOS_DIR}${generateUuid()}.${ext}`;
   try {
     await copyAsync({ from: src, to: target });
     return target;
@@ -538,12 +539,4 @@ function guessPickerExt(uri: string, mime: string | null | undefined): string {
   return 'jpg';
 }
 
-function randomUuid(): string {
-  // Simple v4-ish; doesn't need to be cryptographic for a filename.
-  const hex = (n: number) =>
-    Math.floor(Math.random() * 0xffffffff)
-      .toString(16)
-      .padStart(8, '0')
-      .slice(0, n);
-  return `${hex(8)}-${hex(4)}-4${hex(3)}-a${hex(3)}-${hex(8)}${hex(4)}`;
-}
+

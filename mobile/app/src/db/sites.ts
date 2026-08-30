@@ -82,7 +82,9 @@ export function listSites(): SiteWithProject[] {
   const res = db.executeSync(`
     SELECT s.*, p.name AS project_name
     FROM sites s
-    JOIN projects p ON p.id = s.project_id
+    -- LEFT JOIN：project_id 可能是 0（未分類）或指向已刪除的計畫，
+    -- inner join 會讓那些樣點整個從清單消失。與 listPlotSurveysWithMeta 一致。
+    LEFT JOIN projects p ON p.id = s.project_id
     ORDER BY s.updated_at DESC
   `);
   return ((res.rows ?? []) as unknown) as SiteWithProject[];

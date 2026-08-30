@@ -191,7 +191,7 @@ export default function FavoritesScreen() {
         <SearchBox
           onSelect={(r) => {
             add(r);
-            toast(t('favorites.added', { name: r.cname || r.name }));
+            toast(t('favorites.addedNamed', { name: r.cname || r.name }));
           }}
           onLongPressResult={async (r) => {
             Keyboard.dismiss();

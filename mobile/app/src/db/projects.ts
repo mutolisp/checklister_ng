@@ -70,7 +70,12 @@ export function updateProject(id: number, input: Partial<ProjectInput>): void {
 export function deleteProject(id: number): void {
   if (id === 0) throw new Error('Cannot delete the default 未分類 project');
   const db = getUserDb();
+  // 有 4 張表 FK 到 projects。漏掉 sites 與 collection_trips 的話，它們的
+  // project_id 會指向已刪除的計畫；而兩者的列表查詢都 JOIN projects，
+  // 結果是那些樣點與採集記錄直接從清單消失（資料其實還在）。
   db.executeSync(`UPDATE sessions SET project_id = 0 WHERE project_id = ?`, [id]);
   db.executeSync(`UPDATE plot_surveys SET project_id = 0 WHERE project_id = ?`, [id]);
+  db.executeSync(`UPDATE sites SET project_id = 0 WHERE project_id = ?`, [id]);
+  db.executeSync(`UPDATE collection_trips SET project_id = 0 WHERE project_id = ?`, [id]);
   db.executeSync(`DELETE FROM projects WHERE id = ?`, [id]);
 }

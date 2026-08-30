@@ -140,6 +140,10 @@ export function updateSession(id: number, updates: Partial<Session>): void {
 
 export function deleteSession(id: number): void {
   const db = getUserDb();
+  // ON DELETE CASCADE 在這個 app 是失效的：PRAGMA foreign_keys 從未在連線開啟時
+  // 設定，而 op-sqlite 沒有定義 SQLITE_DEFAULT_FOREIGN_KEYS，所以 SQLite 走預設的
+  // OFF。子列必須自己刪，否則會變成看不見卻仍佔用編號的孤兒列。
+  db.executeSync(`DELETE FROM checklist_records WHERE session_id = ?`, [id]);
   db.executeSync(`DELETE FROM sessions WHERE id = ?`, [id]);
 }
 

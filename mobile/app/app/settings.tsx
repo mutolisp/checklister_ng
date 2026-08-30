@@ -13,7 +13,16 @@ import {
   type RegionCode,
   type Language,
 } from '~/stores/settings';
-import { clearAllUserData, clearSearchHistory, clearTaxonomyCache, nextRecordNumber } from '~/db';
+import {
+  checkIntegrity,
+  clearAllUserData,
+  clearSearchHistory,
+  clearTaxonomyCache,
+  formatRecordNumber,
+  maxRecordNumberSeq,
+  nextRecordNumber,
+} from '~/db';
+import { promptText } from '~/components/TextPromptModal';
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 
@@ -58,6 +67,86 @@ export default function SettingsScreen() {
 
   // Recomputed on every render so the hint reflects the prefix/start just typed.
   const nextNumberPreview = nextRecordNumber().text;
+
+  /**
+   * 強制指定下一個採集號。
+   *
+   * 底層仍是 collection_number_start（nextRecordNumber 取
+   * max(資料庫最大序號 + 1, start)），所以只能往前跳、不能往回。輸入值若不大於
+   * 目前最大序號，設了也不會生效 —— 這種情況要明講，不能靜默吞掉。
+   */
+  /** 唯讀盤點。重複的 occurrence_id 刻意不自動清除 —— 那是已發布的 DwC 識別碼，
+   *  重新配號會與交付出去的檔案對不起來，所以只報數字讓使用者自己決定。 */
+  const handleCheckIntegrity = () => {
+    try {
+      const r = checkIntegrity();
+      const lines: string[] = [];
+      for (const d of r.duplicateOccurrenceIds) {
+        lines.push(t('settings.integrityDup', { table: d.table, groups: d.groups, rows: d.rows }));
+      }
+      for (const o of r.orphanRows) lines.push(t('settings.integrityOrphan', { table: o.table, n: o.n }));
+      for (const d of r.danglingProjectIds) {
+        lines.push(t('settings.integrityProject', { table: d.table, n: d.n }));
+      }
+      if (r.fkViolations > 0) lines.push(t('settings.integrityFk', { n: r.fkViolations }));
+      Alert.alert(
+        t('settings.integrityTitle'),
+        lines.length === 0 ? t('settings.integrityClean') : lines.join('\n'),
+        [{ text: t('common.ok') }],
+      );
+    } catch (e) {
+      toast(t('settings.integrityFailed', { error: e instanceof Error ? e.message : String(e) }));
+    }
+  };
+
+  const handleSetNextNumber = async () => {
+    const maxSeq = maxRecordNumberSeq();
+    const current = nextRecordNumber();
+    const input = await promptText({
+      title: t('settings.setNextNumberTitle'),
+      message:
+        maxSeq > 0
+          ? t('settings.setNextNumberMsg', { max: formatRecordNumber(maxSeq), next: current.text })
+          : t('settings.setNextNumberMsgEmpty', { next: current.text }),
+      keyboardType: 'numeric',
+      defaultValue: String(current.seq),
+    });
+    if (input == null) return;
+
+    const seq = Math.floor(Number(input.trim()));
+    if (!Number.isFinite(seq) || seq < 1) {
+      toast(t('settings.setNextNumberInvalid'));
+      return;
+    }
+    if (seq <= maxSeq) {
+      // 採集號只會往前：資料庫已經有更大的號了，設下去不會生效。
+      Alert.alert(
+        t('settings.setNextNumberTooLowTitle'),
+        t('settings.setNextNumberTooLowMsg', {
+          value: formatRecordNumber(seq),
+          max: formatRecordNumber(maxSeq),
+          next: formatRecordNumber(maxSeq + 1),
+        }),
+        [{ text: t('common.ok') }],
+      );
+      return;
+    }
+
+    Alert.alert(
+      t('settings.setNextNumberConfirmTitle'),
+      t('settings.setNextNumberConfirmMsg', { value: formatRecordNumber(seq) }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.confirm'),
+          onPress: () => {
+            settings.set('collection_number_start', seq);
+            toast(t('settings.setNextNumberDone', { value: formatRecordNumber(seq) }));
+          },
+        },
+      ],
+    );
+  };
 
   const jpEnabled = settings.enabled_regions.includes('JP');
   const setJp = (on: boolean) => {
@@ -151,14 +240,32 @@ export default function SettingsScreen() {
             autoCapitalize="characters"
             onCommit={(v) => settings.set('collection_number_prefix', v.trim())}
           />
+          {/* 取代原本會在失焦時靜默寫入的「起始號」輸入框：改號會影響實體標本
+              編號，必須先讓使用者看到目前狀態並確認。底層設定同一個。 */}
+          <Pressable
+            onPress={handleSetNextNumber}
+            className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <Text className="text-base text-gray-900 dark:text-gray-100">
+              {t('collection.numberStart')}
+            </Text>
+            <View className="flex-row items-center">
+              <Text className="mr-1 text-base text-gray-500 dark:text-gray-400">
+                {nextNumberPreview}
+              </Text>
+              <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+            </View>
+          </Pressable>
           <RowInput
-            label={t('collection.numberStart')}
-            value={String(settings.collection_number_start)}
-            placeholder="1"
+            label={t('collection.numberPad')}
+            value={String(settings.collection_number_pad)}
+            placeholder="4"
             keyboardType="number-pad"
             onCommit={(v) => {
+              // 0 = 不補零；上限 10 避免打錯字產生荒謬的長號碼。
               const n = Math.floor(Number(v));
-              settings.set('collection_number_start', Number.isFinite(n) && n > 0 ? n : 1);
+              const clamped = Number.isFinite(n) ? Math.min(Math.max(n, 0), 10) : 4;
+              settings.set('collection_number_pad', clamped);
             }}
           />
           <View className="bg-white dark:bg-gray-900 px-4 pb-3">
@@ -180,6 +287,13 @@ export default function SettingsScreen() {
           </Pressable>
         </Section>
         <Section title={t('settings.sectionData')}>
+          <Pressable
+            onPress={handleCheckIntegrity}
+            className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <Text className="text-base text-gray-900 dark:text-gray-100">{t('settings.integrityCheck')}</Text>
+            <Text className="text-xs text-gray-500 dark:text-gray-400">{t('settings.integrityDesc')}</Text>
+          </Pressable>
           <Pressable
             onPress={handleClearHistory}
             className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
