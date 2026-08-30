@@ -10,7 +10,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "check:dock": "node ./scripts/check-bottom-dock.mjs",
-    "check:i18n": "node ./scripts/check-i18n.mjs"
+    "check:i18n": "node ./scripts/check-i18n.mjs",
+    "check:kav": "node ./scripts/check-kav.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

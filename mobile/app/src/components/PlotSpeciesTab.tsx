@@ -41,6 +41,7 @@ import { alienBadge } from '~/lib/conservationColors';
 import { parseMultiAttribute, serializeMultiAttribute } from '~/lib/dwcAttributes';
 import { useSettings, type RecordSort, type SortDirection } from '~/stores/settings';
 import { useFavorites } from '~/stores/favorites';
+import { toastFavoriteAdded } from '~/lib/favoritesToast';
 import { useToast } from '~/stores/toast';
 import { showActionSheet } from './ActionSheet';
 import {
@@ -452,7 +453,8 @@ export function PlotSpeciesTab({
         useFavorites.getState().remove(r.taxon_id);
         t(tr('favorites.removed'));
       } else {
-        t(useFavorites.getState().addById(r.taxon_id) ? tr('favorites.added') : tr('favorites.addFail'));
+        if (useFavorites.getState().addById(r.taxon_id)) toastFavoriteAdded();
+        else t(tr('favorites.addFail'));
       }
     } else if (idx === delIdx) {
       deletePlotSpecies(r.id);

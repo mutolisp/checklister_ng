@@ -50,6 +50,7 @@ import { taxonSpeciesToSearchResult } from '~/lib/taxonSpecies';
 import { useAddToActiveRecord } from '~/lib/useAddToActiveRecord';
 import { useActiveSession } from '~/stores/activeSession';
 import { useFavorites } from '~/stores/favorites';
+import { toastFavoriteAdded } from '~/lib/favoritesToast';
 import { useSettings } from '~/stores/settings';
 import { useTaxonomyJump } from '~/stores/taxonomyJump';
 import { useToast } from '~/stores/toast';
@@ -858,7 +859,7 @@ export default function TaxonomyScreen() {
                             toast(t('favorites.removed'));
                           } else {
                             useFavorites.getState().add(sr);
-                            toast(t('favorites.added'));
+                            toastFavoriteAdded();
                           }
                         } else if (idx === 2)
                           setActiveSpecies(taxonSpeciesToSearchResult(item.species));

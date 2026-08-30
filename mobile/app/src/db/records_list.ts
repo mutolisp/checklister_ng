@@ -155,3 +155,33 @@ export function listRecordsByProject(filter: RecordFilter = 'all'): ProjectGroup
   result.sort((a, b) => (b.items[0]?.startedAt ?? 0) - (a.items[0]?.startedAt ?? 0));
   return result;
 }
+
+/** Column holding the parent id, per record kind. */
+const RECORD_SPECIES_SOURCE: Record<RecordKind, { table: string; fk: string }> = {
+  session: { table: 'checklist_records', fk: 'session_id' },
+  plot: { table: 'plot_species_records', fk: 'plot_survey_id' },
+  collection: { table: 'collection_specimens', fk: 'trip_id' },
+};
+
+/**
+ * Distinct taxon_ids recorded under one record, in insertion order.
+ *
+ * Deliberately does NOT go through listSessionRecords / listPlotSpecies /
+ * listSpecimens — those resolve every row against twnamelist.db to build
+ * display fields, which is wasted work when the caller only needs ids (the
+ * favourites import re-resolves each id once via searchByTaxonId anyway).
+ */
+export function taxonIdsOfRecord(kind: RecordKind, id: number): string[] {
+  const { table, fk } = RECORD_SPECIES_SOURCE[kind];
+  const res = getUserDb().executeSync(
+    // GROUP BY (not DISTINCT) so ORDER BY MIN(id) is a legal aggregate —
+    // `SELECT DISTINCT … ORDER BY MIN(id)` throws "misuse of aggregate".
+    `SELECT taxon_id FROM ${table}
+       WHERE ${fk} = ? AND taxon_id IS NOT NULL AND taxon_id != ''
+       GROUP BY taxon_id ORDER BY MIN(id);`,
+    [id],
+  );
+  return ((res.rows ?? []) as { taxon_id?: string }[])
+    .map((row) => String(row.taxon_id ?? ''))
+    .filter(Boolean);
+}

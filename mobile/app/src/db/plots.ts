@@ -1,14 +1,8 @@
+import { EMPTY_TAXON_FIELDS, resolveTaxa } from './taxonLookup';
 import { generateUuid } from './uuid';
-import { getUserDb, getTaicolDb } from './init';
+import { getUserDb } from './init';
 import { defaultSurveyorString } from './surveyors';
 import i18n from '~/i18n';
-import {
-  getEnabledRegions,
-  isJpTaxonId,
-  regionOfTaxonId,
-  crossRegionVernacular,
-  composeVernacular,
-} from './regions';
 
 /** Fixed-plot vertical layers (vegetation profile, semantic labels). */
 export type FixedLayer = 'E1' | 'E2' | 'E3' | 'E4' | 'E5' | 'E6';
@@ -971,7 +965,6 @@ export function listPlotSpecies(
   subplotId?: number | null,
 ): PlotSpeciesRecordWithTaxon[] {
   const userDb = getUserDb();
-  const taicolDb = getTaicolDb();
 
   // subplotId === undefined → all records (export / un-split). A number scopes
   // to that subplot (per-subplot recording UI).
@@ -988,65 +981,8 @@ export function listPlotSpecies(
   const records = (recordsRes.rows ?? []) as unknown as PlotSpeciesRecord[];
   if (records.length === 0) return [];
 
-  const taxonIds = Array.from(new Set(records.map((r) => r.taxon_id)));
-  // Resolve names from each dataset's real table (indexed taxon_id), split by
-  // the 't…'/'y…' prefix — never a UNION view (materializing ~270k rows costs
-  // seconds). All-Taiwan plots only touch taicol_names (unchanged).
-  const TAXON_COLS = `taxon_id, simple_name, name_author, common_name_c,
-            family, family_c, rank, is_endemic, alien_type, is_hybrid,
-            kingdom, kingdom_c, class, class_c, phylum, phylum_c, "order", order_c, genus, genus_c,
-            redlist, iucn, cites, protected`;
-  const taxonMap = new Map<string, Record<string, unknown>>();
-  const fillFrom = (tbl: string, ids: string[]) => {
-    if (ids.length === 0) return;
-    const ph = ids.map(() => '?').join(',');
-    const res = taicolDb.executeSync(
-      `SELECT ${TAXON_COLS} FROM ${tbl} WHERE taxon_id IN (${ph}) AND usage_status = 'accepted'`,
-      ids,
-    );
-    for (const row of (res.rows ?? []) as Array<Record<string, unknown>>) {
-      taxonMap.set(row.taxon_id as string, row);
-    }
-  };
-  fillFrom('taicol_names', taxonIds.filter((id) => !isJpTaxonId(id)));
-  fillFrom('jp_names', taxonIds.filter(isJpTaxonId));
-
-  const regions = getEnabledRegions();
-  const cross = regions.includes('JP') ? crossRegionVernacular(taxonIds, regions) : null;
-
-  return records.map((r) => {
-    const t = taxonMap.get(r.taxon_id) ?? {};
-    const ownCname = (t.common_name_c as string) ?? '';
-    const common_name_c = cross
-      ? composeVernacular(ownCname, regionOfTaxonId(r.taxon_id), cross.get(r.taxon_id), regions)
-      : ownCname;
-    return {
-      ...r,
-      simple_name: (t.simple_name as string) ?? '',
-      name_author: (t.name_author as string) ?? '',
-      common_name_c,
-      family: (t.family as string) ?? '',
-      family_c: (t.family_c as string) ?? '',
-      rank: (t.rank as string) ?? '',
-      is_endemic: (t.is_endemic as string) ?? '',
-      alien_type: (t.alien_type as string) ?? '',
-      is_hybrid: (t.is_hybrid as string) ?? '',
-      kingdom: (t.kingdom as string) ?? '',
-      kingdom_c: (t.kingdom_c as string) ?? '',
-      class: (t.class as string) ?? '',
-      class_c: (t.class_c as string) ?? '',
-      phylum: (t.phylum as string) ?? '',
-      phylum_c: (t.phylum_c as string) ?? '',
-      order: (t.order as string) ?? '',
-      order_c: (t.order_c as string) ?? '',
-      genus: (t.genus as string) ?? '',
-      genus_c: (t.genus_c as string) ?? '',
-      redlist: (t.redlist as string) ?? '',
-      iucn: (t.iucn as string) ?? '',
-      cites: (t.cites as string) ?? '',
-      protected: (t.protected as string) ?? '',
-    };
-  });
+  const taxa = resolveTaxa(records.map((r) => r.taxon_id));
+  return records.map((r) => ({ ...r, ...(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS) }));
 }
 
 // ── Plot round-trip import (v18+) ──────────────────────────────────────────

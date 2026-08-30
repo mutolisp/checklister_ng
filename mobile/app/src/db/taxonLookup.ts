@@ -1,14 +1,22 @@
 /**
  * Resolve a batch of taxon_ids to their accepted-name fields.
  *
- * Extracted so a new record kind doesn't need a third copy of the query.
- * `listSessionRecords` (records.ts) and `listPlotSpecies` (plots.ts) still carry
- * their own inlined copies — they predate this helper and are left untouched on
- * purpose; folding them in is a safe follow-up, not part of this change.
+ * Three namespaces, three lookups: TaiCOL 't…' and Japan 'y…' from
+ * twnamelist.db, external 'g…' from user.db. A taxon_id that resolves nowhere
+ * yields EMPTY_TAXON_FIELDS — blank, never an error — which is why an id must
+ * never be persisted before it is known to be resolvable.
+ *
+ * The single implementation for every record kind: `listSessionRecords`
+ * (records.ts), `listPlotSpecies` (plots.ts) and `listSpecimens`
+ * (collections.ts) all go through this. It previously existed alongside two
+ * byte-identical inlined copies, which had already drifted (records.ts selected
+ * six columns the others lacked) — the field set here is their union, which is
+ * harmless to callers that ignore the extras.
  */
-import { getTaicolDb } from './init';
+import { getTaicolDb, getUserDb } from './init';
 import {
   getEnabledRegions,
+  isExternalTaxonId,
   isJpTaxonId,
   regionOfTaxonId,
   crossRegionVernacular,
@@ -19,6 +27,7 @@ export type TaxonFields = {
   simple_name: string;
   name_author: string;
   common_name_c: string;
+  alternative_name_c: string;
   family: string;
   family_c: string;
   rank: string;
@@ -39,18 +48,26 @@ export type TaxonFields = {
   order_c: string;
   genus: string;
   genus_c: string;
+  is_terrestrial: string;
+  is_freshwater: string;
+  is_brackish: string;
+  is_marine: string;
+  is_fossil: string;
 };
 
-const TAXON_COLS = `taxon_id, simple_name, name_author, common_name_c,
+const TAXON_COLS = `taxon_id, simple_name, name_author, common_name_c, alternative_name_c,
   family, family_c, rank, is_endemic, alien_type, is_hybrid,
   kingdom, kingdom_c, phylum, phylum_c, class, class_c, "order", order_c, genus, genus_c,
-  redlist, iucn, cites, protected`;
+  redlist, iucn, cites, protected,
+  is_terrestrial, is_freshwater, is_brackish, is_marine, is_fossil`;
 
 export const EMPTY_TAXON_FIELDS: TaxonFields = {
-  simple_name: '', name_author: '', common_name_c: '', family: '', family_c: '', rank: '',
+  simple_name: '', name_author: '', common_name_c: '', alternative_name_c: '',
+  family: '', family_c: '', rank: '',
   is_endemic: '', alien_type: '', redlist: '', iucn: '', cites: '', protected: '', is_hybrid: '',
   kingdom: '', kingdom_c: '', phylum: '', phylum_c: '', class: '', class_c: '',
   order: '', order_c: '', genus: '', genus_c: '',
+  is_terrestrial: '', is_freshwater: '', is_brackish: '', is_marine: '', is_fossil: '',
 };
 
 /**
@@ -78,8 +95,26 @@ export function resolveTaxa(taxonIds: string[]): Map<string, TaxonFields> {
       raw.set(row.taxon_id as string, row);
     }
   };
-  fillFrom('taicol_names', ids.filter((id) => !isJpTaxonId(id)));
+  fillFrom('taicol_names', ids.filter((id) => !isJpTaxonId(id) && !isExternalTaxonId(id)));
   fillFrom('jp_names', ids.filter(isJpTaxonId));
+
+  // External ('g…') taxa live in user.db, a DIFFERENT handle — there is no
+  // ATTACH anywhere in this app, so they cannot be part of the query above.
+  // They also carry far fewer columns (no conservation status, no *_c
+  // vernaculars): whatever GBIF/iNat gave us, and empty strings elsewhere.
+  const externalIds = ids.filter(isExternalTaxonId);
+  if (externalIds.length > 0) {
+    const ph = externalIds.map(() => '?').join(',');
+    const res = getUserDb().executeSync(
+      `SELECT taxon_id, simple_name, name_author, rank, common_name_c,
+              kingdom, phylum, class, "order", family, genus
+         FROM external_taxa WHERE taxon_id IN (${ph})`,
+      externalIds,
+    );
+    for (const row of (res.rows ?? []) as Record<string, unknown>[]) {
+      raw.set(row.taxon_id as string, row);
+    }
+  }
 
   const regions = getEnabledRegions();
   const cross = regions.includes('JP') ? crossRegionVernacular(ids, regions) : null;
@@ -91,6 +126,7 @@ export function resolveTaxa(taxonIds: string[]): Map<string, TaxonFields> {
     out.set(id, {
       simple_name: str(t, 'simple_name'),
       name_author: str(t, 'name_author'),
+      alternative_name_c: str(t, 'alternative_name_c'),
       common_name_c: cross
         ? composeVernacular(ownCname, regionOfTaxonId(id), cross.get(id), regions)
         : ownCname,
@@ -114,6 +150,11 @@ export function resolveTaxa(taxonIds: string[]): Map<string, TaxonFields> {
       order_c: str(t, 'order_c'),
       genus: str(t, 'genus'),
       genus_c: str(t, 'genus_c'),
+      is_terrestrial: str(t, 'is_terrestrial'),
+      is_freshwater: str(t, 'is_freshwater'),
+      is_brackish: str(t, 'is_brackish'),
+      is_marine: str(t, 'is_marine'),
+      is_fossil: str(t, 'is_fossil'),
     });
   }
   return out;

@@ -17,6 +17,15 @@ export type Language = 'system' | 'en' | 'zh-TW' | 'ja' | 'ko';
 export type RegionCode = 'TW' | 'JP';
 
 export type RecordSort = 'observed' | 'cname' | 'name' | 'family';
+/**
+ * Specimen sort inside one collection trip.
+ *
+ * Separate from `RecordSort` rather than an extension of it: a collection is
+ * the only place with a collection NUMBER to sort by, and session/plot share
+ * `last_record_sort` — adding a key they cannot honour would have them fall
+ * through to a default the user did not pick.
+ */
+export type CollectionSort = 'collected' | 'number' | 'family' | 'name';
 export type SortDirection = 'asc' | 'desc';
 export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
 export type MapBasemap = 'standard' | 'satellite' | 'hybrid' | 'terrain';
@@ -77,6 +86,14 @@ type SettingsValues = {
   card_density: CardDensity;
   last_search_groups: TaxonGroup[];
   last_record_sort: RecordSort;
+  collection_sort: CollectionSort;
+  /** Pre-filled into a new specimen's `identified_by`, the way a trip's
+   *  collector is inherited. Empty means leave it unset. */
+  default_identified_by: string;
+  /** Heading printed at the top of every herbarium label, e.g. "Flora of
+   *  Taiwan". Remembered between exports. */
+  collection_label_title: string;
+  collection_label_family: boolean;
   /** Direction for `last_record_sort`. Observed defaults to 'desc' (latest
    *  on top); other sorts default to 'asc'. Tapping the same sort option a
    *  second time flips this. */
@@ -131,6 +148,11 @@ const DEFAULTS: SettingsValues = {
   card_density: 'comfortable',
   last_search_groups: [],
   last_record_sort: 'observed',
+  // Preserves the order the list had before sorting existed.
+  collection_sort: 'collected',
+  default_identified_by: '',
+  collection_label_title: '',
+  collection_label_family: false,
   last_record_sort_dir: 'desc',
   taxonomy_expanded: [],
   font_scale: 'normal',
@@ -210,6 +232,15 @@ function readAll(): SettingsValues {
     card_density: (map.get('card_density') as CardDensity) ?? DEFAULTS.card_density,
     last_search_groups: parseSearchGroups(map.get('last_search_groups')),
     last_record_sort: (map.get('last_record_sort') as RecordSort) ?? DEFAULTS.last_record_sort,
+    collection_sort: (map.get('collection_sort') as CollectionSort) ?? DEFAULTS.collection_sort,
+    default_identified_by:
+      map.get('default_identified_by') ?? DEFAULTS.default_identified_by,
+    collection_label_title:
+      map.get('collection_label_title') ?? DEFAULTS.collection_label_title,
+    collection_label_family:
+      map.get('collection_label_family') == null
+        ? DEFAULTS.collection_label_family
+        : map.get('collection_label_family') === 'true',
     last_record_sort_dir:
       (map.get('last_record_sort_dir') as SortDirection) ?? DEFAULTS.last_record_sort_dir,
     taxonomy_expanded: taxonomyExpanded,

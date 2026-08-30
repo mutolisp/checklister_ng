@@ -13,11 +13,9 @@
  * `onChange` commits the new coordinate immediately (parent persists it without
  * a toast); manual placement carries no GPS accuracy, so callers pass null.
  */
-import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, Modal, Pressable, Text, View } from 'react-native';
+import { Alert, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, {
   Circle,
@@ -27,7 +25,16 @@ import MapView, {
   type Region,
 } from 'react-native-maps';
 import { useSettings, type MapBasemap } from '~/stores/settings';
-import { basemapToMapType, nextBasemap, BASEMAP_LABEL_KEY } from '~/lib/basemap';
+import { basemapToMapType, nextBasemap } from '~/lib/basemap';
+import {
+  BasemapToggle,
+  CtrlButton,
+  ZOOM_FACTOR,
+  centerOn,
+  locateMe,
+  zoomBy,
+} from './MapControls';
+import { formatLatLng, parseLatLng } from '~/lib/coords';
 
 type Reference = { center?: { lat: number; lng: number } | null; radiusM?: number | null };
 
@@ -41,8 +48,6 @@ type Props = {
 };
 
 const INLINE_HEIGHT = 184;
-const ZOOM_FACTOR = 1.8;
-const MIN_DELTA = 0.0006;
 
 export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
   const { t } = useTranslation();
@@ -52,12 +57,73 @@ export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
     mapView.basemap === 'terrain' ? 'standard' : mapView.basemap,
   );
   const [fullscreen, setFullscreen] = useState(false);
+  /**
+   * Typed-coordinate entry, rendered INLINE rather than through `promptText`.
+   *
+   * `promptText` is a Modal hosted at the navigation root. Opening it from
+   * inside another Modal — which is where this map lives in the specimen,
+   * species and plot-species sheets — makes iOS dismiss that sheet to present
+   * it: you tapped "enter coordinates" on a specimen and were thrown back to
+   * the trip list. An inline row is in the same view tree as everything else
+   * here, so there is no second Modal and nothing to dismiss.
+   */
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [entryText, setEntryText] = useState('');
+  const [entryError, setEntryError] = useState<string | null>(null);
 
-  const hasPoint = lat != null && lng != null;
+  /**
+   * The coordinate the user just committed, shown immediately.
+   *
+   * Placing a point is direct manipulation: it must appear at once, not after a
+   * round trip through the parent's persist-and-refetch. That round trip is
+   * usually fine for a tap, but a typed coordinate commits while the prompt's
+   * Modal is still dismissing, and the parent's re-render did not reach the
+   * screen until it was left and re-entered — the point simply did not show up.
+   *
+   * Props win the moment they change: whatever the parent settles on is the
+   * truth, this only covers the gap.
+   */
+  const [pending, setPending] = useState<{ lat: number; lng: number } | null>(null);
+  const propKey = `${lat},${lng}`;
+  const lastPropKey = useRef(propKey);
+  useEffect(() => {
+    if (lastPropKey.current === propKey) return;
+    lastPropKey.current = propKey;
+    setPending(null);
+  }, [propKey]);
+
+  const commit = (nextLat: number, nextLng: number) => {
+    setPending({ lat: nextLat, lng: nextLng });
+    onChange(nextLat, nextLng);
+  };
+
+  const shownLat = pending?.lat ?? lat;
+  const shownLng = pending?.lng ?? lng;
+
+  const openEntry = () => {
+    setEntryText(shownLat != null && shownLng != null ? formatLatLng(shownLat, shownLng) : '');
+    setEntryError(null);
+    setEntryOpen(true);
+  };
+
+  const submitEntry = () => {
+    const parsed = parseLatLng(entryText);
+    if (!parsed.ok) {
+      // Inline, not an Alert: the message belongs next to the field the user is
+      // still editing, and it says which of the two rules was broken.
+      setEntryError(parsed.reason === 'range' ? t('locMap.enterRange') : t('locMap.enterFormat'));
+      return;
+    }
+    setEntryOpen(false);
+    setEntryError(null);
+    commit(parsed.lat, parsed.lng);
+  };
+
+  const hasPoint = shownLat != null && shownLng != null;
   // Point-centred when a coordinate exists; otherwise the user's last map view
   // (clamped tighter than the all-Taiwan default so tapping to place is usable).
   const initialRegion: Region = hasPoint
-    ? { latitude: lat, longitude: lng, latitudeDelta: 0.006, longitudeDelta: 0.006 }
+    ? { latitude: shownLat, longitude: shownLng, latitudeDelta: 0.006, longitudeDelta: 0.006 }
     : {
         latitude: mapView.latitude,
         longitude: mapView.longitude,
@@ -70,19 +136,56 @@ export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
   return (
     <View className="mt-2">
       <EditableMap
-        lat={lat}
-        lng={lng}
+        lat={shownLat}
+        lng={shownLng}
         initialRegion={initialRegion}
-        onChange={onChange}
+        onChange={commit}
         reference={reference}
         basemap={basemap}
         onCycleBasemap={cycleBasemap}
+        onType={openEntry}
         rounded
         onExpand={() => setFullscreen(true)}
       />
-      <Text className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
-        {hasPoint ? t('locMap.dragHint') : t('locMap.tapToPlace')}
-      </Text>
+      {entryOpen ? (
+        <View className="mt-2 rounded-lg border border-gray-300 p-2 dark:border-gray-600">
+          <Text className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">
+            {t('locMap.enterMsg')}
+          </Text>
+          <TextInput
+            value={entryText}
+            onChangeText={(v) => {
+              setEntryText(v);
+              setEntryError(null);
+            }}
+            placeholder="25.123456, 121.654321"
+            placeholderTextColor="#9ca3af"
+            autoCapitalize="characters"
+            autoCorrect={false}
+            autoFocus
+            returnKeyType="done"
+            onSubmitEditing={submitEntry}
+            className="rounded-md bg-gray-100 px-2 py-1.5 text-sm text-gray-900 dark:bg-gray-800 dark:text-gray-100"
+          />
+          {entryError ? (
+            <Text className="mt-1 text-[11px] text-red-600 dark:text-red-400">{entryError}</Text>
+          ) : null}
+          <View className="mt-2 flex-row justify-end gap-4">
+            <Pressable onPress={() => setEntryOpen(false)} hitSlop={8}>
+              <Text className="text-sm text-gray-500 dark:text-gray-400">{t('common.cancel')}</Text>
+            </Pressable>
+            <Pressable onPress={submitEntry} hitSlop={8}>
+              <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                {t('common.ok')}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      ) : (
+        <Text className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+          {hasPoint ? t('locMap.dragHint') : t('locMap.tapToPlace')}
+        </Text>
+      )}
 
       <Modal visible={fullscreen} animationType="slide" onRequestClose={() => setFullscreen(false)}>
         {/* SafeAreaView from the context lib reports 0 insets inside a Modal
@@ -94,15 +197,51 @@ export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
               <Text className="text-base font-semibold text-blue-400">{t('common.done')}</Text>
             </Pressable>
           </View>
-          <EditableMap
-            lat={lat}
-            lng={lng}
-            initialRegion={initialRegion}
-            onChange={onChange}
-            reference={reference}
-            basemap={basemap}
-            onCycleBasemap={cycleBasemap}
-          />
+          {/* Mounted only while open — a hidden MapView still holds MapKit
+              resources, and this component is now used on the plot screen too,
+              where several maps can be alive at once. */}
+          {entryOpen ? (
+            <View className="border-b border-gray-800 px-4 pb-3">
+              <TextInput
+                value={entryText}
+                onChangeText={(v) => {
+                  setEntryText(v);
+                  setEntryError(null);
+                }}
+                placeholder="25.123456, 121.654321"
+                placeholderTextColor="#6b7280"
+                autoCapitalize="characters"
+                autoCorrect={false}
+                autoFocus
+                returnKeyType="done"
+                onSubmitEditing={submitEntry}
+                className="rounded-md bg-gray-800 px-3 py-2 text-base text-white"
+              />
+              {entryError ? (
+                <Text className="mt-1 text-xs text-red-400">{entryError}</Text>
+              ) : null}
+              <View className="mt-2 flex-row justify-end gap-4">
+                <Pressable onPress={() => setEntryOpen(false)} hitSlop={8}>
+                  <Text className="text-sm text-gray-400">{t('common.cancel')}</Text>
+                </Pressable>
+                <Pressable onPress={submitEntry} hitSlop={8}>
+                  <Text className="text-sm font-medium text-blue-400">{t('common.ok')}</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          {fullscreen ? (
+            <EditableMap
+              lat={shownLat}
+              lng={shownLng}
+              initialRegion={initialRegion}
+              onChange={commit}
+              reference={reference}
+              basemap={basemap}
+              onCycleBasemap={cycleBasemap}
+              onType={openEntry}
+            />
+          ) : null}
         </View>
       </Modal>
     </View>
@@ -117,6 +256,7 @@ function EditableMap({
   reference,
   basemap,
   onCycleBasemap,
+  onType,
   rounded,
   onExpand,
 }: {
@@ -127,6 +267,7 @@ function EditableMap({
   reference?: Reference;
   basemap: MapBasemap;
   onCycleBasemap: () => void;
+  onType: () => void;
   rounded?: boolean;
   onExpand?: () => void;
 }) {
@@ -139,13 +280,8 @@ function EditableMap({
     lat != null && lng != null ? `${lat},${lng}` : null,
   );
 
-  const recenter = (latitude: number, longitude: number) => {
-    const r = regionRef.current;
-    mapRef.current?.animateToRegion(
-      { latitude, longitude, latitudeDelta: r.latitudeDelta, longitudeDelta: r.longitudeDelta },
-      350,
-    );
-  };
+  const recenter = (latitude: number, longitude: number) =>
+    centerOn(mapRef, regionRef, latitude, longitude);
 
   // When the coordinate changes from outside (e.g. the "點選 GPS" row), follow
   // it. Skipped for our own tap/drag, whose value we stamped in `place`.
@@ -155,35 +291,12 @@ function EditableMap({
     if (lastCommittedRef.current === k) return;
     lastCommittedRef.current = k;
     recenter(lat, lng);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lat, lng]);
 
-  const zoom = (factor: number) => {
-    const r = regionRef.current;
-    mapRef.current?.animateToRegion(
-      {
-        latitude: r.latitude,
-        longitude: r.longitude,
-        latitudeDelta: Math.max(r.latitudeDelta * factor, MIN_DELTA),
-        longitudeDelta: Math.max(r.longitudeDelta * factor, MIN_DELTA),
-      },
-      200,
-    );
-  };
+  const zoom = (factor: number) => zoomBy(mapRef, regionRef, factor);
 
-  const locateMe = async () => {
-    const perm = await Location.requestForegroundPermissionsAsync();
-    if (perm.status !== 'granted') {
-      Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
-      return;
-    }
-    try {
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      recenter(pos.coords.latitude, pos.coords.longitude);
-    } catch {
-      /* current location unavailable — leave the view as-is */
-    }
-  };
+  const handleLocate = () =>
+    locateMe(mapRef, regionRef, () => Alert.alert(t('gps.permTitle'), t('gps.permMsg')));
 
   const place = (e: MapPressEvent | MarkerDragStartEndEvent) => {
     const c = e.nativeEvent.coordinate;
@@ -247,16 +360,7 @@ function EditableMap({
 
       {/* Basemap toggle (top-left) */}
       <View className="absolute left-1.5 top-1.5">
-        <Pressable
-          onPress={onCycleBasemap}
-          className="flex-row items-center rounded-md bg-white/90 px-2 py-1 dark:bg-gray-900/90"
-          accessibilityRole="button"
-        >
-          <Ionicons name="layers-outline" size={13} color="#2563eb" />
-          <Text className="ml-1 text-[11px] font-medium text-gray-700 dark:text-gray-200">
-            {t(BASEMAP_LABEL_KEY[basemap])}
-          </Text>
-        </Pressable>
+        <BasemapToggle basemap={basemap} onPress={onCycleBasemap} />
       </View>
 
       {/* Zoom + expand controls (top-right) */}
@@ -266,30 +370,9 @@ function EditableMap({
         ) : null}
         <CtrlButton icon="add" onPress={() => zoom(1 / ZOOM_FACTOR)} label={t('locMap.zoomIn')} />
         <CtrlButton icon="remove" onPress={() => zoom(ZOOM_FACTOR)} label={t('locMap.zoomOut')} />
-        <CtrlButton icon="locate" onPress={locateMe} label={t('locMap.locateMe')} />
+        <CtrlButton icon="locate" onPress={handleLocate} label={t('locMap.locateMe')} />
+        <CtrlButton icon="keypad-outline" onPress={onType} label={t('locMap.enterTitle')} />
       </View>
     </View>
-  );
-}
-
-function CtrlButton({
-  icon,
-  onPress,
-  label,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  label: string;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      className="h-8 w-8 items-center justify-center rounded-md bg-white/90 active:bg-white dark:bg-gray-900/90"
-    >
-      <Ionicons name={icon} size={18} color="#374151" />
-    </Pressable>
   );
 }

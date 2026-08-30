@@ -60,6 +60,7 @@ import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 import { useActivePlot } from '~/stores/activePlot';
 import { useFavorites } from '~/stores/favorites';
+import { toastFavoriteAdded } from '~/lib/favoritesToast';
 import {
   isRecordingTarget,
   pauseIfNot,
@@ -549,7 +550,8 @@ export default function SessionDetailScreen() {
         useFavorites.getState().remove(record.taxon_id);
         toast(t('favorites.removed'));
       } else {
-        toast(useFavorites.getState().addById(record.taxon_id) ? t('favorites.added') : t('favorites.addFail'));
+        if (useFavorites.getState().addById(record.taxon_id)) toastFavoriteAdded();
+        else toast(t('favorites.addFail'));
       }
     } else if (idx === 2) setActiveRecord(record);
     else if (idx === 3) handleSwipeRemove(record);
@@ -854,7 +856,7 @@ export default function SessionDetailScreen() {
 
       <BatchImportModal
         visible={batchImportOpen}
-        sessionId={session.id}
+        target={{ kind: 'session', sessionId: session.id }}
         onClose={() => setBatchImportOpen(false)}
         onCommitted={(added) => {
           reload();

@@ -31,6 +31,7 @@ import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import { NotesEditModal } from './NotesEditModal';
+import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { RecordLocationMap } from './RecordLocationMap';
 import {
   SpeciesAttributesBlock,
@@ -195,251 +196,257 @@ export function SpeciesDetailSheet({
               </Pressable>
             </View>
 
-            <ScrollView className="flex-1">
-              {record.family ? (
-                <View className="px-4 py-3">
-                  <View className="flex-row flex-wrap items-center gap-2">
-                    <TaxonomyJumpChip
-                      rank="family"
-                      lineage={{
-                        kingdom: record.kingdom,
-                        phylum: record.phylum,
-                        class: record.class,
-                        order: record.order,
-                        family: record.family,
-                      }}
-                      name={record.family}
-                      nameC={record.family_c}
-                      beforeJump={onClose}
-                    />
-                    {parentKeys.map((k) => (
-                      <Pressable
-                        key={k.id}
-                        onPress={() => {
-                          onClose();
-                          requestAnimationFrame(() => router.push(`/key/${k.id}`));
+            {/* This sheet had no text field of its own until RecordLocationMap
+                grew an inline coordinate entry. Without keyboard avoidance the
+                keyboard covers that input, which is the bug this whole change
+                was meant to fix. */}
+            <KeyboardAvoidingView className="flex-1" behavior="padding">
+              <ScrollView className="flex-1">
+                {record.family ? (
+                  <View className="px-4 py-3">
+                    <View className="flex-row flex-wrap items-center gap-2">
+                      <TaxonomyJumpChip
+                        rank="family"
+                        lineage={{
+                          kingdom: record.kingdom,
+                          phylum: record.phylum,
+                          class: record.class,
+                          order: record.order,
+                          family: record.family,
                         }}
-                        className={`flex-row items-center rounded-full px-2.5 py-1 active:opacity-80 ${
-                          k.mode === 'multi_access'
-                            ? 'bg-blue-100 dark:bg-blue-900/60'
-                            : 'bg-emerald-100 dark:bg-emerald-900/60'
-                        }`}
-                        hitSlop={4}
-                      >
-                        <Ionicons
-                          name="key"
-                          size={12}
-                          color={k.mode === 'multi_access' ? '#2563eb' : '#10b981'}
-                        />
-                        <Text
-                          className={`ml-1 text-xs font-medium ${
+                        name={record.family}
+                        nameC={record.family_c}
+                        beforeJump={onClose}
+                      />
+                      {parentKeys.map((k) => (
+                        <Pressable
+                          key={k.id}
+                          onPress={() => {
+                            onClose();
+                            requestAnimationFrame(() => router.push(`/key/${k.id}`));
+                          }}
+                          className={`flex-row items-center rounded-full px-2.5 py-1 active:opacity-80 ${
                             k.mode === 'multi_access'
-                              ? 'text-blue-700 dark:text-blue-300'
-                              : 'text-emerald-700 dark:text-emerald-300'
+                              ? 'bg-blue-100 dark:bg-blue-900/60'
+                              : 'bg-emerald-100 dark:bg-emerald-900/60'
                           }`}
+                          hitSlop={4}
                         >
-                          {t('nav.key')} ({k.scope_name})
-                        </Text>
+                          <Ionicons
+                            name="key"
+                            size={12}
+                            color={k.mode === 'multi_access' ? '#2563eb' : '#10b981'}
+                          />
+                          <Text
+                            className={`ml-1 text-xs font-medium ${
+                              k.mode === 'multi_access'
+                                ? 'text-blue-700 dark:text-blue-300'
+                                : 'text-emerald-700 dark:text-emerald-300'
+                            }`}
+                          >
+                            {t('nav.key')} ({k.scope_name})
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : null}
+
+                {record.alternative_name_c ? (
+                  <Section title={t('species.otherNames')}>
+                    <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
+                      {splitAltNames(record.alternative_name_c).join('、')}
+                    </Text>
+                  </Section>
+                ) : null}
+
+                <Section title={t('species.status')}>
+                  <View className="flex-row flex-wrap gap-2">
+                    {isEndemic ? <Tag color="emerald" label={endemicTagLabel(record.taxon_id)} /> : null}
+                    {ab ? (
+                      <Tag
+                        color={ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple'}
+                        label={ab.longLabel}
+                      />
+                    ) : null}
+                    {record.is_hybrid === 'true' ? <Tag color="purple" label={t('species.hybrid')} /> : null}
+                    {record.is_terrestrial === 'true' ? <Tag color="blue" label={t('species.terrestrial')} /> : null}
+                    {record.is_freshwater === 'true' ? <Tag color="blue" label={t('species.freshwater')} /> : null}
+                    {record.is_brackish === 'true' ? <Tag color="blue" label={t('species.brackish')} /> : null}
+                    {record.is_marine === 'true' ? <Tag color="blue" label={t('species.marine')} /> : null}
+                    {record.is_fossil === 'true' ? <Tag color="blue" label={t('species.fossil')} /> : null}
+                  </View>
+                </Section>
+
+                <Section title={t('species.conservation')}>
+                  <View className="space-y-1">
+                    <ConservationBadgeRow label={t('species.redlist')} value={record.redlist} />
+                    <ConservationBadgeRow label="IUCN" value={record.iucn} />
+                    <ConservationRow label="CITES" value={record.cites} />
+                    <ConservationRow label={t('species.protected')} value={record.protected} />
+                  </View>
+                </Section>
+
+                {(() => {
+                  const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
+                  if (nonAccepted.length === 0) return null;
+                  return (
+                    <CollapsibleSection title={t('species.synonyms')} count={nonAccepted.length} defaultOpen={false}>
+                      {nonAccepted.map((s, idx) => (
+                        <View key={idx} className="flex-row flex-wrap items-baseline">
+                          <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
+                            {'• '}
+                            <ScientificName
+                              name={s.scientificName}
+                              author={s.authorship}
+                              kingdom={record.kingdom}
+                              selectable
+                            />
+                          </Text>
+                          <SynonymStatusBadge status={s.status} />
+                        </View>
+                      ))}
+                    </CollapsibleSection>
+                  );
+                })()}
+
+                <Section title={t('species.thisRecord')}>
+                  <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{t('species.timeLabel', { time: observedStr })}</Text>
+                  {onAddPhoto ? (
+                    <PhotoGrid
+                      photos={parsePhotoPaths(record.photo_paths)}
+                      onView={(idx) => setViewerIndex(idx)}
+                      onAdd={async () => {
+                        const idx = await showActionSheet({
+                          title: t('species.addPhoto'),
+                          options: [{ label: t('species.takePhoto') }, { label: t('species.pickFromAlbum') }],
+                        });
+                        if (idx === 0) onAddPhoto('camera');
+                        else if (idx === 1) onAddPhoto('library');
+                      }}
+                      onRemove={onRemovePhoto}
+                    />
+                  ) : null}
+                  <Pressable
+                    onPress={() => setNotesModalOpen(true)}
+                    className="mt-2 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
+                  >
+                    <Ionicons name="create-outline" size={18} color="#4b5563" />
+                    <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
+                      {record.notes ? record.notes : t('species.addNote')}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                  </Pressable>
+                  {onSaveLocation ? (
+                    <Pressable
+                      onPress={async () => {
+                        // Tap to capture current GPS; long-press handled via separate clear action.
+                        const perm = await Location.requestForegroundPermissionsAsync();
+                        if (perm.status !== 'granted') {
+                          Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
+                          return;
+                        }
+                        try {
+                          const pos = await Location.getCurrentPositionAsync({
+                            accuracy: Location.Accuracy.Balanced,
+                          });
+                          onSaveLocation(
+                            pos.coords.latitude,
+                            pos.coords.longitude,
+                            pos.coords.accuracy ?? null,
+                          );
+                        } catch (e) {
+                          Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
+                        }
+                      }}
+                      onLongPress={
+                        record.lat !== null
+                          ? () => {
+                              Alert.alert('GPS', undefined, [
+                                { text: t('common.cancel'), style: 'cancel' },
+                                {
+                                  text: t('species.clearCoord'),
+                                  style: 'destructive',
+                                  onPress: () => onSaveLocation(null, null, null),
+                                },
+                              ]);
+                            }
+                          : undefined
+                      }
+                      className="mt-2 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
+                    >
+                      <Ionicons
+                        name={record.lat !== null ? 'location' : 'location-outline'}
+                        size={18}
+                        color={record.lat !== null ? '#2563eb' : '#4b5563'}
+                      />
+                      <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300" selectable>
+                        {record.lat !== null && record.lng !== null
+                          ? `${record.lat.toFixed(5)}, ${record.lng.toFixed(5)}${
+                              record.accuracy !== null
+                                ? ` (±${Math.round(record.accuracy)}m)`
+                                : ''
+                            }`
+                          : t('species.locateSpecies')}
+                      </Text>
+                      <Text className="text-xs text-gray-400 dark:text-gray-500">
+                        {record.lat !== null ? t('species.longPressClear') : t('species.tapGps')}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                  {onSaveLocation && onChangeLocation ? (
+                    <RecordLocationMap
+                      lat={record.lat}
+                      lng={record.lng}
+                      onChange={onChangeLocation}
+                    />
+                  ) : null}
+                  {onSaveAttributes ? (
+                    <View className="mt-3">
+                      <SpeciesAttributesBlock
+                        kingdom={record.kingdom}
+                        className={record.class}
+                        value={{
+                          sex: record.sex ?? null,
+                          life_stage: record.life_stage ?? null,
+                          reproductive_condition: parseMultiAttribute(record.reproductive_condition),
+                          leaf_phenology: parseMultiAttribute(record.leaf_phenology),
+                        }}
+                        onChange={onSaveAttributes}
+                      />
+                    </View>
+                  ) : null}
+                </Section>
+
+                <Section title={t('species.externalLinks')}>
+                  <View className="flex-row flex-wrap gap-2">
+                    {links.map((link) => (
+                      <Pressable
+                        key={link.label}
+                        onPress={() => Linking.openURL(link.url)}
+                        className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
+                      >
+                        <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">{link.label}</Text>
+                        <Ionicons name="open-outline" size={12} color="#2563eb" />
                       </Pressable>
                     ))}
                   </View>
-                </View>
-              ) : null}
-
-              {record.alternative_name_c ? (
-                <Section title={t('species.otherNames')}>
-                  <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
-                    {splitAltNames(record.alternative_name_c).join('、')}
-                  </Text>
                 </Section>
-              ) : null}
 
-              <Section title={t('species.status')}>
-                <View className="flex-row flex-wrap gap-2">
-                  {isEndemic ? <Tag color="emerald" label={endemicTagLabel(record.taxon_id)} /> : null}
-                  {ab ? (
-                    <Tag
-                      color={ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple'}
-                      label={ab.longLabel}
-                    />
-                  ) : null}
-                  {record.is_hybrid === 'true' ? <Tag color="purple" label={t('species.hybrid')} /> : null}
-                  {record.is_terrestrial === 'true' ? <Tag color="blue" label={t('species.terrestrial')} /> : null}
-                  {record.is_freshwater === 'true' ? <Tag color="blue" label={t('species.freshwater')} /> : null}
-                  {record.is_brackish === 'true' ? <Tag color="blue" label={t('species.brackish')} /> : null}
-                  {record.is_marine === 'true' ? <Tag color="blue" label={t('species.marine')} /> : null}
-                  {record.is_fossil === 'true' ? <Tag color="blue" label={t('species.fossil')} /> : null}
-                </View>
-              </Section>
-
-              <Section title={t('species.conservation')}>
-                <View className="space-y-1">
-                  <ConservationBadgeRow label={t('species.redlist')} value={record.redlist} />
-                  <ConservationBadgeRow label="IUCN" value={record.iucn} />
-                  <ConservationRow label="CITES" value={record.cites} />
-                  <ConservationRow label={t('species.protected')} value={record.protected} />
-                </View>
-              </Section>
-
-              {(() => {
-                const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
-                if (nonAccepted.length === 0) return null;
-                return (
-                  <CollapsibleSection title={t('species.synonyms')} count={nonAccepted.length} defaultOpen={false}>
-                    {nonAccepted.map((s, idx) => (
-                      <View key={idx} className="flex-row flex-wrap items-baseline">
-                        <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
-                          {'• '}
-                          <ScientificName
-                            name={s.scientificName}
-                            author={s.authorship}
-                            kingdom={record.kingdom}
-                            selectable
-                          />
-                        </Text>
-                        <SynonymStatusBadge status={s.status} />
-                      </View>
-                    ))}
-                  </CollapsibleSection>
-                );
-              })()}
-
-              <Section title={t('species.thisRecord')}>
-                <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{t('species.timeLabel', { time: observedStr })}</Text>
-                {onAddPhoto ? (
-                  <PhotoGrid
-                    photos={parsePhotoPaths(record.photo_paths)}
-                    onView={(idx) => setViewerIndex(idx)}
-                    onAdd={async () => {
-                      const idx = await showActionSheet({
-                        title: t('species.addPhoto'),
-                        options: [{ label: t('species.takePhoto') }, { label: t('species.pickFromAlbum') }],
-                      });
-                      if (idx === 0) onAddPhoto('camera');
-                      else if (idx === 1) onAddPhoto('library');
-                    }}
-                    onRemove={onRemovePhoto}
-                  />
-                ) : null}
-                <Pressable
-                  onPress={() => setNotesModalOpen(true)}
-                  className="mt-2 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
-                >
-                  <Ionicons name="create-outline" size={18} color="#4b5563" />
-                  <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
-                    {record.notes ? record.notes : t('species.addNote')}
-                  </Text>
-                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-                </Pressable>
-                {onSaveLocation ? (
+                <View className="px-4 pb-6 pt-4">
                   <Pressable
-                    onPress={async () => {
-                      // Tap to capture current GPS; long-press handled via separate clear action.
-                      const perm = await Location.requestForegroundPermissionsAsync();
-                      if (perm.status !== 'granted') {
-                        Alert.alert(t('gps.permTitle'), t('gps.permMsg'));
-                        return;
-                      }
-                      try {
-                        const pos = await Location.getCurrentPositionAsync({
-                          accuracy: Location.Accuracy.Balanced,
-                        });
-                        onSaveLocation(
-                          pos.coords.latitude,
-                          pos.coords.longitude,
-                          pos.coords.accuracy ?? null,
-                        );
-                      } catch (e) {
-                        Alert.alert(t('gps.posFailTitle'), e instanceof Error ? e.message : String(e));
-                      }
+                    onPress={() => {
+                      onRemove();
+                      onClose();
                     }}
-                    onLongPress={
-                      record.lat !== null
-                        ? () => {
-                            Alert.alert('GPS', undefined, [
-                              { text: t('common.cancel'), style: 'cancel' },
-                              {
-                                text: t('species.clearCoord'),
-                                style: 'destructive',
-                                onPress: () => onSaveLocation(null, null, null),
-                              },
-                            ]);
-                          }
-                        : undefined
-                    }
-                    className="mt-2 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 active:bg-gray-50 dark:active:bg-gray-800"
+                    className="flex-row items-center justify-center rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/40 px-4 py-3 active:bg-red-100 dark:active:bg-red-900/60"
                   >
-                    <Ionicons
-                      name={record.lat !== null ? 'location' : 'location-outline'}
-                      size={18}
-                      color={record.lat !== null ? '#2563eb' : '#4b5563'}
-                    />
-                    <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300" selectable>
-                      {record.lat !== null && record.lng !== null
-                        ? `${record.lat.toFixed(5)}, ${record.lng.toFixed(5)}${
-                            record.accuracy !== null
-                              ? ` (±${Math.round(record.accuracy)}m)`
-                              : ''
-                          }`
-                        : t('species.locateSpecies')}
-                    </Text>
-                    <Text className="text-xs text-gray-400 dark:text-gray-500">
-                      {record.lat !== null ? t('species.longPressClear') : t('species.tapGps')}
-                    </Text>
+                    <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                    <Text className="ml-2 text-sm font-medium text-red-700 dark:text-red-400">{t('session.removeFromList')}</Text>
                   </Pressable>
-                ) : null}
-                {onSaveLocation && onChangeLocation ? (
-                  <RecordLocationMap
-                    lat={record.lat}
-                    lng={record.lng}
-                    onChange={onChangeLocation}
-                  />
-                ) : null}
-                {onSaveAttributes ? (
-                  <View className="mt-3">
-                    <SpeciesAttributesBlock
-                      kingdom={record.kingdom}
-                      className={record.class}
-                      value={{
-                        sex: record.sex ?? null,
-                        life_stage: record.life_stage ?? null,
-                        reproductive_condition: parseMultiAttribute(record.reproductive_condition),
-                        leaf_phenology: parseMultiAttribute(record.leaf_phenology),
-                      }}
-                      onChange={onSaveAttributes}
-                    />
-                  </View>
-                ) : null}
-              </Section>
-
-              <Section title={t('species.externalLinks')}>
-                <View className="flex-row flex-wrap gap-2">
-                  {links.map((link) => (
-                    <Pressable
-                      key={link.label}
-                      onPress={() => Linking.openURL(link.url)}
-                      className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
-                    >
-                      <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">{link.label}</Text>
-                      <Ionicons name="open-outline" size={12} color="#2563eb" />
-                    </Pressable>
-                  ))}
                 </View>
-              </Section>
-
-              <View className="px-4 pb-6 pt-4">
-                <Pressable
-                  onPress={() => {
-                    onRemove();
-                    onClose();
-                  }}
-                  className="flex-row items-center justify-center rounded-lg border border-red-200 bg-red-50 dark:bg-red-950/40 px-4 py-3 active:bg-red-100 dark:active:bg-red-900/60"
-                >
-                  <Ionicons name="trash-outline" size={18} color="#dc2626" />
-                  <Text className="ml-2 text-sm font-medium text-red-700 dark:text-red-400">{t('session.removeFromList')}</Text>
-                </Pressable>
-              </View>
-            </ScrollView>
+              </ScrollView>
+            </KeyboardAvoidingView>
           </SafeAreaView>
         </View>
 

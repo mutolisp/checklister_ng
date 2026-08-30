@@ -1,12 +1,6 @@
-import { getUserDb, getTaicolDb } from './init';
+import { EMPTY_TAXON_FIELDS, resolveTaxa } from './taxonLookup';
+import { getUserDb } from './init';
 import { generateUuid } from './plots';
-import {
-  getEnabledRegions,
-  isJpTaxonId,
-  regionOfTaxonId,
-  crossRegionVernacular,
-  composeVernacular,
-} from './regions';
 
 export type ChecklistRecord = {
   id: number;
@@ -173,7 +167,6 @@ export function updateRecordPhotos(id: number, paths: string[]): void {
 
 export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   const userDb = getUserDb();
-  const taicolDb = getTaicolDb();
 
   const recordsRes = userDb.executeSync(
     `SELECT id, session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths, lat, lng, accuracy,
@@ -185,79 +178,8 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   const records = (recordsRes.rows ?? []) as unknown as ChecklistRecord[];
   if (records.length === 0) return [];
 
-  const taxonIds = records.map((r) => r.taxon_id);
-  // Resolve names by querying each dataset's real table directly (indexed on
-  // taxon_id) — split by the 't…'/'y…' prefix. We deliberately avoid a
-  // taicol∪ylist UNION view: joining/scanning it materializes ~270k rows and
-  // costs seconds. All-Taiwan sessions only touch taicol_names (unchanged).
-  const TAXON_COLS = `taxon_id, simple_name, name_author, common_name_c, alternative_name_c,
-            family, family_c, rank,
-            is_endemic, alien_type, redlist, iucn, cites, protected, is_hybrid,
-            kingdom, kingdom_c, phylum, phylum_c, class, class_c, "order", order_c, genus, genus_c,
-            is_terrestrial, is_freshwater, is_brackish, is_marine, is_fossil`;
-  const taxonMap = new Map<string, Record<string, unknown>>();
-  const fillFrom = (tbl: string, ids: string[]) => {
-    if (ids.length === 0) return;
-    const ph = ids.map(() => '?').join(',');
-    const res = taicolDb.executeSync(
-      `SELECT ${TAXON_COLS} FROM ${tbl} WHERE taxon_id IN (${ph}) AND usage_status = 'accepted'`,
-      ids,
-    );
-    for (const row of (res.rows ?? []) as Array<Record<string, unknown>>) {
-      taxonMap.set(row.taxon_id as string, row);
-    }
-  };
-  fillFrom('taicol_names', taxonIds.filter((id) => !isJpTaxonId(id)));
-  fillFrom('jp_names', taxonIds.filter(isJpTaxonId));
-
-  // When Japan is enabled, merge the cross-region vernacular into common_name_c
-  // so every downstream display + export shows e.g. "糯米條 / タイワンツクバネウツギ"
-  // for shared species, or the lone 和名 for Japan-only ones. Skipped entirely
-  // when only ['TW'] is enabled — common_name_c stays exactly as TaiCOL has it.
-  const regions = getEnabledRegions();
-  const cross = regions.includes('JP')
-    ? crossRegionVernacular(taxonIds, regions)
-    : null;
-
-  return records.map((r) => {
-    const t = taxonMap.get(r.taxon_id) ?? {};
-    const ownCname = (t.common_name_c as string) ?? '';
-    const common_name_c = cross
-      ? composeVernacular(ownCname, regionOfTaxonId(r.taxon_id), cross.get(r.taxon_id), regions)
-      : ownCname;
-    return {
-      ...r,
-      simple_name: (t.simple_name as string) ?? '',
-      name_author: (t.name_author as string) ?? '',
-      common_name_c,
-      alternative_name_c: (t.alternative_name_c as string) ?? '',
-      family: (t.family as string) ?? '',
-      family_c: (t.family_c as string) ?? '',
-      rank: (t.rank as string) ?? '',
-      is_endemic: (t.is_endemic as string) ?? '',
-      alien_type: (t.alien_type as string) ?? '',
-      redlist: (t.redlist as string) ?? '',
-      iucn: (t.iucn as string) ?? '',
-      cites: (t.cites as string) ?? '',
-      protected: (t.protected as string) ?? '',
-      is_hybrid: (t.is_hybrid as string) ?? '',
-      kingdom: (t.kingdom as string) ?? '',
-      kingdom_c: (t.kingdom_c as string) ?? '',
-      phylum: (t.phylum as string) ?? '',
-      phylum_c: (t.phylum_c as string) ?? '',
-      class: (t.class as string) ?? '',
-      class_c: (t.class_c as string) ?? '',
-      order: (t.order as string) ?? '',
-      order_c: (t.order_c as string) ?? '',
-      genus: (t.genus as string) ?? '',
-      genus_c: (t.genus_c as string) ?? '',
-      is_terrestrial: (t.is_terrestrial as string) ?? '',
-      is_freshwater: (t.is_freshwater as string) ?? '',
-      is_brackish: (t.is_brackish as string) ?? '',
-      is_marine: (t.is_marine as string) ?? '',
-      is_fossil: (t.is_fossil as string) ?? '',
-    };
-  });
+  const taxa = resolveTaxa(records.map((r) => r.taxon_id));
+  return records.map((r) => ({ ...r, ...(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS) }));
 }
 
 /** Most recent `observed_at` (Date.now() millis) of any record in the

@@ -18,3 +18,4 @@ export * from './records_list';
 export * from './keys';
 export * from './favorites';
 export * from './surveyors';
+export * from './externalTaxa';

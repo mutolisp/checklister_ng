@@ -721,6 +721,139 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN litter_cover_pct REAL;`);
     },
   },
+  {
+    // v23: 常用名錄改為兩層（目錄 → 物種）。
+    //
+    // favorite_taxa 原本 PK 就是 taxon_id，所以同一個物種全域只能存在一次；
+    // 要讓一種可以同時出現在多個目錄，PK 必須換成代理鍵 + UNIQUE(folder_id,
+    // taxon_id)。SQLite 不能 ALTER PK，因此照 v3 的 rename + create + copy +
+    // drop 手法重建。
+    //
+    // 既有資料全數搬進一個預設目錄，列數不得改變。
+    //
+    // is_default 讓 UI 用 i18n 顯示目錄名（而不是把中文烤進資料），同時保證
+    // 快速加入最愛時永遠有一個落點。使用者仍可改名。
+    version: 23,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS favorite_folders (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          note TEXT,
+          is_default INTEGER NOT NULL DEFAULT 0,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+      `);
+      // 預設目錄固定 id=1，讓 DB 層不必查就能落點（比照 projects id=0 未分類）。
+      const now = Date.now();
+      db.executeSync(
+        `INSERT OR IGNORE INTO favorite_folders
+           (id, name, is_default, sort_order, created_at, updated_at)
+         VALUES (1, '常用名錄', 1, 0, ?, ?);`,
+        [now, now],
+      );
+
+      // 舊表可能不存在（全新安裝在 v14 就建過，這裡一律以存在為前提處理）。
+      const hasOld = db.executeSync(
+        `SELECT name FROM sqlite_master WHERE type='table' AND name='favorite_taxa';`,
+      );
+      const oldExists = (hasOld.rows?.length ?? 0) > 0;
+      if (oldExists) db.executeSync(`ALTER TABLE favorite_taxa RENAME TO favorite_taxa_v14;`);
+
+      db.executeSync(`
+        CREATE TABLE favorite_taxa (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          folder_id INTEGER NOT NULL DEFAULT 1,
+          taxon_id TEXT NOT NULL,
+          simple_name TEXT,
+          common_name_c TEXT,
+          family TEXT,
+          family_c TEXT,
+          rank TEXT,
+          kingdom TEXT,
+          added_at INTEGER NOT NULL,
+          UNIQUE(folder_id, taxon_id),
+          FOREIGN KEY (folder_id) REFERENCES favorite_folders(id) ON DELETE CASCADE
+        );
+      `);
+
+      if (oldExists) {
+        db.executeSync(`
+          INSERT INTO favorite_taxa
+            (folder_id, taxon_id, simple_name, common_name_c, family, family_c, rank, kingdom, added_at)
+          SELECT 1, taxon_id, simple_name, common_name_c, family, family_c, rank, kingdom, added_at
+          FROM favorite_taxa_v14;
+        `);
+        db.executeSync(`DROP TABLE favorite_taxa_v14;`);
+      }
+
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_folder ON favorite_taxa(folder_id, added_at DESC);`);
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_taxon ON favorite_taxa(taxon_id);`);
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_folders_sort ON favorite_folders(sort_order, id);`);
+    },
+  },
+  {
+    // v24: 外部名錄（GBIF / iNaturalist）的 taxon 快取。
+    //
+    // 只存「本地 TaiCOL / jp_names 查無」的物種 —— 對得到的一律綁既有的
+    // t… / y… id，否則同一個物種會有兩個身分，記錄與匯出就分裂了。
+    //
+    // 放在 user.db 而不是 twnamelist.db：後者是 build 產物，init.ts 用 Metro 的
+    // asset.hash 比對，bundle 換版就整個刪掉重 copy —— 寫進去的東西會在下次
+    // app 更新時消失。放這裡同時免費得到備份（VACUUM INTO 整檔）與清除語意。
+    //
+    // 欄位刻意與 favorite_taxa 的反正規化欄位對齊：外部 taxon 天生沒有 bundled
+    // 列，本來就得自己帶顯示資料。
+    version: 24,
+    up: (db) => {
+      db.executeSync(`
+        CREATE TABLE IF NOT EXISTS external_taxa (
+          taxon_id TEXT PRIMARY KEY,
+          source TEXT NOT NULL,
+          source_key TEXT NOT NULL,
+          simple_name TEXT NOT NULL,
+          name_author TEXT,
+          rank TEXT,
+          kingdom TEXT,
+          phylum TEXT,
+          class TEXT,
+          "order" TEXT,
+          family TEXT,
+          genus TEXT,
+          common_name_c TEXT,
+          fetched_at INTEGER NOT NULL
+        );
+      `);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_external_source ON external_taxa(source, source_key);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_external_name ON external_taxa(simple_name);`,
+      );
+    },
+  },
+  // v25：常用名錄目錄記住來源。由地圖範圍建立的目錄要能說明「這是哪一塊範圍、
+  // 從哪個服務抓的」，否則使用者過幾天就無從判斷名單為何是這些物種。
+  // area_geojson 存查詢當下的範圍（GeoJSON Polygon），source 存 'inat'/'gbif'/
+  // 'manual'；兩欄皆可為 NULL，代表手動建立的目錄。
+  {
+    version: 25,
+    up: (db) => {
+      addColumnIfMissing(db, `ALTER TABLE favorite_folders ADD COLUMN area_geojson TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE favorite_folders ADD COLUMN source TEXT;`);
+    },
+  },
+  // v26：標本各自的鑑定者（DwC identifiedBy）。採集者記的是「誰採的」，鑑定者記
+  // 的是「誰定的名」——常常不是同一個人，標本館標籤兩者都要印。可為 NULL：舊標本
+  // 沒有這個資訊，不該假造成採集者。
+  {
+    version: 26,
+    up: (db) => {
+      addColumnIfMissing(db, `ALTER TABLE collection_specimens ADD COLUMN identified_by TEXT;`);
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

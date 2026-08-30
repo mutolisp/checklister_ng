@@ -15,22 +15,47 @@ import {
 } from 'react-native';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { addRecord, isTaxonInSession, type SearchResult } from '~/db';
+import {
+  addFavorite,
+  addRecord,
+  isTaxonInFolder,
+  isTaxonInSession,
+  type SearchResult,
+} from '~/db';
 import { parseInput, resolveBatch, type CategorizedImport } from '~/lib/batchImport';
 import { splitVoiceInput } from '~/lib/voiceSplit';
 import { ScientificName } from './ScientificName';
 
+/** Where matched taxa land. The modal owns the dedupe + insert for each kind
+ *  so callers don't reimplement it; adding a third target means one more case
+ *  here, not a new modal. */
+export type BatchImportTarget =
+  | { kind: 'session'; sessionId: number }
+  | { kind: 'favorites'; folderId: number };
+
 type Props = {
   visible: boolean;
-  sessionId: number;
+  target: BatchImportTarget;
   onClose: () => void;
   onCommitted: (added: number) => void;
 };
 
+/** Already present in the target? */
+function targetHas(target: BatchImportTarget, taxonId: string): boolean {
+  return target.kind === 'session'
+    ? isTaxonInSession(target.sessionId, taxonId)
+    : isTaxonInFolder(target.folderId, taxonId);
+}
+
+function targetAdd(target: BatchImportTarget, m: SearchResult): void {
+  if (target.kind === 'session') addRecord({ session_id: target.sessionId, taxon_id: m.taxon_id });
+  else addFavorite(m, target.folderId);
+}
+
 type Step = 'input' | 'preview';
 type InputMode = 'paste' | 'voice';
 
-export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: Props) {
+export function BatchImportModal({ visible, target, onClose, onCommitted }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState<Step>('input');
@@ -112,11 +137,11 @@ export function BatchImportModal({ visible, sessionId, onClose, onCommitted }: P
         skipped++;
         continue;
       }
-      if (isTaxonInSession(sessionId, m.taxon_id)) {
+      if (targetHas(target, m.taxon_id)) {
         skipped++;
         continue;
       }
-      addRecord({ session_id: sessionId, taxon_id: m.taxon_id });
+      targetAdd(target, m);
       added++;
     }
     onCommitted(added);

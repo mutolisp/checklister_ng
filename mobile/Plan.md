@@ -1477,9 +1477,340 @@ Android 端順帶簡化：單一模式只開一個系統對話框，只有 `date
 - 不 dedupe 舊的 `occurrence_id`、不建 unique index（使用者決定）：那是對外發布的識別碼，重新配號會與已交付的匯出檔對不起來。改為提供檢查工具讓使用者看數字自己決定。
 - 不加 `expo-crypto`（原生模組，會逼出另一次原生重建）；改用 SQLite `randomblob`，與 v16 backfill 同源。
 
+## Sprint：接 iNaturalist / GBIF（Phase 1–4 完成，2026-08-30）
+
+完整設計與實測數字見 `External_species_api.md`。這裡只記結果與必須記住的事。
+
+| Phase | 內容 | 狀態 |
+|---|---|---|
+| 1 | v23 兩層常用名錄（名錄→物種）+ 遷移 + 四種匯入 | 完成 |
+| 2 | `sciMatch` 三段式解析 + v24 `external_taxa` + 三處 `fillFrom` 收斂 | 完成 |
+| 3 | iNat client + 地圖範圍查詢 → 建立名錄 + v25 名錄來源欄位 | 完成 |
+| 4 | GBIF 多邊形 + `/species/match` 後援 + 連線偵測 | 完成 |
+
+### 身分規則（動到任何外部資料來源都要遵守）
+
+物種**一律優先綁本地 id**：TaiCOL `t…` → 日本 `y…` → 都沒有才鑄外部
+`g…`(GBIF) / `gi…`(iNat)。同一物種有兩個身分，記錄、匯出、統計就會分裂。
+命中多筆時**絕不自動選第一筆**——進 ambiguous 讓使用者裁決。
+
+實測（live iNat，每區 200 種）：陽明山 97%、墾丁 98%、Kinabalu 17% 綁到本地 id。
+
+### 兩個來源的分工（Phase 4）
+
+| | iNaturalist | GBIF |
+|---|---|---|
+| 範圍 | **矩形**（外接矩形，地圖綠框標示）| **多邊形**（送你畫的形狀）|
+| 請求數 | 每 200 種 1 次 | 每類群 1 次（未選類群 = 8 次）|
+| 帶回 | 完整階層、觀察數、無作者 | 作者、界別、出現數 |
+| 識別碼 | 有（`gi…`）| **無**，要 `/species/match` 才能鑄 `g…` |
+| 陽明山比對率 | 97% | 98% |
+
+### 這批新增的不變式
+
+> **4. 對 `taicol_names` 的學名查詢不可寫 `LOWER(simple_name) = ?`。**
+> SQLite 無法用索引服務欄位的函數 → 全表 SCAN 269,824 列，67 ms/名。
+> 一律走 `nameVariants()` + `simple_name IN (…)`（0.09 ms/名，774 倍）。
+>
+> **5. 不要用 `URLSearchParams` 組 query string。** RN 的 polyfill 沒有 copy
+> constructor，`new URLSearchParams(other)` 會把整組參數塌成
+> `_searchParams=[object Map]`，bbox 被靜默丟掉變成全球查詢。自行
+> `encodeURIComponent`。
+
+### 網路狀態的語彙
+
+`ApiError.kind`：`network` / `timeout` / `http` / `parse` / `aborted`，UI 各給
+一句不同的話。**沒有重試、沒有背景更新、沒有快取**——野外 app 絕不能看起來在
+運作但其實沒有。查詢可中途取消。
+
+> **6. 連線偵測不加原生模組。** iNat 失敗探 GBIF、反之亦然（都是本來就會連的
+> 服務），兩邊皆不通才說離線。探測一律用 **HEAD**：iNat 最小的 GET 也有 64 KB,
+> 不該花野外使用者的行動數據去問「有沒有網路」。
+>
+> **7. RN 的 fetch 沒有預設逾時。** 野外的失敗樣態通常不是「失敗」而是「永遠
+> 不回」，所有外部請求都必須自帶逾時。
+
+### 後續調整
+
+#### 可視範圍查詢
+
+工具列另加「查詢畫面範圍物種」,直接取當前 `Region` 轉 bbox,不需繪製。
+矩形不可能自我相交,兩個來源都直接可用。實測 GBIF 200 / iNat 200。
+
+#### 常用名錄的四項調整
+
+**用詞**:UI 的「目錄」全面改為「**常用名錄**」(en: folder → list)。每一份就是一份
+常用名錄,預設那份仍叫「常用名錄」。i18n 已無殘留「目錄」字樣。
+
+**加入目的地可選**:範圍查詢的匯入不再只能新建,可選既有名錄。
+`area_geojson` **只在新建時寫入** —— 既有名錄可能已含來自別處的物種,覆寫它的
+範圍等於給那些物種貼上錯誤的來源標籤。
+
+**「已加入」提示帶前往連結**:toast 本來就支援 `action`(`addToRecord.goTo` 已有
+先例),但四個加入常用名錄的入口都沒用。抽出 `src/lib/favoritesToast.ts`
+(用 imperative `router` + `i18n.t`,因為其中兩個呼叫點在 action sheet callback
+裡、不是元件),四處統一。
+
+**名錄範圍小地圖**:`FolderAreaMap` 顯示該名錄的 `area_geojson`(v25 存的),
+可點「編輯範圍」交接到地圖重畫(`?draw=Polygon&favoriteArea=<id>`,沿用既有
+site handoff 的形狀)。重畫後 **`source` 會清空** —— 範圍已不再對應當初那次查詢,
+繼續標 iNaturalist/GBIF 是錯的。小地圖刻意不可互動(在捲動清單裡放可拖曳地圖會
+搶手勢),`area_geojson` 壞掉時退回「設定名錄範圍」空狀態而不是讓整頁掛掉。
+
+#### 小地圖統一(`src/components/MapControls.tsx`)
+
+縮放 / 定位 / 底圖切換的控制項原本只存在於 `RecordLocationMap` 內部。要讓名錄
+範圍地圖有同樣能力時,抽成共用模組而不是複製一份 —— `locateMe` 的權限處理尤其
+不應該有兩個版本。`RecordLocationMap` 已改用共用版,行為不變。
+
+現在三處小地圖:
+
+| 位置 | 元件 | 內容 |
+|---|---|---|
+| 物種記錄 / 樣區物種 | `RecordLocationMap` | 可編輯的點 |
+| **樣區環境因子 GPS** | `RecordLocationMap`(整個重用) | 可編輯的樣區中心點 |
+| **常用名錄範圍** | `FolderAreaMap` | 唯讀多邊形 + 回到範圍 |
+
+樣區那格順帶修一個既有問題:`hasGps` 同時被用來判斷「有沒有座標」與「座標是否
+來自 GPS」。手動在地圖上點一個位置沒有精度,原本會讓讀數退回「尚未取得 GPS」,
+看起來像沒有座標。拆成 `hasCoord` / `hasGps`,手動定位顯示「手動定位」而不是
+假造一個精度值。
+
+> **8. 小地圖的控制項一律用 `MapControls`。** 不要在新的地圖元件裡重寫 zoom /
+> locate / basemap —— 定位權限被拒的處理只能有一份。
+> (`PlotSpeciesValueModal` / `SpeciesDetailSheet` / `SpecimenDetailSheet` 內的
+> `requestForegroundPermissionsAsync` 是**取得並儲存座標**,與「把地圖移到我這
+> 裡」是不同的事,不在此列。)
+
+#### 座標可直接輸入(`src/lib/coords.ts`)
+
+小地圖控制列加「輸入座標」。單一欄位而非兩欄 —— 值幾乎都是貼上來的
+(Google Maps、GPS 畫面、舊調查表),拆成兩欄等於每次都要人工分割。
+
+支援十進位度與度分秒,**歧義一律拒絕不猜**:沒有 ° ′ ″ 符號的 `25 07 24.4` 不會
+被當成度分秒(猜錯會把點移動好幾公里)。27 項測試全過,其中
+`N25.1 W121.6` 是開發中抓到的真 bug —— 單一大型 regex 會把後面的 `W` 當成前一個
+座標的結尾字母吃掉,經度靜默變成正的、跑到另一個半球且不報錯。這就是改成
+token 解析的原因。
+
+#### GBIF 不再被 iNaturalist 的上限綁住
+
+**實測 `facet=scientificName` 沒有 1000 上限**(那是 `speciesKey` 的),
+`facetLimit=5000` 一次 2.25 秒就回來,`facetOffset` 也能翻頁。所以兩個來源給
+各自的上限常數(`MAX_SPECIES` / `GBIF_MAX_SPECIES`),不再由 iNat 的數字決定
+GBIF 能拿多少。
+
+代價全部量過,三件事都要一起改才可用:
+
+**兩者上限都是 1000**,刻意相等 —— 切換來源不該讓拿到的量默默改變。1000 不是
+API 的極限(GBIF 一次給 5000 只要 2.25 秒),而是**一份常用名錄能實際使用的量**:
+光陽明山那塊範圍在 GBIF 就超過 5000 種。超過時明說並建議縮小範圍。
+
+實測(陽明山):GBIF 1000 種 / 4.4s,iNat 1000 種 / 8.0s(5 頁 + 禮貌間隔)。
+
+代價全部量過,三件事都要一起改才可用:
+
+| | 之前 | 之後 |
+|---|---|---|
+| 抓取(8 類群) | 10.1s 循序 | **3.3s**(併發 2) |
+| 解析 6,576 名 | 434ms 桌機 → 裝置約 4s **同步阻塞** | 分塊 + 進度 + 可取消 |
+| 結果清單 | `ScrollView` 全部掛載 | `FlatList` 虛擬化 |
+
+那 4 秒同步阻塞就是 hang。`resolveAreaSpeciesChunked` 每 150 筆讓出一次
+thread。**這不是 memory 裡記的「setTimeout 背景 SQL 反 pattern」** —— 那是沒人
+要求、藏在計時器後面的啟動工作;這是使用者主動觸發、有進度、可取消的前景工作。
+
+#### 中文科名與常駐搜尋
+
+**科名**:範圍匯入寫進 `favorite_taxa` 的 `family_c` 一直是空字串,所以那些列只顯示
+`Fagaceae` 而不是「殼斗科 Fagaceae」。`favorite_taxa` 是**刻意反正規化**的(離線
+渲染免 join twnamelist),所以匯入當下沒寫的欄位就永遠不會出現。
+
+根因修在 `sciMatch`:`SciCandidate` 加 `family_c`,查詢多帶一欄(同一個 query,
+零額外成本)。既有的空白列用 `backfillFavoriteFamilyNames()` 補,每個 session 只跑
+一次且只在真的有東西要補時才動,外部 `g…` 物種跳過(GBIF/iNat 沒有中文科名)。
+bundle DB 內有科名的列有 **98%** 也有中文科名。
+
+**搜尋**:原本藏在放大鏡圖示後面。一次範圍匯入可以塞進 1000 種,搜尋不該要先找。
+改成常駐在清單上方,附清除鈕,**刻意不 autoFocus** —— 每次進名錄都彈鍵盤會妨礙
+更常見的「只是瀏覽」。
+
+#### GBIF 速率限制:實測到了
+
+規劃文件一直把速率限制標成「未證實」。這次測到了:**HTTP 429
+`Too many API requests have been detected from your client.`**
+
+我把類群併發從 1 提到 3 之後更容易踩到,已下修:
+
+- `GROUP_CONCURRENCY` 3 → **2**,間隔 120 → 300ms
+- `REFINE_CONCURRENCY` 6 → **3** 並加 120ms 間隔(這是全 app 最爆的操作,
+  數百個名稱連續打)
+- `apiFetch` 新增 `rate_limit` 錯誤類型 + **有上限的退避重試**(尊重
+  `Retry-After`,最多 2 次、最長等 10 秒),UI 給專屬訊息而不是「伺服器錯誤 429」
+
+> **9. GBIF 有速率限制,而且會踩到。** 併發不要超過 2,批次操作要加間隔。
+> 429 是「等一下」不是「壞掉」,要分開處理。
+
+### 實機回報的錯誤（依回報順序）
+
+#### 零高度 sheet（畫面像當機）
+
+「地圖選完後就卡住了」。畫面變暗、吞掉所有觸控、看不到任何內容也按不到取消——
+但**沒有任何例外**,device log 全是 Apple Maps 雜訊
+(`PPSClientDonation` / `default.csv` / `CAMetalLayer setDrawableSize width=0`)。
+
+成因:`~/components/KeyboardAvoidingView` 把 caller 的 className 放在**外層**
+被量測的 View,內層 KAV 寫死 `flex: 1`。call site 沒給 sizing className 時,
+內層的 `flex: 1` 落在自動高度的父層裡 → 解析成 **0 高度**,整張 sheet 0 px。
+`max-h-[88%]` 也跟著是 0%。app 內其他 8 個 call site 全都有傳 `flex-1`,
+只有新寫的這個沒有。
+
+> **10. `<KeyboardAvoidingView>` 的 call site 一定要給 sizing className。**
+> 底部 sheet 一律 `className="flex-1 justify-end"` + 內部絕對定位的 backdrop
+> Pressable(照抄 `PlotSpeciesValueModal`)。
+
+新增 **`npm run check:kav`**(`scripts/check-kav.mjs`)。已驗證把 className 拿掉
+後它會以 exit 1 指出正確的檔案與行號 —— 這種「wrapper 與 caller 的結構配對」
+編譯期看不出來、失敗樣態長得像當機,與 `check:dock` 是同一類問題。
+
+#### GBIF 回 400
+
+「搜尋的時候,GBIF 回應伺服器錯誤」。兩個獨立成因,實測皆為 **HTTP 400**:
+
+| 送出的形狀 | GBIF 回應 |
+|---|---|
+| 兩點(工具列寫「至少兩點」)| `Too few distinct points in geometry component` |
+| 自我相交(手指點很容易畫出來)| `Self-intersection at or near point (…)` |
+
+前者是我自己造成的:iNat 只用外接矩形,所以 UI 說兩點就夠;但同樣兩點經
+`polygonOf` 給 GBIF 就是零面積的退化多邊形。**未滿三個相異頂點時,外接矩形就是
+那個多邊形** —— 這也正是地圖上一直顯示給使用者看的形狀。
+
+後者改在**送出前本地偵測**(`ringSelfIntersects`,O(n²),頂點是手點的所以 n 很
+小),相交時停用 GBIF 選項並說明原因,而不是讓使用者送一個注定失敗的請求。
+已驗證凹多邊形(L 形)不會被誤判。
+
+`ApiError` 增加 `detail` 欄位保留伺服器自己的說明 —— GBIF 的 400 訊息是可行動
+的,只回「HTTP 400」等於把它丟掉。
+
+地圖在範圍查詢模式下現在**同時畫出兩個形狀**:填色的外接矩形(iNat 用)與
+外框線的所繪多邊形(GBIF 用)。原本只畫矩形,使用者看到矩形卻讓 GBIF 收到多邊
+形,比 400 還糟。
+
+#### 幾何驗證失敗會 hang
+
+我原本讓自我相交的形狀直接 `return` + 一個 toast,結果使用者按了「完成」什麼也
+沒發生,卡在繪製模式,只能一個頂點一個頂點 undo。**拒絕就是死路。**
+
+改成 `polygonOf()` **永遠回傳有效多邊形**:頂點不足三個、或自我相交,一律退回
+外接矩形,並回傳 `simplified: true` 讓 UI 明說。GBIF 選項因此不再需要停用。
+
+順帶補上零面積:同一點按兩下的外接矩形寬高都是 0,GBIF 400、iNat 回空。
+`bboxOf` 加 `MIN_SPAN_DEG = 0.001`(約 110 m),一處修好地圖預覽 / iNat / GBIF 三邊。
+
+實測(出貨函式編譯後打真實 API):兩點 / 三角形 / 凹多邊形 / 領結 / 同一點,
+**全部 HTTP 200**。
+
+#### 手動輸入座標不顯示
+
+輸入後畫面沒反應,要離開再進來才看得到 —— 值其實**有存進去**。
+
+四個父層(session / collection / plot / plotSpecies)都查過,全都有正確回寫。
+所以不是資料問題,是 **prompt Modal 關閉的同一個 tick 送出更新** —— repo 早就
+記過這個 iOS 陷阱(`ProjectAssignSheet` 的註解),state 更新有到 React,但沒到
+畫面。點選放置沒有這個問題,因為不經過 Modal。
+
+兩層修正:
+
+- **`RecordLocationMap` 保留剛提交的座標並立刻顯示**。放置一個點是直接操作,
+  本來就不該等父層「存檔→重讀→回傳」繞一圈。props 一變就交還給 props。
+- **等 Modal 關完再提交**(`setTimeout 350`,沿用 `ProjectAssignSheet` 既有慣例)。
+  Alert 也一併等,否則它會蓋在正在關閉的 Modal 上。
+
+> **11. `promptText` / Alert 回來後不要在同一個 tick 更新狀態。** 等 350ms 讓
+> Modal 關完。症狀不是崩潰,是「明明存了卻不顯示」。
+
+#### 原生 crash（未重現）
+
+`NSInvalidArgumentException -[__NSArrayM insertObject:atIndex:]` 對應
+`AIRMap.m:138`,是 **nil subview 被插進 MapView 的子節點陣列**,不是座標問題。
+未能重現,但做了兩項降低壓力的修正:
+
+- **不掛載沒顯示的 MapView**。`RecordLocationMap` / `FolderAreaMap` 原本內嵌與
+  全螢幕兩個 MapView 同時存在,現在全螢幕只在開啟時掛載
+- **`ListHeaderComponent` 改 memo**。原本每次 render 都給 VirtualizedList 一個全新
+  的 header element,等於在捲動中反覆重新掛載原生地圖
+
+修這個的過程中發現另一個會直接當掉的錯:`useMemo` 的工廠函式**當場執行**,而
+`editArea` 宣告在它後面 → `ReferenceError: Cannot access 'editArea' before
+initialization`,一進名錄就炸。TS 不會擋(參考寫在函式體內)。已調換順序。
+
+> **12. `useMemo` / `useCallback` 引用到的 `const`,宣告必須在它之前。** 工廠函式
+> 是同步執行的,TS 的 use-before-declaration 檢查看不到函式體內的參考。
+
 ### 仍未處理
 
-- [ ] **FK 開啟尚未實機驗證** —— 本批風險最高的一項
-- [ ] 重複的 taxon 解析（`records.ts` / `plots.ts` 各一份，`taxonLookup.ts` 才是共用實作，目前只有 `collections.ts` 在用）。`plots.ts` 那份與共用版完全等價、可直接替換
-- [ ] 零測試框架（`find . -name '*.test.ts*'` 是空的）——目前只靠 `check:dock` / `check:i18n` 兩支靜態檢查
-- [ ] `plot_species_records.subplot_id` 沒宣告 FK，開了 FK 也保護不到
+- [ ] **Phase 1–4 其餘部分尚未實機驗證**（v23/v24/v25 遷移、兩層常用名錄、範圍查詢）
+- [ ] 外部物種匯出時 DwC `taxonID` 要寫什麼（`g…` 不是對外識別碼）
+- [ ] GBIF 官方條文仍未讀到（techdocs 細節頁是 client-side 渲染），目前數字皆為
+      實測。**速率限制已實測存在**（429，見上）;facet 上限與 geometry 頂點上限
+      的官方值仍未知——`facet=scientificName` 實測到 5000 沒有上限，但不代表沒有
+- [ ] `map.tsx` 的 `Platform` import 未使用（既有，非本次造成）
+
+---
+
+## Sprint：採集清單 + 標本館標籤 + 常用名錄管理（2026-08-30）
+
+`Update_log.md` 記完整經過，這裡只留下之後還會用到的判斷。
+
+### 做了什麼
+
+| 區塊 | 內容 |
+|---|---|
+| 採集清單 | 改名鉛筆移到標題旁、排序（採集順序／採集號／科名／學名）、列上顯示科名 |
+| 鑑定者 | **v26** `collection_specimens.identified_by`，偏好設定有預設值 |
+| 標籤匯出 | A4、2 欄 × 5 列、虛線裁切線的 `.docx`，多選標本後匯出 |
+| 常用名錄 | 名錄層級的左滑刪除、多選刪除、匯出 docx／csv |
+
+### `src/lib/docx.ts` 現在是共用的文件產生器
+
+原本只服務 bundle 匯出的 Markdown→DOCX，現在抽出 `buildDocx(bodyXml, sectPrXml)`，
+標籤紙與常用名錄匯出都走它。`xmlEscape` / `parseRuns` / `runXml` / `RFONTS` 一併
+導出——**新的文件輸出一律用這些，不要另外寫一套 XML 拼接**。
+
+`A4_SECT_PR` 是 `markdownToDocx` 的**預設值**（不是每個呼叫點各傳一次）：呼叫點有
+四個，預設值沒有一個會忘記，參數會。
+
+> **13. OOXML 的 `tblPr` / `tcPr` / `sectPr` / `pPr` 子元素是 sequence 不是
+> choice。** 順序錯 Word 會跳「檔案需要修復」。正確順序：
+> `tblPr` = tblW → tblBorders → tblLayout → tblCellMar；
+> `tcPr` = tcW → vAlign；`sectPr` = pgSz → pgMar → cols；`pPr` = spacing → ind → jc。
+>
+> **14. `<w:tc>` 一定要有至少一個 `<w:p>`。** 空的儲存格是 Word「內容無法讀取」
+> 最常見的成因。兩個相鄰的 `<w:tbl>` 之間也必須有段落，否則 Word 會把它們併成一個。
+>
+> **15. 版面用 `lineRule="atLeast"` 釘死行高，不要用 `auto`。** `auto` 的行高由
+> **字型**決定，標楷體要約 1.45 em、替代字型只要約 1.2——在沒有標楷體的機器上渲染
+> 驗證會過，到了 Word 就爆版。這個錯已經出貨一次（標籤一頁只排到 4 列）。
+
+### 驗證方式：離線就能看到成品
+
+這批全部在沒有實機的情況下驗完，作法可重複用：
+
+1. 把純 TS 模組（不 import `~/db`、不 import React）用 repo 自己的 `tsc` 編出來
+2. Node 跑一遍產生真正的 `.docx`
+3. `unzip` + `xml.etree` 檢查結構，斷言 sequence 順序、儲存格非空、分頁數
+4. **LibreOffice `--headless --convert-to pdf` + `pdftoppm` 轉圖直接看**
+5. 改動既有輸出時，把改動前後各編一份，**逐位元比對解壓後的 `document.xml`**
+
+> **這條驗證鏈有一個已知盲點：這台機器沒有標楷體。** 渲染出來的是替換字型，所以
+> 它驗的是**版面、分頁、框線、斜體**，不是字形度量。凡是「高度會不會超過」這類
+> 問題，必須從 OOXML 的數值算，不能靠渲染看。
+
+### 仍未處理
+
+- [ ] **這批全部尚未實機驗證**（v26 遷移、排序、標籤匯出、常用名錄刪除與匯出）
+- [ ] 行程層級的 `locality` 沒有編輯入口：`addSpecimen` 會從行程繼承，但沒有 UI
+      寫得進去，所以標籤的 Location 只能逐筆填
+- [ ] `collection_specimens` 的 `created_at` 存在於 SQL 但不在 `SPECIMEN_COLS`
+      也不在型別裡，從未被讀取（既有，非本次造成）

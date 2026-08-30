@@ -32,6 +32,7 @@ import {
   type PlotType,
   type PlotSurvey,
   type RecordWithTaxon,
+  type TaxonFields,
   type PlotSpeciesRecordWithTaxon,
   type SpecimenWithTaxon,
 } from '~/db';
@@ -227,6 +228,7 @@ function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
     eventDate: localIso(sp.collected_at),
   };
   if (sp.recorded_by) item.recorded_by = sp.recorded_by;
+  if (sp.identified_by) item.identified_by = sp.identified_by;
   if (sp.lat !== null) item.lat = sp.lat;
   if (sp.lng !== null) item.lng = sp.lng;
   if (sp.accuracy !== null) item.accuracy = sp.accuracy;
@@ -276,17 +278,28 @@ function specimenToMarkdownItem(
   };
 }
 
-function mapAlienToSource(alienType: string, kingdom: string): string {
+export function mapAlienToSource(alienType: string, kingdom: string): string {
   if (alienType === 'cultured') return kingdom === 'Animalia' ? '圈養' : '栽培';
   if (alienType === 'native') return '原生';
   if (alienType === 'naturalized' || alienType === 'invasive') return '歸化';
   return '';
 }
 
-function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMarkdown>[0][number] {
+/**
+ * The taxon-derived half of a checklist item, with nothing observation-specific
+ * in it.
+ *
+ * Split out so a 常用名錄 — which has a taxon_id and resolved TaxonFields but no
+ * observation at all — can be exported through exactly the same Markdown/DOCX
+ * pipeline as a session, rather than growing a second mapping that would drift.
+ */
+export function taxonToMarkdownItem(
+  taxonId: string,
+  r: TaxonFields,
+): Parameters<typeof generateMarkdown>[0][number] {
   const fullname = r.name_author ? `${r.simple_name} ${r.name_author}` : r.simple_name;
   return {
-    taxon_id: r.taxon_id,
+    taxon_id: taxonId,
     name: r.simple_name,
     fullname,
     cname: r.common_name_c,
@@ -312,8 +325,11 @@ function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMar
     protected: r.protected,
     is_hybrid: r.is_hybrid,
     nomenclature_name: '',
-    notes: r.notes,
   };
+}
+
+function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMarkdown>[0][number] {
+  return { ...taxonToMarkdownItem(r.taxon_id, r), notes: r.notes };
 }
 
 /** Map a plot species record to a checklist MarkdownItem (mirrors

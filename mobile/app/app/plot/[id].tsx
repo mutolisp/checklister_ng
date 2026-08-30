@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { RecordLocationMap } from '~/components/RecordLocationMap';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import * as Location from 'expo-location';
@@ -285,10 +286,13 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
     }
   };
 
-  const hasGps =
-    plot.decimal_latitude !== null &&
-    plot.decimal_longitude !== null &&
-    plot.coord_uncertainty_m !== null;
+  /** A coordinate exists, however it was obtained. */
+  const hasCoord = plot.decimal_latitude !== null && plot.decimal_longitude !== null;
+  /** A coordinate that came from the GPS, so it carries an accuracy. A point
+   *  placed by hand on the map has none — which is why the two are separate:
+   *  gating the readout on `hasGps` would make a hand-placed point look like no
+   *  point at all. */
+  const hasGps = hasCoord && plot.coord_uncertainty_m !== null;
 
   return (
     <KeyboardAwareScrollView className="flex-1" keyboardShouldPersistTaps="handled" bottomOffset={24}>
@@ -335,18 +339,35 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 </Text>
               </Pressable>
             </View>
-            {hasGps ? (
+            {hasCoord ? (
               <Text selectable className="mt-2 text-sm text-gray-900 dark:text-gray-100">
                 {plot.decimal_latitude?.toFixed(6)}, {plot.decimal_longitude?.toFixed(6)}
                 {'  '}
                 <Text className="text-xs text-gray-500 dark:text-gray-400">
-                  ±{plot.coord_uncertainty_m?.toFixed(1)} m
+                  {plot.coord_uncertainty_m != null
+                    ? `±${plot.coord_uncertainty_m.toFixed(1)} m`
+                    : t('plot.manualCoord')}
                   {plot.elevation_m != null ? t('plot.elevSuffix', { m: plot.elevation_m }) : ''}
                 </Text>
               </Text>
             ) : (
               <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">{t('plot.gpsNotYet')}</Text>
             )}
+            {/* Same mini-map as the species record sheet — tap or drag to place
+                the plot centre when the GPS is unavailable or wrong, and zoom /
+                locate / switch basemap to check it against the terrain. */}
+            <RecordLocationMap
+              lat={plot.decimal_latitude}
+              lng={plot.decimal_longitude}
+              onChange={(lat, lng) =>
+                patch({
+                  decimal_latitude: lat,
+                  decimal_longitude: lng,
+                  // Placed by hand, so there is no measured accuracy to claim.
+                  coord_uncertainty_m: null,
+                })
+              }
+            />
           </View>
         )}
 

@@ -233,6 +233,14 @@ export default function SettingsScreen() {
           </View>
         </Section>
         <Section title={t('settings.sectionCollection')}>
+          {/* 預設鑑定者：新增標本時自動帶入，比照採集者從行程繼承的作法。
+              留空表示不帶入——標籤上寧可沒有這一行，也不要掛一個沒定過名的人。 */}
+          <RowInput
+            label={t('settings.defaultDeterminer')}
+            value={settings.default_identified_by}
+            placeholder={t('settings.defaultDeterminerPlaceholder')}
+            onCommit={(v) => settings.set('default_identified_by', v.trim())}
+          />
           <RowInput
             label={t('collection.numberPrefix')}
             value={settings.collection_number_prefix}

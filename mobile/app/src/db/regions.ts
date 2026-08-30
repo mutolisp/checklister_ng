@@ -44,11 +44,35 @@ export function jpEnabled(): boolean {
   return getEnabledRegions().includes('JP');
 }
 
-/** taxon_id belongs to the Japan (YList) dataset. */
+/** Where a taxon_id's data lives. The first character is the whole
+ *  discriminator: TaiCOL 't…', Japan 'y…', external (GBIF) 'g…'. */
+export type TaxonSource = 'taicol' | 'jp' | 'external';
+
+/** taxon_id belongs to the Japan (YList / wamei) dataset. */
 export function isJpTaxonId(taxonId: string | null | undefined): boolean {
   return !!taxonId && taxonId.charAt(0) === 'y';
 }
 
+/** taxon_id was minted for a species absent from both bundled checklists; its
+ *  row lives in user.db's `external_taxa`, not in twnamelist.db. */
+export function isExternalTaxonId(taxonId: string | null | undefined): boolean {
+  return !!taxonId && taxonId.charAt(0) === 'g';
+}
+
+export function sourceOfTaxonId(taxonId: string | null | undefined): TaxonSource {
+  if (isJpTaxonId(taxonId)) return 'jp';
+  if (isExternalTaxonId(taxonId)) return 'external';
+  return 'taicol';
+}
+
+/**
+ * Region for cross-region vernacular composition.
+ *
+ * NOTE this is a REGION, not a source: external taxa have no region of their
+ * own and deliberately report 'TW' so they simply take the no-cross-vernacular
+ * path. Use `sourceOfTaxonId` to decide which table to query — asking this
+ * function is what would silently send a 'g…' id to taicol_names.
+ */
 export function regionOfTaxonId(taxonId: string | null | undefined): RegionCode {
   return isJpTaxonId(taxonId) ? 'JP' : 'TW';
 }

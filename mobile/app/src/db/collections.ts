@@ -49,6 +49,9 @@ export type Specimen = {
   record_number_seq: number | null;
   collected_at: number;
   recorded_by: string | null;
+  /** DwC identifiedBy — who determined the name, which is often not the
+   *  collector. NULL on specimens recorded before v26. */
+  identified_by: string | null;
   lat: number | null;
   lng: number | null;
   /** GPS horizontal accuracy in metres → DwC coordinateUncertaintyInMeters. */
@@ -68,7 +71,7 @@ export type Specimen = {
 export type SpecimenWithTaxon = Specimen & TaxonFields;
 
 const SPECIMEN_COLS = `id, trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
-  collected_at, recorded_by, lat, lng, accuracy, locality,
+  collected_at, recorded_by, identified_by, lat, lng, accuracy, locality,
   sex, life_stage, reproductive_condition, leaf_phenology, notes, photo_paths`;
 
 function defaultTripName(now: Date = new Date()): string {
@@ -333,6 +336,8 @@ export type AddSpecimenInput = {
   collected_at?: number;
   /** Omit to inherit the trip's collectors. */
   recorded_by?: string | null;
+  /** Omit to take the default determiner from settings. */
+  identified_by?: string | null;
   lat?: number | null;
   lng?: number | null;
   accuracy?: number | null;
@@ -348,8 +353,8 @@ export function addSpecimen(input: AddSpecimenInput): number {
   const res = db.executeSync(
     `INSERT INTO collection_specimens
        (trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
-        collected_at, recorded_by, lat, lng, accuracy, locality, notes, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        collected_at, recorded_by, identified_by, lat, lng, accuracy, locality, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.trip_id,
       generateUuid(),
@@ -358,6 +363,11 @@ export function addSpecimen(input: AddSpecimenInput): number {
       recordNumberSeq(number),
       input.collected_at ?? now,
       input.recorded_by !== undefined ? input.recorded_by : (trip?.recorded_by ?? null),
+      // Same shape as the collector above: an explicit value (including null)
+      // wins, otherwise fall back to the preference.
+      input.identified_by !== undefined
+        ? input.identified_by
+        : (readSetting('default_identified_by') || null),
       input.lat ?? null,
       input.lng ?? null,
       input.accuracy ?? null,
@@ -373,7 +383,8 @@ export function addSpecimen(input: AddSpecimenInput): number {
 // herbarium work, and the collection number identifies the physical gathering,
 // not the determination — so the number stays put while the name changes.
 const SPECIMEN_UPDATABLE_KEYS = new Set([
-  'taxon_id', 'record_number', 'collected_at', 'recorded_by', 'lat', 'lng', 'accuracy',
+  'taxon_id', 'record_number', 'collected_at', 'recorded_by', 'identified_by',
+  'lat', 'lng', 'accuracy',
   'locality', 'sex', 'life_stage', 'reproductive_condition', 'leaf_phenology', 'notes',
 ]);
 

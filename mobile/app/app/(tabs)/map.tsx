@@ -32,6 +32,10 @@ import { SINICA_LAYERS } from '~/lib/sinicaLayers';
 import { NLSC_LAYERS } from '~/lib/nlscLayers';
 import { SaveSiteModal } from '~/components/SaveSiteModal';
 import { GeoImportModal } from '~/components/GeoImportModal';
+import { AreaSpeciesModal } from '~/components/AreaSpeciesModal';
+import type { BBox } from '~/lib/inat';
+import wellknown from 'wellknown';
+import { useFavorites } from '~/stores/favorites';
 import {
   createSite,
   deleteSite,
@@ -44,6 +48,7 @@ import {
   parseGeometry,
   parseTrackSegments,
   updatePlotSurvey,
+  setFavoriteFolderArea,
   updateSession,
   usesTrack,
   writePlotTrack,
@@ -85,6 +90,147 @@ const DRAW_LABEL: Record<string, string> = {
 const SITE_COLOR = '#2563eb';
 const SITE_FILL = 'rgba(37, 99, 235, 0.18)';
 const DRAW_COLOR = '#dc2626';
+
+/** Species-query overlay, kept visually distinct from the red site-drawing
+ *  colour so it is obvious the queried shape is not the shape being drawn. */
+const AREA_COLOR = '#059669';
+const AREA_FILL = 'rgba(5,150,105,0.12)';
+
+/** Axis-aligned bounds of the drawn points.
+ *
+ *  iNaturalist has no polygon parameter — only swlat/swlng + nelat/nelng or a
+ *  radius — so a hand-drawn shape is queried as its bounding box. The map draws
+ *  that box (see AREA_COLOR) and the modal says so in words, because silently
+ *  querying a larger area than the user outlined would make the resulting
+ *  species list quietly wrong. */
+/**
+ * Smallest span a query area may have, in degrees (~110 m).
+ *
+ * Tapping the same spot twice gives a box of zero width and height. That is not
+ * a small query, it is a broken one: GBIF rejects it (`Too few distinct points
+ * in geometry component`) and iNaturalist returns nothing at all. Widening it
+ * to something a survey could plausibly mean is better than either.
+ */
+const MIN_SPAN_DEG = 0.001;
+
+function bboxOf(pts: LatLng[]): BBox {
+  const lats = pts.map((p) => p.latitude);
+  const lngs = pts.map((p) => p.longitude);
+  const span = (lo: number, hi: number): [number, number] => {
+    if (hi - lo >= MIN_SPAN_DEG) return [lo, hi];
+    const mid = (lo + hi) / 2;
+    return [mid - MIN_SPAN_DEG / 2, mid + MIN_SPAN_DEG / 2];
+  };
+  const [swLat, neLat] = span(Math.min(...lats), Math.max(...lats));
+  const [swLng, neLng] = span(Math.min(...lngs), Math.max(...lngs));
+  return { swLat, swLng, neLat, neLng };
+}
+
+/**
+ * The shape to query, as a closed GeoJSON Polygon that is ALWAYS valid.
+ *
+ * Two taps mean "this rectangle" — the toolbar says two points is enough,
+ * because iNaturalist only ever uses the bounding box. Sending those two taps
+ * to GBIF as a polygon produces a zero-area sliver, which it rejects with
+ * `Too few distinct points in geometry component`. A ring that crosses itself
+ * is rejected too (`Self-intersection at or near point …`).
+ *
+ * Both cases fall back to the bounding box rather than refusing. Refusing was
+ * the first attempt and it dead-ends the user: they tap Done, get a toast, and
+ * are left in drawing mode with no way forward except undoing vertex by vertex.
+ * The bounding box is a valid answer, it is already drawn on the map, and
+ * `simplified` lets the caller say plainly that it was used.
+ */
+function polygonOf(pts: LatLng[]): {
+  polygon: { type: 'Polygon'; coordinates: [number, number][][] };
+  simplified: boolean;
+} {
+  const distinct: [number, number][] = [];
+  for (const p of pts) {
+    const c: [number, number] = [p.longitude, p.latitude];
+    if (!distinct.some((d) => d[0] === c[0] && d[1] === c[1])) distinct.push(c);
+  }
+  const boxRing = () =>
+    bboxCorners(bboxOf(pts)).map((p) => [p.longitude, p.latitude] as [number, number]);
+  const close = (r: [number, number][]) => {
+    const first = r[0];
+    const last = r[r.length - 1];
+    if (first && last && (first[0] !== last[0] || first[1] !== last[1])) r.push(first);
+    return r;
+  };
+
+  if (distinct.length < 3) {
+    return { polygon: { type: 'Polygon', coordinates: [close(boxRing())] }, simplified: true };
+  }
+  const drawn = close([...distinct]);
+  if (ringSelfIntersects(drawn)) {
+    return { polygon: { type: 'Polygon', coordinates: [close(boxRing())] }, simplified: true };
+  }
+  return { polygon: { type: 'Polygon', coordinates: [drawn] }, simplified: false };
+}
+
+/** Do two segments properly cross? Shared endpoints do not count. */
+function segmentsCross(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+  d: [number, number],
+): boolean {
+  const cross = (p: [number, number], q: [number, number], r: [number, number]) =>
+    (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+/**
+ * Does the closed ring cross itself?
+ *
+ * GBIF rejects a self-intersecting polygon outright (`Self-intersection at or
+ * near point …`), and tapping out a shape that crosses itself is easy to do by
+ * accident. Checking here means the user is told while they can still fix it,
+ * instead of after a failed request. O(n²) is fine: these rings are tapped by
+ * hand, so n is small.
+ */
+function ringSelfIntersects(ring: [number, number][]): boolean {
+  const n = ring.length - 1; // last point repeats the first
+  if (n < 4) return false;
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue; // adjacent through the closing edge
+      if (segmentsCross(ring[i], ring[i + 1], ring[j], ring[j + 1])) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * The visible map area as a bounding box.
+ *
+ * `Region` is a centre plus full-width deltas, so each edge is half a delta
+ * from the centre. This is the "search what I'm looking at" path: no drawing,
+ * and the result is a rectangle, which both sources accept as-is.
+ */
+function bboxOfRegion(r: Region): BBox {
+  return {
+    swLat: r.latitude - r.latitudeDelta / 2,
+    swLng: r.longitude - r.longitudeDelta / 2,
+    neLat: r.latitude + r.latitudeDelta / 2,
+    neLng: r.longitude + r.longitudeDelta / 2,
+  };
+}
+
+/** bbox → the four corners react-native-maps needs to draw it. */
+function bboxCorners(b: BBox): LatLng[] {
+  return [
+    { latitude: b.swLat, longitude: b.swLng },
+    { latitude: b.swLat, longitude: b.neLng },
+    { latitude: b.neLat, longitude: b.neLng },
+    { latitude: b.neLat, longitude: b.swLng },
+  ];
+}
 const DRAW_FILL = 'rgba(220, 38, 38, 0.18)';
 // Plot survey overlay (distinct from site-blue / draw-red).
 const PLOT_COLOR = '#7c3aed'; // violet — done plots
@@ -119,7 +265,7 @@ export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const toast = useToast((s) => s.show);
   const router = useRouter();
-  const params = useLocalSearchParams<{ draw?: string; session?: string }>();
+  const params = useLocalSearchParams<{ draw?: string; session?: string; favoriteArea?: string }>();
   /** When set, after saving the next drawn site we bind it to this session and bounce back. */
   const handoffSessionId = useRef<number | null>(null);
   const activeSession = useActiveSession((s) => s.session);
@@ -139,6 +285,23 @@ export default function MapScreen() {
   // Drawing UI only produces simple types; Multi* arrive via import (KML/GPX).
   const [drawMode, setDrawMode] = useState<'Point' | 'LineString' | 'Polygon' | null>(null);
   const [drawPoints, setDrawPoints] = useState<LatLng[]>([]);
+  /** What the current drawing is FOR. 'site' saves a 地理樣區; 'species' queries
+   *  iNaturalist for what has been observed inside it. Same gesture, two
+   *  terminuses — the alternative was a second drawing implementation. */
+  const [drawPurpose, setDrawPurpose] = useState<'site' | 'species' | 'favoriteArea'>('site');
+  /** Which 常用名錄's area is being redrawn, when handed off from favourites. */
+  const favoriteAreaId = useRef<number | null>(null);
+  const [areaOpen, setAreaOpen] = useState(false);
+  const [areaQuery, setAreaQuery] = useState<{
+    bbox: BBox;
+    wkt: string;
+    geojson: string;
+    /** True when the drawn ring could not be used as-is (fewer than three
+     *  distinct vertices, or self-intersecting) and the bounding box was
+     *  substituted. The modal says so rather than letting the user believe
+     *  their outline was queried. */
+    simplified: boolean;
+  } | null>(null);
   const [saveSiteOpen, setSaveSiteOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [sites, setSites] = useState<SiteWithProject[]>([]);
@@ -197,11 +360,20 @@ export default function MapScreen() {
       const sid = parseInt(sessionParam, 10);
       if (!Number.isNaN(sid)) handoffSessionId.current = sid;
     }
+    const favParam = params.favoriteArea;
+    if (typeof favParam === 'string') {
+      const fid = parseInt(favParam, 10);
+      if (!Number.isNaN(fid)) {
+        favoriteAreaId.current = fid;
+        setDrawPurpose('favoriteArea');
+        toast(t('areaSpecies.drawAreaHint'));
+      }
+    }
     setDrawMode(drawParam);
     setDrawPoints([]);
     // Clear params to prevent re-trigger
-    router.setParams({ draw: undefined, session: undefined });
-  }, [params.draw, params.session, router]);
+    router.setParams({ draw: undefined, session: undefined, favoriteArea: undefined });
+  }, [params.draw, params.session, params.favoriteArea, router, toast, t]);
 
   useEffect(() => {
     setSetting('map_view', {
@@ -306,22 +478,52 @@ export default function MapScreen() {
     else if (idx === 2) startDraw('Polygon');
   };
 
-  const startDraw = (mode: 'Point' | 'LineString' | 'Polygon') => {
+  const startDraw = (
+    mode: 'Point' | 'LineString' | 'Polygon',
+    purpose: 'site' | 'species' = 'site',
+  ) => {
     setDrawMode(mode);
+    setDrawPurpose(purpose);
     setDrawPoints([]);
     toast(
-      mode === 'Point'
-        ? t('map.drawTapPoint')
-        : mode === 'LineString'
-          ? t('map.drawTapLine')
-          : t('map.drawTapPolygon'),
+      purpose === 'species'
+        ? t('areaSpecies.drawHint')
+        : mode === 'Point'
+          ? t('map.drawTapPoint')
+          : mode === 'LineString'
+            ? t('map.drawTapLine')
+            : t('map.drawTapPolygon'),
     );
+  };
+
+  /** Query the area currently on screen, with no drawing step at all. */
+  const searchVisibleArea = () => {
+    setToolsOpen(false);
+    const bbox = bboxOfRegion(lastRegion.current);
+    const poly = {
+      type: 'Polygon' as const,
+      coordinates: [
+        bboxCorners(bbox)
+          .map((p) => [p.longitude, p.latitude] as [number, number])
+          .concat([[bbox.swLng, bbox.swLat]]),
+      ],
+    };
+    setAreaQuery({
+      bbox,
+      wkt: wellknown.stringify(poly as never),
+      geojson: JSON.stringify(poly),
+      // A rectangle is the shape the user asked for, not a fallback.
+      simplified: false,
+    });
+    setAreaOpen(true);
   };
 
   const cancelDraw = () => {
     setDrawMode(null);
+    setDrawPurpose('site');
     setDrawPoints([]);
     handoffSessionId.current = null;
+    favoriteAreaId.current = null;
   };
 
   const handleMapPress = (e: { nativeEvent: { coordinate: LatLng } }) => {
@@ -337,6 +539,43 @@ export default function MapScreen() {
 
   const finishDraw = () => {
     if (!drawMode) return;
+    if (drawPurpose === 'favoriteArea') {
+      const fid = favoriteAreaId.current;
+      if (fid == null) return;
+      if (drawPoints.length < 2) {
+        toast(t('areaSpecies.need2'));
+        return;
+      }
+      const { polygon, simplified } = polygonOf(drawPoints);
+      // Source is cleared: the area no longer matches whatever query built the
+      // list, and claiming it came from iNaturalist/GBIF would be wrong.
+      setFavoriteFolderArea(fid, JSON.stringify(polygon), '');
+      useFavorites.getState().refresh();
+      cancelDraw();
+      // No "go to" action on this one: router.back() lands the user on the
+      // favourites screen already, and the action would push a duplicate.
+      toast(simplified ? t('areaSpecies.areaSavedBox') : t('areaSpecies.areaSaved'));
+      router.back();
+      return;
+    }
+    if (drawPurpose === 'species') {
+      // Two taps already define a rectangle, so this needs a lower floor than a
+      // site polygon.
+      if (drawPoints.length < 2) {
+        toast(t('areaSpecies.need2'));
+        return;
+      }
+      const { polygon, simplified } = polygonOf(drawPoints);
+      setAreaQuery({
+        bbox: bboxOf(drawPoints),
+        // GBIF takes the drawn shape itself; iNaturalist only takes the box.
+        wkt: wellknown.stringify(polygon as never),
+        geojson: JSON.stringify(polygon),
+        simplified,
+      });
+      setAreaOpen(true);
+      return;
+    }
     if (drawMode === 'LineString' && drawPoints.length < 2) {
       toast(t('map.lineNeed2'));
       return;
@@ -846,12 +1085,32 @@ export default function MapScreen() {
         {(drawMode === 'LineString' || editMode === 'track') && drawPoints.length >= 2 ? (
           <Polyline coordinates={drawPoints} strokeColor={DRAW_COLOR} strokeWidth={3} />
         ) : null}
-        {drawMode === 'Polygon' && drawPoints.length >= 3 ? (
+        {drawMode === 'Polygon' && drawPurpose === 'site' && drawPoints.length >= 3 ? (
           <Polygon
             coordinates={drawPoints}
             strokeColor={DRAW_COLOR}
             fillColor={DRAW_FILL}
             strokeWidth={2}
+          />
+        ) : null}
+        {/* Species query: draw BOTH shapes, because the two sources use
+            different ones — the filled box is what iNaturalist is asked about,
+            the outline is what GBIF is asked about. Showing only one of them
+            would misrepresent whichever source the user then picks. */}
+        {drawPurpose === 'species' && drawPoints.length >= 2 ? (
+          <Polygon
+            coordinates={bboxCorners(bboxOf(drawPoints))}
+            strokeColor={AREA_COLOR}
+            fillColor={AREA_FILL}
+            strokeWidth={1}
+          />
+        ) : null}
+        {(drawPurpose === 'species' || drawPurpose === 'favoriteArea') && drawPoints.length >= 3 ? (
+          <Polygon
+            coordinates={drawPoints}
+            strokeColor={AREA_COLOR}
+            fillColor="transparent"
+            strokeWidth={3}
           />
         ) : null}
       </MapView>
@@ -926,6 +1185,19 @@ export default function MapScreen() {
                 accent={!!sinicaLayer || !!nlscLayer}
               />
               <FabRow icon="create-outline" label={t('map.drawSite')} onPress={handlePickDrawMode} />
+              <FabRow
+                icon="scan-outline"
+                label={t('areaSpecies.fabVisible')}
+                onPress={searchVisibleArea}
+              />
+              <FabRow
+                icon="leaf-outline"
+                label={t('areaSpecies.fab')}
+                onPress={() => {
+                  setToolsOpen(false);
+                  startDraw('Polygon', 'species');
+                }}
+              />
               <FabRow
                 icon="cloud-upload-outline"
                 label={t('map.import')}
@@ -1022,7 +1294,7 @@ export default function MapScreen() {
         ]}
       />
 
-      {drawMode ? (
+      {drawMode && drawPurpose === 'site' ? (
         <SaveSiteModal
           visible={saveSiteOpen}
           geometryType={drawMode}
@@ -1031,6 +1303,29 @@ export default function MapScreen() {
           onConfirm={handleSaveSite}
         />
       ) : null}
+
+      <AreaSpeciesModal
+        visible={areaOpen}
+        bbox={areaQuery?.bbox ?? null}
+        wkt={areaQuery?.wkt ?? null}
+        simplified={areaQuery?.simplified ?? false}
+        areaGeoJson={areaQuery?.geojson ?? null}
+        onClose={() => {
+          setAreaOpen(false);
+          setAreaQuery(null);
+        }}
+        onImported={(name, added) => {
+          setAreaOpen(false);
+          setAreaQuery(null);
+          cancelDraw();
+          toast(t('areaSpecies.imported', { name, count: added }), {
+            action: {
+              label: t('favorites.goToFavorites'),
+              onPress: () => router.push('/favorites'),
+            },
+          });
+        }}
+      />
 
       <GeoImportModal
         visible={importOpen}
