@@ -1,21 +1,20 @@
 /**
- * Plot round-trip import: read an exported `.yml` (standalone, or the one inside
- * an export `.zip`) and turn it into an `ImportedPlot` that `importPlotSurvey`
- * (src/db/plots.ts) can write back to the DB. Mirrors the full plot yml schema
- * emitted by `buildPlotEntries` (src/lib/bundleExport.ts).
+ * Plot round-trip import — the yml half.
  *
- * Data only — photos are not imported (zip `photos/` is ignored).
+ * Turns the `plot:` document emitted by `buildPlotEntries` (src/lib/bundleExport.ts)
+ * into an `ImportedPlot` that `importPlotSurvey` (src/db/plots.ts) writes back.
+ * File/zip reading, geometry fallbacks and photo bytes live in
+ * `src/lib/recordImport.ts`; this module stays pure so it can be exercised
+ * without a device (see scripts/check-roundtrip.mjs).
  */
-import { readAsStringAsync } from 'expo-file-system/legacy';
-import i18n from '~/i18n';
-import { strFromU8, unzipSync } from 'fflate';
 import yaml from 'js-yaml';
-import { base64ToBytes } from './bundleExport';
-import { serializeMultiAttribute } from './dwcAttributes';
+import { ImportError } from './importError';
+import { serializeMultiAttribute } from './dwcMultiValue';
 import type {
   ImportedPlot,
   ImportedPlotLayer,
   ImportedPlotSpecies,
+  ImportedSite,
   ImportedSubplot,
   PlotType,
 } from '~/db';
@@ -23,23 +22,49 @@ import type {
 const PLOT_TYPES: PlotType[] = ['fixed', 'transect', 'point_count'];
 const METHODS = ['BB', 'percent', 'DBH'];
 
-function num(v: unknown): number | null {
+export function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
-function str(v: unknown): string | null {
+export function str(v: unknown): string | null {
   return typeof v === 'string' && v !== '' ? v : null;
 }
 /** yml stores multi-value attrs pipe-joined; DB stores a JSON array string. */
-function pipeToJson(v: unknown): string | null {
+export function pipeToJson(v: unknown): string | null {
   if (typeof v !== 'string' || v === '') return null;
   return serializeMultiAttribute(v.split('|').map((x) => x.trim()).filter(Boolean));
 }
+/** Pipe-joined filename list → array. Same convention as the attribute fields
+ *  (filenames are sanitised at export, so they never contain a pipe). */
+export function pipeToList(v: unknown): string[] {
+  if (typeof v !== 'string' || v === '') return [];
+  return v.split('|').map((x) => x.trim()).filter(Boolean);
+}
 
-function parsePlotYaml(text: string): ImportedPlot {
+/** Read a `site:` block. Geometry is a GeoJSON object in the yml (authored
+ *  data), unlike the DB column which stores it stringified. */
+export function parseSiteBlock(v: unknown): ImportedSite | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const geometry = o.geometry as { type?: string; coordinates?: unknown } | undefined;
+  if (!geometry || typeof geometry.type !== 'string' || geometry.coordinates === undefined) {
+    return null;
+  }
+  return {
+    name: str(o.name) ?? '',
+    notes: str(o.notes),
+    geometry: geometry as ImportedSite['geometry'],
+  };
+}
+
+export function parsePlotYaml(text: string): ImportedPlot {
   const doc = yaml.load(text) as Record<string, unknown> | null;
+  return plotFromDoc(doc);
+}
+
+export function plotFromDoc(doc: Record<string, unknown> | null): ImportedPlot {
   const p = (doc?.plot ?? null) as Record<string, unknown> | null;
-  if (!doc || !p) throw new Error(i18n.t('plotImport.invalidYml'));
-  if (!p.uuid || !p.plotid) throw new Error(i18n.t('plotImport.missingFields'));
+  if (!doc || !p) throw new ImportError('invalidYml');
+  if (!p.uuid || !p.plotid) throw new ImportError('missingFields');
 
   const plot_type: PlotType = PLOT_TYPES.includes(p.plot_type as PlotType)
     ? (p.plot_type as PlotType)
@@ -50,6 +75,8 @@ function parsePlotYaml(text: string): ImportedPlot {
     .map((s) => ({
       occurrence_id: str(s.occurrence_id),
       taxon_id: String(s.taxon_id ?? ''),
+      name: str(s.name),
+      family: str(s.family),
       subplot: str(s.subplot),
       layer: str(s.layer),
       organism_quantity: str(s.organism_quantity),
@@ -64,6 +91,7 @@ function parsePlotYaml(text: string): ImportedPlot {
       lng: num(s.lng),
       accuracy: num(s.accuracy),
       observed_at: num(s.observed_at),
+      photo_files: pipeToList(s.photo_files),
     }))
     .filter((s) => s.taxon_id);
 
@@ -122,24 +150,11 @@ function parsePlotYaml(text: string): ImportedPlot {
     litter_cover_pct: num(p.litter_cover_pct),
     point_radius_m: num(p.point_radius_m),
     track_geojson: str(p.track_geojson),
+    track_finalized: num(p.track_finalized),
+    env_photo_files: pipeToList(p.env_photo_files),
+    site: parseSiteBlock(doc.site),
     layers,
     subplots,
     species,
   };
-}
-
-/** Read a `.yml` file (or the yml inside an export `.zip`) into an ImportedPlot. */
-export async function readPlotImport(uri: string): Promise<ImportedPlot> {
-  const lower = uri.toLowerCase();
-  if (lower.endsWith('.zip')) {
-    const b64 = await readAsStringAsync(uri, { encoding: 'base64' });
-    const files = unzipSync(base64ToBytes(b64));
-    const ymlName = Object.keys(files).find(
-      (n) => n.toLowerCase().endsWith('.yml') || n.toLowerCase().endsWith('.yaml'),
-    );
-    if (!ymlName) throw new Error(i18n.t('plotImport.noYmlInZip'));
-    return parsePlotYaml(strFromU8(files[ymlName]));
-  }
-  const text = await readAsStringAsync(uri, { encoding: 'utf8' });
-  return parsePlotYaml(text);
 }

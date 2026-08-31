@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { File } from 'expo-file-system';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -28,6 +27,8 @@ import {
   type CategorizedImport,
   type ParsedEntry,
 } from '~/lib/batchImport';
+import { importErrorMessage } from '~/lib/recordCreate';
+import { readRecordYamlText } from '~/lib/recordImport';
 import { splitVoiceInput } from '~/lib/voiceSplit';
 import { ScientificName } from './ScientificName';
 
@@ -103,8 +104,10 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
       if (r.canceled) return;
       const asset = r.assets[0];
       if (!asset?.uri) return;
-      const file = new File(asset.uri);
-      const content = await file.text();
+      // Reads the .yml, or pulls it out of a whole export .zip — reading a zip
+      // as text is what produced iOS's "the text encoding of its contents
+      // can't be determined".
+      const content = await readRecordYamlText(asset.uri);
       const entries = parseInput(content);
       if (entries.length === 0) {
         Alert.alert(t('batchImport.noNames'), t('batchImport.noNamesFile'));
@@ -112,7 +115,7 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
       }
       setPickedFile({ name: asset.name || t('batchImport.pickedFileFallback'), entries });
     } catch (e) {
-      Alert.alert(t('batchImport.readFail'), e instanceof Error ? e.message : String(e));
+      Alert.alert(t('batchImport.readFail'), importErrorMessage(e));
     }
   };
 

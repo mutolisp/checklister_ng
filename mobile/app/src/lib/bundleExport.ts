@@ -35,19 +35,22 @@ import {
   type TaxonFields,
   type PlotSpeciesRecordWithTaxon,
   type SpecimenWithTaxon,
+  type ImportedSite,
+  type Site,
 } from '~/db';
 import { convertToDwc } from './dwcMapper';
-import { parseMultiAttribute } from './dwcAttributes';
+import {
+  buildPlotYamlDoc,
+  buildSessionYamlDoc,
+  localIso,
+  multiToPipe,
+  recordToYamlItem,
+  type PhotoNames,
+} from './bundleYaml';
 import { generateMarkdown, type ConservationField } from './markdown';
 import { markdownToDocx } from './docx';
 import { geoJsonToGpx, geoJsonToKml } from './geoSerializers';
 
-/** DwC multi-value convention: pipe-separated. Pulls JSON-array DB cells out
- *  and joins with `|`; empty → empty string (CSV column kept positional). */
-function multiToPipe(raw: string | null | undefined): string {
-  const arr = parseMultiAttribute(raw);
-  return arr.join('|');
-}
 
 export type GeoFormat = 'geojson' | 'gpx' | 'kml';
 
@@ -110,6 +113,14 @@ export function parsePhotoUris(json: string | null): string[] {
   return [];
 }
 
+/** DB site row → the `site:` block both ymls carry. Returns null when the
+ *  stored geometry is unparseable (the sidecar files skip it too). */
+function siteToImported(site: Site): ImportedSite | null {
+  const geom = parseGeoJsonSafe(site.geometry_geojson);
+  if (!geom) return null;
+  return { name: site.name, notes: site.notes, geometry: geom as ImportedSite['geometry'] };
+}
+
 function parseGeoJsonSafe(s: string | null): object | null {
   if (!s) return null;
   try {
@@ -121,22 +132,6 @@ function parseGeoJsonSafe(s: string | null): object | null {
 
 // ---- DwC helpers (mirror exporters.ts shape) ------------------------------
 
-/** Format a millisecond timestamp as ISO 8601 in the device's *local* timezone
- *  with offset (e.g. `2026-06-11T14:30:00+08:00`). Preserves the instant while
- *  showing local wall-clock time instead of UTC ('…Z'), which is what field
- *  recorders expect to see for observation / event times. */
-function localIso(ts: number): string {
-  const d = new Date(ts);
-  const p = (n: number) => String(n).padStart(2, '0');
-  const off = -d.getTimezoneOffset(); // minutes east of UTC
-  const sign = off >= 0 ? '+' : '-';
-  const oh = p(Math.floor(Math.abs(off) / 60));
-  const om = p(Math.abs(off) % 60);
-  return (
-    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
-    `T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${sign}${oh}:${om}`
-  );
-}
 
 /** Compare two taxon-bearing rows by full taxonomic hierarchy, then scientific
  *  name — kingdom → phylum → class → order → family → genus → species (all
@@ -161,44 +156,6 @@ function taxonSortCompare(a: TaxonSortable, b: TaxonSortable): number {
   return 0;
 }
 
-function recordToYamlItem(r: RecordWithTaxon): Record<string, unknown> {
-  const fullname = r.name_author ? `${r.simple_name} ${r.name_author}` : r.simple_name;
-  const item: Record<string, unknown> = {
-    occurrence_id: r.occurrence_id,
-    taxon_id: r.taxon_id,
-    name: r.simple_name,
-    fullname,
-    cname: r.common_name_c,
-    family: r.family,
-    family_c: r.family_c,
-    kingdom: r.kingdom,
-    phylum: r.phylum,
-    class_name: r.class,
-    order: r.order,
-    iucn_category: r.iucn,
-    redlist: r.redlist,
-    cites: r.cites,
-    protected: r.protected,
-    endemic: r.is_endemic === 'true' ? 1 : 0,
-    is_hybrid: r.is_hybrid,
-    eventDate: localIso(r.observed_at),
-  };
-  if (r.lat !== null) item.lat = r.lat;
-  if (r.lng !== null) item.lng = r.lng;
-  if (r.accuracy !== null) item.accuracy = r.accuracy;
-  if (r.organism_quantity !== null) item.organism_quantity = r.organism_quantity;
-  if (r.organism_quantity_type !== null) item.organism_quantity_type = r.organism_quantity_type;
-  // DwC species attributes + notes (these were previously dropped from the
-  // bundle YAML, so user-entered values silently vanished on export).
-  if (r.notes) item.notes = r.notes;
-  if (r.sex) item.sex = r.sex;
-  if (r.life_stage) item.life_stage = r.life_stage;
-  const repro = multiToPipe(r.reproductive_condition);
-  if (repro) item.reproductive_condition = repro;
-  const leaf = multiToPipe(r.leaf_phenology);
-  if (leaf) item.leaf_phenology = leaf;
-  return item;
-}
 
 /** A specimen is a DwC occurrence with `basisOfRecord: PreservedSpecimen` and a
  *  collector number (`recordNumber`). Kept literal — a DwC controlled-vocabulary
@@ -610,19 +567,30 @@ async function buildSessionEntries(
     datasetName: project?.name ?? '',
   };
 
+  // Photos first: the yml lists the filenames each record's photos landed
+  // under, so the names have to exist before the document is built.
+  const namer = createPhotoNamer(base);
+  let photoNames: PhotoNames = new Map();
+  if (opts.includePhotos) {
+    const collected = await collectPhotos(records, namer, progressCtx);
+    entries.push(...collected.entries);
+    photoNames = collected.names;
+  }
+
+  // Bound site — carried in the yml (authoritative on import) as well as in
+  // the site.* sidecars (for GIS tools).
+  const site = session.site_id !== null ? getSite(session.site_id) : null;
+  const siteForYaml = site ? siteToImported(site) : null;
+
   // YAML — event block + checklist array
-  const dwcItems = records.map((r) => convertToDwc(recordToYamlItem(r)));
-  const yamlData: Record<string, unknown> = {
-    event: {
-      eventID: eventMeta.eventID,
-      eventDate: eventMeta.eventDate,
-      startedAt: eventMeta.eventStartedAt,
-      ...(eventMeta.eventEndedAt ? { endedAt: eventMeta.eventEndedAt } : {}),
-      ...(session.recorded_by ? { recordedBy: session.recorded_by } : {}),
-    },
-    checklist: dwcItems,
-  };
-  if (project?.name) yamlData.project = project.name;
+  const yamlData = buildSessionYamlDoc({
+    session,
+    projectName: project?.name ?? '',
+    records,
+    site: siteForYaml,
+    photoNames,
+  });
+  const dwcItems = (yamlData.checklist ?? []) as Record<string, unknown>[];
   entries.push({ name: `${base}/${base}.yml`, bytes: strToU8(yaml.dump(yamlData, { lineWidth: -1, noRefs: true })) });
 
   // ${session.name}_env.csv — tall (term,value) format, mirrors plot env.
@@ -653,7 +621,7 @@ async function buildSessionEntries(
   // checklist above stays in observation order.
   const csvItems = [...records]
     .sort(taxonSortCompare)
-    .map((r) => convertToDwc(recordToYamlItem(r)));
+    .map((r) => convertToDwc(recordToYamlItem(r, photoNames)));
   const allKeys = new Set<string>();
   for (const row of dwcItems) for (const k of Object.keys(row)) allKeys.add(k);
   const keys = Array.from(allKeys);
@@ -692,26 +660,17 @@ async function buildSessionEntries(
   }
 
   // Geo: bound site geometry (if any)
-  if (session.site_id !== null) {
-    const site = getSite(session.site_id);
-    if (site) {
-      const geom = parseGeoJsonSafe(site.geometry_geojson);
-      if (geom) {
-        const feature = {
-          type: 'Feature' as const,
-          geometry: geom as never,
-          properties: { name: site.name, description: site.notes ?? '' },
-        };
-        const fc = { type: 'FeatureCollection' as const, features: [feature] };
-        addGeoEntries(entries, base, 'site', fc, opts.geoFormats);
-      }
+  if (site) {
+    const geom = parseGeoJsonSafe(site.geometry_geojson);
+    if (geom) {
+      const feature = {
+        type: 'Feature' as const,
+        geometry: geom as never,
+        properties: { name: site.name, description: site.notes ?? '' },
+      };
+      const fc = { type: 'FeatureCollection' as const, features: [feature] };
+      addGeoEntries(entries, base, 'site', fc, opts.geoFormats);
     }
-  }
-
-  // Photos
-  if (opts.includePhotos) {
-    const photoEntries = await collectPhotos(records, base, progressCtx);
-    entries.push(...photoEntries);
   }
 
   // Manifest
@@ -748,88 +707,48 @@ async function buildPlotEntries(
   const base = sanitizeFilename(`${plot.plotid}_${project?.name ?? 'plot'}`);
   const entries: BuiltZipEntry[] = [];
 
+  // Photos first — the yml lists the filenames they land under.
+  const namer = createPhotoNamer(base);
+  let photoNames: PhotoNames = new Map();
+  let envPhotoNames: string[] = [];
+  if (opts.includePhotos) {
+    const collected = await collectPhotosPlot(species, namer, progressCtx);
+    entries.push(...collected.entries);
+    photoNames = collected.names;
+    // Plot environment context photos. Filename: plotid_YYYYMMDD_env-N.jpg
+    // where YYYYMMDD is the plot start date (fallback today). Sequence is the
+    // order user added the photos (already stable in env_photos_json).
+    const envUris = parseEnvPhotos(plot.env_photos_json);
+    if (envUris.length > 0) {
+      const envCollected = await collectEnvPhotos(
+        envUris,
+        base,
+        plot.plotid,
+        ymdString(plot.start_ts ?? Date.now()),
+        namer,
+        progressCtx,
+      );
+      entries.push(...envCollected.entries);
+      envPhotoNames = envCollected.names;
+    }
+  }
+
+  const site = plot.site_id !== null ? getSite(plot.site_id) : null;
+
   // YAML — per-plot shape. Carries the full set of user-entered fields (notes,
   // DwC attributes, detection method, per-record GPS) so the YAML is symmetric
-  // with the sp.csv. Raw snake_case keys (not run through convertToDwc), matching
-  // the existing organism_quantity convention here.
-  const yamlItems = species.map((r) => {
-    const item: Record<string, unknown> = {
-      occurrence_id: r.occurrence_id,
-      taxon_id: r.taxon_id,
-      name: r.simple_name,
-      cname: r.common_name_c,
-      family: r.family,
-      // Vegetation stratum only meaningful for fixed plots.
-      ...(plot.plot_type === 'fixed' ? { layer: r.layer } : {}),
-      organism_quantity: r.organism_quantity,
-      organism_quantity_type: r.organism_quantity_type,
-    };
-    // Round-trip: which subplot this record belongs to (by label).
-    if (r.subplot_id != null && subplotLabelById.has(r.subplot_id)) {
-      item.subplot = subplotLabelById.get(r.subplot_id);
-    }
-    if (r.notes) item.notes = r.notes;
-    if (r.sex) item.sex = r.sex;
-    if (r.life_stage) item.life_stage = r.life_stage;
-    const repro = multiToPipe(r.reproductive_condition);
-    if (repro) item.reproductive_condition = repro;
-    const leaf = multiToPipe(r.leaf_phenology);
-    if (leaf) item.leaf_phenology = leaf;
-    if (r.detection_type) item.detection_type = r.detection_type;
-    if (r.lat !== null) item.lat = r.lat;
-    if (r.lng !== null) item.lng = r.lng;
-    if (r.accuracy !== null) item.accuracy = r.accuracy;
-    item.observed_at = r.observed_at;
-    return item;
+  // with the sp.csv.
+  const yamlData = buildPlotYamlDoc({
+    plot,
+    projectName: project?.name ?? '',
+    species,
+    layers: plotLayers,
+    subplots: subplots.map((sp) => ({ ...sp, layers: getSubplotLayers(sp.id) })),
+    subplotLabelById,
+    site: site ? siteToImported(site) : null,
+    photoNames,
+    envPhotoNames,
   });
-
-  // Full plot block — every field needed to losslessly re-import the survey.
-  // null/empty fields are dropped to keep the yml tidy; import treats missing
-  // keys as null. `uuid` is the stable round-trip key.
-  const plotBlock: Record<string, unknown> = {
-    uuid: plot.uuid,
-    plotid: plot.plotid,
-    plot_type: plot.plot_type,
-    project: project?.name ?? '',
-    layer_count: plot.layer_count,
-  };
-  const plotNumOrStr: Array<keyof PlotSurvey> = [
-    'start_ts', 'stop_ts', 'recorded_by', 'locality', 'field_note', 'sampling_protocol',
-    'sample_size_value', 'sample_size_unit', 'decimal_latitude', 'decimal_longitude',
-    'coord_uncertainty_m', 'elevation_m', 'slope_deg', 'aspect_deg', 'terrain_position',
-    'total_cover_pct', 'rock_cover_pct', 'gravel_cover_pct', 'bareland_cover_pct',
-    'vascular_cover_pct', 'bryophyte_cover_pct', 'lichen_cover_pct', 'litter_cover_pct',
-    'point_radius_m', 'track_geojson',
-  ];
-  for (const k of plotNumOrStr) {
-    const v = plot[k];
-    if (v !== null && v !== undefined && v !== '') plotBlock[k] = v;
-  }
-
-  const yamlData: Record<string, unknown> = { plot: plotBlock };
-  if (plot.plot_type === 'fixed') {
-    yamlData.layers = plotLayers.map((l) => ({
-      layer_index: l.layer_index,
-      cover_pct: l.cover_pct,
-      height_cm: l.height_cm,
-      height_unit: l.height_unit,
-      method: l.method,
-    }));
-    if (subplots.length > 0) {
-      yamlData.subplots = subplots.map((s) => ({
-        idx: s.idx,
-        label: s.label,
-        width_m: s.width_m,
-        length_m: s.length_m,
-        layers: getSubplotLayers(s.id).map((sl) => ({
-          layer_index: sl.layer_index,
-          cover_pct: sl.cover_pct,
-          height_cm: sl.height_cm,
-        })),
-      }));
-    }
-  }
-  yamlData.species = yamlItems;
   entries.push({ name: `${base}/${base}.yml`, bytes: strToU8(yaml.dump(yamlData, { lineWidth: -1, noRefs: true })) });
 
   // ${plotid}_checklist.md — deduped (one row per taxon) human-readable 名錄,
@@ -928,44 +847,20 @@ async function buildPlotEntries(
   }
 
   // Geo: bound site
-  if (plot.site_id !== null) {
-    const site = getSite(plot.site_id);
-    if (site) {
-      const geom = parseGeoJsonSafe(site.geometry_geojson);
-      if (geom) {
-        const fc = {
-          type: 'FeatureCollection' as const,
-          features: [
-            {
-              type: 'Feature' as const,
-              geometry: geom as never,
-              properties: { name: site.name, description: site.notes ?? '' },
-            },
-          ],
-        };
-        addGeoEntries(entries, base, 'site', fc, opts.geoFormats);
-      }
-    }
-  }
-
-  // Photos (plot species records each may have photos)
-  if (opts.includePhotos) {
-    const photoEntries = await collectPhotosPlot(species, base, progressCtx);
-    entries.push(...photoEntries);
-    // Plot environment context photos. Filename: plotid_YYYYMMDD_env-N.jpg
-    // where YYYYMMDD is the plot start date (fallback today). Sequence is the
-    // order user added the photos (already stable in env_photos_json).
-    const envUris = parseEnvPhotos(plot.env_photos_json);
-    if (envUris.length > 0) {
-      const dateStr = ymdString(plot.start_ts ?? Date.now());
-      const envPhotoEntries = await collectEnvPhotos(
-        envUris,
-        base,
-        plot.plotid,
-        dateStr,
-        progressCtx,
-      );
-      entries.push(...envPhotoEntries);
+  if (site) {
+    const geom = parseGeoJsonSafe(site.geometry_geojson);
+    if (geom) {
+      const fc = {
+        type: 'FeatureCollection' as const,
+        features: [
+          {
+            type: 'Feature' as const,
+            geometry: geom as never,
+            properties: { name: site.name, description: site.notes ?? '' },
+          },
+        ],
+      };
+      addGeoEntries(entries, base, 'site', fc, opts.geoFormats);
     }
   }
 
@@ -1087,7 +982,8 @@ async function buildCollectionEntries(
   if (points) addGeoEntries(entries, base, 'points', points, opts.geoFormats);
 
   if (opts.includePhotos) {
-    entries.push(...(await collectPhotos(specimens, base, progressCtx)));
+    // 採集 has no round-trip import yet, so the assigned names are unused here.
+    entries.push(...(await collectPhotos(specimens, createPhotoNamer(base), progressCtx)).entries);
   }
 
   const manifest = buildManifest({
@@ -1171,20 +1067,51 @@ export async function resolveAssetUri(uri: string): Promise<string | null> {
   return fallback;
 }
 
-/** Filename for a single photo entry: `{taxonID}_{cname or scientific}_{n}.{ext}`
- *  e.g. `t0040215_蔓花生_2.heic`. cname is sanitised so it's filesystem-safe;
- *  if absent, falls back to the binomial scientific name with spaces → '_'. */
-function photoEntryName(
-  folder: string,
-  taxonId: string,
-  cname: string,
-  simpleName: string,
-  index: number,
-  ext: string,
-): string {
-  const label = sanitizeFilename(cname || simpleName.replace(/\s+/g, '_') || 'unknown');
-  const tid = taxonId || 'unknown';
-  return `${folder}/photos/${tid}_${label}_${index}.${ext}`;
+/**
+ * Names photo entries `{taxonID}_{cname or scientific}_{n}.{ext}`
+ * e.g. `t0040215_蔓花生_2.heic`. cname is sanitised so it's filesystem-safe;
+ * if absent, falls back to the binomial scientific name with spaces → '_'.
+ *
+ * `n` counts per taxon across the WHOLE export, not within one record: two
+ * records of the same taxon used to produce the same name, and `finalizeZip`
+ * builds a plain object keyed by name, so one of the two photos was silently
+ * dropped. The used-name set is the belt-and-braces guard for anything the
+ * counter can't foresee (a hand-set label collision).
+ */
+function createPhotoNamer(folder: string) {
+  const countByTaxon = new Map<string, number>();
+  const used = new Set<string>();
+  return {
+    next(taxonId: string, cname: string, simpleName: string, ext: string): string {
+      const label = sanitizeFilename(cname || simpleName.replace(/\s+/g, '_') || 'unknown');
+      const tid = taxonId || 'unknown';
+      const n = (countByTaxon.get(tid) ?? 0) + 1;
+      countByTaxon.set(tid, n);
+      let name = `${folder}/photos/${tid}_${label}_${n}.${ext}`;
+      for (let dup = 2; used.has(name); dup++) {
+        name = `${folder}/photos/${tid}_${label}_${n}-${dup}.${ext}`;
+      }
+      used.add(name);
+      return name;
+    },
+    /** Reserve a name produced elsewhere (environment photos) so the species
+     *  namer can never hand out the same one. */
+    claim(name: string): string {
+      let out = name;
+      for (let dup = 2; used.has(out); dup++) {
+        out = name.replace(/(\.[^.]+)$/, `-${dup}$1`);
+      }
+      used.add(out);
+      return out;
+    },
+  };
+}
+
+type PhotoNamer = ReturnType<typeof createPhotoNamer>;
+
+/** Bare filename (no folder) — what the yml lists and the importer looks up. */
+function photoBasename(entryName: string): string {
+  return entryName.split('/').pop() ?? entryName;
 }
 
 /** Photos.app permission elevation, once per export run.
@@ -1223,19 +1150,21 @@ type PhotoBearing = {
   taxon_id: string;
   common_name_c: string;
   simple_name: string;
+  /** Keys the assigned filenames so the yml can list them per record. */
+  occurrence_id: string | null;
 };
 
 async function collectPhotos(
   records: PhotoBearing[],
-  folder: string,
+  namer: PhotoNamer,
   ctx: ProgressCtx,
-): Promise<BuiltZipEntry[]> {
+): Promise<{ entries: BuiltZipEntry[]; names: PhotoNames }> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
+  const names: PhotoNames = new Map();
   for (const r of records) {
     const uris = parsePhotoUris(r.photo_paths);
-    for (let i = 0; i < uris.length; i++) {
-      const uri = uris[i];
+    for (const uri of uris) {
       const fileUri = await resolveAssetUri(uri);
       ctx.done += 1;
       ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
@@ -1243,17 +1172,19 @@ async function collectPhotos(
       try {
         const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
         const bytes = base64ToBytes(b64);
-        const ext = guessExt(fileUri);
-        out.push({
-          name: photoEntryName(folder, r.taxon_id, r.common_name_c, r.simple_name, i + 1, ext),
-          bytes,
-        });
+        const name = namer.next(r.taxon_id, r.common_name_c, r.simple_name, guessExt(fileUri));
+        out.push({ name, bytes });
+        // Only photos that actually made it into the zip are listed in the
+        // yml — an unreadable one must not leave a dangling filename.
+        if (r.occurrence_id) {
+          names.set(r.occurrence_id, [...(names.get(r.occurrence_id) ?? []), photoBasename(name)]);
+        }
       } catch {
         // skip unreadable photo
       }
     }
   }
-  return out;
+  return { entries: out, names };
 }
 
 /** Pack environment context photos into the zip with the user-requested
@@ -1266,10 +1197,12 @@ async function collectEnvPhotos(
   folder: string,
   plotid: string,
   dateStr: string,
+  namer: PhotoNamer,
   ctx: ProgressCtx,
-): Promise<BuiltZipEntry[]> {
+): Promise<{ entries: BuiltZipEntry[]; names: string[] }> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
+  const names: string[] = [];
   const safePlotid = sanitizeFilename(plotid || 'plot');
   for (let i = 0; i < uris.length; i++) {
     const uri = uris[i];
@@ -1281,15 +1214,14 @@ async function collectEnvPhotos(
       const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
       const bytes = base64ToBytes(b64);
       const ext = guessExt(fileUri);
-      out.push({
-        name: `${folder}/photos/${safePlotid}_${dateStr}_env-${i + 1}.${ext}`,
-        bytes,
-      });
+      const name = namer.claim(`${folder}/photos/${safePlotid}_${dateStr}_env-${i + 1}.${ext}`);
+      out.push({ name, bytes });
+      names.push(photoBasename(name));
     } catch {
       // skip unreadable
     }
   }
-  return out;
+  return { entries: out, names };
 }
 
 /** Format a millisecond timestamp as YYYYMMDD using the device timezone. */
@@ -1303,15 +1235,15 @@ function ymdString(ts: number): string {
 
 async function collectPhotosPlot(
   species: PlotSpeciesRecordWithTaxon[],
-  folder: string,
+  namer: PhotoNamer,
   ctx: ProgressCtx,
-): Promise<BuiltZipEntry[]> {
+): Promise<{ entries: BuiltZipEntry[]; names: PhotoNames }> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
+  const names: PhotoNames = new Map();
   for (const r of species) {
     const uris = parsePhotoUris(r.photo_paths);
-    for (let i = 0; i < uris.length; i++) {
-      const uri = uris[i];
+    for (const uri of uris) {
       const fileUri = await resolveAssetUri(uri);
       ctx.done += 1;
       ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
@@ -1319,17 +1251,17 @@ async function collectPhotosPlot(
       try {
         const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
         const bytes = base64ToBytes(b64);
-        const ext = guessExt(fileUri);
-        out.push({
-          name: photoEntryName(folder, r.taxon_id, r.common_name_c, r.simple_name, i + 1, ext),
-          bytes,
-        });
+        const name = namer.next(r.taxon_id, r.common_name_c, r.simple_name, guessExt(fileUri));
+        out.push({ name, bytes });
+        if (r.occurrence_id) {
+          names.set(r.occurrence_id, [...(names.get(r.occurrence_id) ?? []), photoBasename(name)]);
+        }
       } catch {
         // skip
       }
     }
   }
-  return out;
+  return { entries: out, names };
 }
 
 export function guessExt(uri: string): string {

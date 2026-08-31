@@ -220,7 +220,8 @@
     "defaultSession": "預設：快速名錄",
     "defaultPlot": "預設：樣區調查",
     "kindCollection": "採集記錄",
-    "defaultCollection": "預設：採集記錄"
+    "defaultCollection": "預設：採集記錄",
+    "kindImport": "匯入記錄（.yml / .zip）"
   },
   "rank": {
     "kingdom": "界",
@@ -939,7 +940,7 @@
     "add": "加入",
     "paste": "貼上",
     "voice": "語音",
-    "inputHint": "每行一個名稱（俗名 / 學名 / 科）。支援貼上 .yml 匯出檔內容。",
+    "inputHint": "每行一個名稱（俗名 / 學名 / 科）。也可讀入 .yml / .zip 匯出檔（只取物種名單；要還原整筆記錄請用 ＋ →「匯入記錄」）。",
     "readFromFile": "從檔案讀入",
     "fileLoaded": "已讀取 {{count}} 筆名稱",
     "fileHint": "檔案內容已解析，按右上「預覽」開始比對；點 ✕ 可移除改用手動輸入。",
@@ -1157,5 +1158,22 @@
     "areaSavedBox": "所繪範圍無法直接使用,已存為外接矩形",
     "matching": "比對名錄中⋯({{done}}/{{of}})",
     "errRateLimit": "GBIF 請求過於頻繁,已被暫時限制。請稍候幾分鐘再試,或縮小查詢範圍與類群。"
+  },
+  "recordImport": {
+    "unsupportedCollection": "採集記錄目前無法匯入，僅支援名錄與樣區。",
+    "unsupportedBundle": "這是多筆記錄的打包檔，請先解壓縮後逐一匯入。",
+    "unknownKind": "無法辨識這個檔案的記錄類型。",
+    "sessionExistsTitle": "名錄已存在",
+    "sessionExistsMsg": "「{{name}}」已在裝置中。要覆蓋更新，還是另存成新副本？",
+    "photoConflictTitle": "這筆記錄已有照片",
+    "photoConflictMsg": "裝置上這筆記錄已有 {{existing}} 張照片，檔案內有 {{incoming}} 張。相簿的照片無法被覆寫，只能沿用既有的、或另外匯入一份。",
+    "photoKeepExisting": "沿用既有照片",
+    "photoReimport": "重新匯入（相簿會多出照片）",
+    "doneTitle": "匯入完成",
+    "doneRecords": "已匯入 {{count}} 筆物種記錄",
+    "doneRemapped": "{{count}} 筆以學名重新對應 taxon_id",
+    "doneUnresolved": "{{count}} 筆在本機名錄查無 taxon_id，仍已匯入",
+    "donePhotosSkipped": "{{count}} 張照片未匯入（權限或檔案無法讀取）",
+    "photoProgress": "正在匯入照片 {{done}}/{{total}}…"
   }
 }

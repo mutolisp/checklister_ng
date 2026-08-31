@@ -1814,3 +1814,57 @@ initialization`,一進名錄就炸。TS 不會擋(參考寫在函式體內)。�
       寫得進去，所以標籤的 Location 只能逐筆填
 - [ ] `collection_specimens` 的 `created_at` 存在於 SQL 但不在 `SPECIMEN_COLS`
       也不在型別裡，從未被讀取（既有，非本次造成）
+
+## Sprint：名錄／樣區 yml 完整還原匯入（2026-08-31）
+
+匯出端一直很完整，匯入端幾乎是空的：名錄（session）**根本沒有匯入路徑**（唯一讀 session yml 的 `BatchImportModal` 只抽 taxonID 加物種到既有名錄），樣區匯入則漏掉 site、照片、`env_photos_json`，`project` 查無就落到未分類，`layer` 值沒驗證。本 sprint 把兩種 yml 都做成真正的 round-trip。
+
+### yml schema（匯出／匯入同時改）
+
+- 樣區（snake_case）：`plot.track_finalized`、`plot.env_photo_files`（pipe-joined 檔名）、頂層 `site: {name, notes, geometry}`、`species[].photo_files`。
+- 名錄（`event:` 用 DwC camelCase）：`eventUUID`（新 `sessions.uuid`）、`eventType`、`eventRemarks`、`decimalLatitude/Longitude`、`gpsMode`、`trackGeoJSON`、頂層 `site:`、`checklist[].associatedMedia`（`dwcMapper` 加 `photo_files → associatedMedia`，sp.csv 自動多這欄）。
+- **軌跡與 site 以 yml 為準**，zip 內 `track.*` / `site.*` 只在 yml 缺該欄位時作為 fallback（走既有 `detectFormat` + `parseGeoFile`，geojson→gpx→kml）。
+
+### 修掉的既有 bug
+
+- **照片撞名互相覆蓋**：`{taxonID}_{label}_{n}` 的 `n` 原本是「單筆記錄內的索引」，同一次匯出裡同物種兩列會產生同名 entry，`finalizeZip` 用物件 key 覆蓋 → 靜默掉照片。改成「同 taxon 全export 累進計數」＋ used-name 保險，命名慣例不變。
+- **覆蓋匯入是資料遺失路徑**：`importPlotSurvey` 先 `deletePlotSurvey(prev)` 再逐列 insert，中途遇到 legacy `E0`（違反 CHECK）就炸 → 舊記錄沒了、新記錄半套。改為 `withTransaction`（`src/db/init.ts`，op-sqlite 的 `db.transaction()` 是 async 包不了 `executeSync`，所以用顯式 BEGIN/COMMIT）＋ `layer` 值 clamp。
+- **多筆打包 zip 靜默匯入其中一筆**：`bundle_manifest.json` 現在直接擋掉並要求先解壓。
+- **zip-slip**：第一次有功能會從 zip 寫檔，`safePhotoBasename` 砍掉所有路徑成分 + 副檔名白名單。
+- `deleteSession` 不會刪綁定的 site → 重複匯入會累積 site 列；改用 `deleteSiteIfUnreferenced`（三個參照都查過才刪）。
+
+### 照片
+
+存回 **Photos.app**（`createAssetAsync`，與拍照同路徑，`photo_paths` 一樣是 `ph://` / `content://`），不是 app 目錄——使用者要照片留在相簿。Photos.app 的資產無法覆寫，所以「覆蓋既有記錄且該記錄已有照片」時問一次：沿用既有照片（依 occurrence_id 位置重新連結）／重新匯入（相簿會多出一份）；取消＝沿用（非破壞性那側）。權限被拒只略過照片，其餘照常匯入。
+
+### 其他
+
+- `sessions.uuid`（migration **v27**：加欄 → 回填 → unique index，三步都可重跑）。`createSession` 一併填。
+- 匯入的名錄必須 `ended_at` 非 NULL（名錄沒有 status，active 就是 `ended_at IS NULL`），且**不能走 `createSession()`**（它會為 single-active 關掉現有 active 記錄）。
+- taxon_id 在本機查無 → 用 yml 的學名走 `matchScientificName` 重新對應，仍找不到就照原 id 匯入並在完成訊息回報筆數。
+- `project` 查無即建立（原本靜默落到未分類，等於丟掉使用者輸入的計畫名）。
+- 入口：＋FAB chooser 與長按選單新增「匯入記錄」、名錄列表頁 header 加 `download-outline`、樣區選單的「匯入」改指向同一支 `importRecordPromptAndOpen()`（**類型由檔案決定，不是由選單決定**）。
+
+### 新增的自動檢查：`npm run check:roundtrip`
+
+`scripts/check-roundtrip.mjs`：DB 形狀 fixture → `buildPlotYamlDoc` / `buildSessionYamlDoc`（新的純函式模組 `src/lib/bundleYaml.ts`）→ `yaml.dump` → parser → 逐欄比對，另加**欄位涵蓋檢查**（fixture 的每個欄位必須出現在 yml，或列在 `NOT_RESTORABLE` 並寫明理由）。新增 `plot_surveys` / `sessions` 欄位卻忘了改匯出，這支會失敗。
+
+跑起來當場抓到兩個真 bug：YAML 1.1 的 timestamp 型別會讓未加引號的 `startedAt` 被 js-yaml 解析成 `Date` 物件（手改過的 yml 就會這樣），以及 fixture 涵蓋漏 `point_radius_m`。
+
+Node 用內建 type stripping 跑 `.ts`，但不會自己補副檔名，所以有 `scripts/ts-resolve-register.mjs` + `ts-resolve-hooks.mjs` 兩個小 hook；也因此 parser 必須維持「純」：不 import `~/i18n`（錯誤改用 `ImportError` code，UI 端才翻譯）、多值 helper 抽到 `src/lib/dwcMultiValue.ts`。`ImportError` 不能用 parameter property（strip-only 模式不支援）。
+
+### 待驗證（實機）
+
+尚未在實機跑過。要測：完整 round-trip（固定樣區含分層/小區/GPS/屬性/照片/軌跡/site/環境照 → 匯出 → 匯入另存 → 再匯出 diff）、覆蓋時兩條照片分支、只有 `track.gpx` 沒有 yml 軌跡的 fallback、採集 zip 與多筆打包 zip 的拒絕訊息、Android `content://`（無副檔名）走 magic byte 判斷。
+
+### 續：批次匯入選到 .zip 會炸（2026-08-31 回報）
+
+實機回報「名錄打包後重新匯入失敗」，錯誤是 iOS 的 `The file "….zip" couldn't be opened because the text encoding of its contents can't be determined.`。走的是**批次匯入 →「從檔案讀入」**（不是新的「匯入記錄」）：那條路用 `new File(uri).text()` 讀純文字，拿到 zip 當然爆，而且丟的是系統原始訊息。
+
+修法：
+
+- 抽出 `readRecordYamlText(uri)`（`recordImport.ts`）—— 是 `.yml` 就直接讀，是 `.zip` 就解出裡面的 record yml。批次匯入改用它，選 zip 也能只取物種名單。
+- 錯誤訊息統一走 `importErrorMessage()`（從 `recordCreate.ts` export），不再把 NSError 原文丟給使用者。
+- `batchImport.inputHint` 補一句：這裡只取物種名單，要還原整筆記錄請走 ＋ →「匯入記錄」。
+
+同時把**這層變成可測**（原本測不到才會漏掉）：zip 解析／種類判別／yml 挑選／geo fallback 全部移到純模組 `src/lib/recordImportZip.ts`（`recordImport.ts` 只剩讀檔那一層），`buildTrackGeoJSON` / `parseTrackSegments` / `TrackSegment` 也抽到 `src/lib/track.ts`（`db/plots.ts` re-export）——匯入端要能組出跟錄製端**位元相同**的軌跡，兩份定義一定會漂。`check:roundtrip` 現在多測：真的用 fflate 打包一份 session zip 讀回來（含照片 entry）、zip→yml text、bare yml、只有 `track.gpx` 的 fallback、多筆打包 zip 與採集 zip 的拒絕碼。

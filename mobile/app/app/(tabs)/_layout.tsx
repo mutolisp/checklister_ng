@@ -10,6 +10,7 @@ import { useSettings, type RecordTypeDefault } from '~/stores/settings';
 import { showActionSheet } from '~/components/ActionSheet';
 import {
   createPlotPromptAndOpen,
+  importRecordPromptAndOpen,
   startCollectionAndOpen,
   startSessionAndOpen,
 } from '~/lib/recordCreate';
@@ -23,11 +24,15 @@ async function showCreateChooser(): Promise<void> {
       { label: i18n.t('record.kindSession') },
       { label: i18n.t('record.kindPlot') },
       { label: i18n.t('record.kindCollection') },
+      // Restoring an exported record is a peer of creating one from scratch;
+      // the file decides which kind it becomes.
+      { label: i18n.t('record.kindImport') },
     ],
   });
   if (idx === 0) startSessionAndOpen();
   else if (idx === 1) createPlotPromptAndOpen();
   else if (idx === 2) startCollectionAndOpen();
+  else if (idx === 3) importRecordPromptAndOpen();
 }
 
 async function showLongPressMenu(): Promise<void> {
@@ -40,6 +45,9 @@ async function showLongPressMenu(): Promise<void> {
       { label: i18n.t('record.kindSession') },
       { label: i18n.t('record.kindPlot') },
       { label: i18n.t('record.kindCollection') },
+      // Also here: with a record_type_default set, the ＋ button skips the
+      // chooser entirely, so this menu is the only way in.
+      { label: i18n.t('record.kindImport') },
       { label: i18n.t('record.defaultAsk') },
       { label: i18n.t('record.defaultSession') },
       { label: i18n.t('record.defaultPlot') },
@@ -49,10 +57,11 @@ async function showLongPressMenu(): Promise<void> {
   if (idx === 0) startSessionAndOpen();
   else if (idx === 1) createPlotPromptAndOpen();
   else if (idx === 2) startCollectionAndOpen();
-  else if (idx === 3) updateDefault('ask');
-  else if (idx === 4) updateDefault('session');
-  else if (idx === 5) updateDefault('plot');
-  else if (idx === 6) updateDefault('collection');
+  else if (idx === 3) importRecordPromptAndOpen();
+  else if (idx === 4) updateDefault('ask');
+  else if (idx === 5) updateDefault('session');
+  else if (idx === 6) updateDefault('plot');
+  else if (idx === 7) updateDefault('collection');
 }
 
 function PlusButton() {

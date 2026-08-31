@@ -20,6 +20,7 @@ import {
   readAsStringAsync,
   writeAsStringAsync,
 } from 'expo-file-system/legacy';
+import { File, Paths } from 'expo-file-system';
 import i18n from '~/i18n';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
@@ -540,3 +541,55 @@ function guessPickerExt(uri: string, mime: string | null | undefined): string {
 }
 
 
+
+/**
+ * Restore photos that came out of an export zip into Photos.app.
+ *
+ * Same destination as a capture (`createAssetAsync`), so an imported photo is
+ * indistinguishable from one taken in the field: it shows up in the user's
+ * library, gets backed up by iCloud / Google Photos, and `photo_paths` keeps
+ * the same `ph://` (iOS) / `content://` (Android) asset URI shape.
+ *
+ * The bytes already carry the EXIF/IPTC species metadata that was embedded at
+ * capture time, so nothing is re-tagged here.
+ *
+ * Returns a `zip filename → asset URI` map for the DB layer to fill
+ * `photo_paths` / `env_photos_json`. Individual failures (and a refused
+ * permission) skip the photo rather than aborting the import — the rest of the
+ * record is still worth having.
+ */
+export async function importPhotosToLibrary(
+  photos: { name: string; bytes: Uint8Array }[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<{ uriByName: Map<string, string>; skipped: number }> {
+  const uriByName = new Map<string, string>();
+  if (photos.length === 0) return { uriByName, skipped: 0 };
+
+  const perm = await MediaLibrary.requestPermissionsAsync(true);
+  if (perm.status !== 'granted') return { uriByName, skipped: photos.length };
+
+  let skipped = 0;
+  for (let i = 0; i < photos.length; i++) {
+    const p = photos[i];
+    let tmp: File | null = null;
+    try {
+      // `name` is already reduced to a safe basename by safePhotoBasename().
+      tmp = new File(Paths.cache, `import_${Date.now()}_${p.name}`);
+      tmp.create({ overwrite: true });
+      tmp.write(p.bytes);
+      const saved = await MediaLibrary.createAssetAsync(tmp.uri);
+      uriByName.set(p.name, saved.uri);
+    } catch (e) {
+      skipped += 1;
+      if (__DEV__) console.warn('[photoCapture] import photo failed', p.name, e);
+    } finally {
+      try {
+        tmp?.delete();
+      } catch {
+        /* ignore */
+      }
+    }
+    onProgress?.(i + 1, photos.length);
+  }
+  return { uriByName, skipped };
+}

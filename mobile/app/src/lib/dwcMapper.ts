@@ -56,6 +56,10 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   life_stage: 'lifeStage',
   reproductive_condition: 'reproductiveCondition',
   leaf_phenology: 'leafPhenology',
+  // Photo filenames inside an export zip's photos/ — pipe-joined, the same
+  // multi-value convention as reproductiveCondition. Mobile-only: the desktop
+  // backend (backend/utils/mapper.py) has no photos.
+  photo_files: 'associatedMedia',
   // Free-text remarks + taxon rank (were previously passed through unmapped).
   notes: 'occurrenceRemarks',
   rank: 'taxonRank',

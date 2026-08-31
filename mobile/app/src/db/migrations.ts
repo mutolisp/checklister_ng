@@ -854,6 +854,29 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, `ALTER TABLE collection_specimens ADD COLUMN identified_by TEXT;`);
     },
   },
+  // v27：名錄的 uuid。樣區從 v5 起就有 uuid（NOT NULL UNIQUE），名錄沒有，所以匯出的
+  // .yml 回頭匯入時認不出「這是同一筆記錄」——round-trip 缺 upsert key。
+  //
+  // ALTER TABLE 加不了 NOT NULL UNIQUE（常數 DEFAULT 會讓每一列拿到同一個值），所以
+  // 分三步：先加可為 NULL 的欄 → 回填 → 補 UNIQUE index。三步都可重跑：
+  // addColumnIfMissing 會跳過已存在的欄、UPDATE 有 WHERE 只補空值、index 用
+  // IF NOT EXISTS，migration runner 沒有 transaction 包裹，半途中斷要能自己接續。
+  {
+    version: 27,
+    up: (db) => {
+      addColumnIfMissing(db, `ALTER TABLE sessions ADD COLUMN uuid TEXT;`);
+      // 與 src/db/uuid.ts 的 runtime 產生器同格式（v4）。
+      db.executeSync(`
+        UPDATE sessions SET uuid = lower(
+          hex(randomblob(4)) || '-' || hex(randomblob(2)) || '-4' ||
+          substr(hex(randomblob(2)), 2) || '-' ||
+          substr('89ab', abs(random()) % 4 + 1, 1) || substr(hex(randomblob(2)), 2) || '-' ||
+          hex(randomblob(6))
+        ) WHERE uuid IS NULL OR uuid = '';
+      `);
+      db.executeSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_uuid ON sessions(uuid);`);
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

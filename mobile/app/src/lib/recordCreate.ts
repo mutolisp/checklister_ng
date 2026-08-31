@@ -16,15 +16,26 @@ import {
   endSession,
   getActiveCollectionTrip,
   getPlotSurveyByUuid,
+  getSessionByUuid,
   importPlotSurvey,
+  importSession,
+  listPlotSpecies,
+  listSessionRecords,
+  parseEnvPhotos,
+  searchByTaxonId,
   type PlotType,
 } from '~/db';
+import { parsePhotoUris } from '~/lib/bundleExport';
+import { matchScientificName } from '~/lib/sciMatch';
+import { importPhotosToLibrary } from '~/lib/photoCapture';
+import { ImportError, type ImportErrorCode } from '~/lib/importError';
+import { readRecordImport, type ReadRecordImport } from '~/lib/recordImport';
+import { useToast } from '~/stores/toast';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { isRecordingTarget, pauseRecording as pauseTrackRecording } from '~/lib/trackRecorder';
 import { promptText } from '~/components/TextPromptModal';
 import { showActionSheet } from '~/components/ActionSheet';
-import { readPlotImport } from '~/lib/plotImport';
 import i18n from '~/i18n';
 
 type NewRecordKind = 'session' | 'plot';
@@ -202,44 +213,266 @@ export async function createPlotPromptAndOpen(): Promise<void> {
 }
 
 /**
- * Pick an exported `.yml`/`.zip` and re-import it as a plot survey. On a uuid
- * clash, ask the user to overwrite or save as a new copy. The imported plot
- * lands as status='done' so it doesn't disturb the single-active record.
+ * Pick an exported `.yml` / `.zip` and restore it as a real record.
+ *
+ * The KIND comes from the file, never from the menu the user came through: a
+ * 名錄 export lands as a session, a 樣區 export as a plot survey. Neither ever
+ * becomes the active record (plots land status='done', sessions with a
+ * non-NULL ended_at), so importing never disturbs work in progress.
  */
-export async function importPlotPromptAndOpen(): Promise<void> {
+export async function importRecordPromptAndOpen(): Promise<void> {
   const picked = await DocumentPicker.getDocumentAsync({
     copyToCacheDirectory: true,
     type: '*/*',
   });
   if (picked.canceled || !picked.assets?.[0]) return;
 
-  let data;
+  let payload: ReadRecordImport;
   try {
-    data = await readPlotImport(picked.assets[0].uri);
+    payload = await readRecordImport(picked.assets[0].uri);
   } catch (e) {
-    Alert.alert(i18n.t('recordCreate.importFailTitle'), e instanceof Error ? e.message : String(e));
+    Alert.alert(i18n.t('recordCreate.importFailTitle'), importErrorMessage(e));
     return;
   }
 
-  let newUuid = false;
-  if (getPlotSurveyByUuid(data.uuid)) {
-    const choice = await showActionSheet({
-      title: i18n.t('recordCreate.plotExistsTitle'),
-      message: i18n.t('recordCreate.plotExistsMsg', { plotid: data.plotid }),
-      cancelLabel: i18n.t('common.cancel'),
-      options: [{ label: i18n.t('recordCreate.overwrite'), destructive: true }, { label: i18n.t('recordCreate.saveAsNew') }],
+  try {
+    if (payload.kind === 'plot') await finishPlotImport(payload);
+    else await finishSessionImport(payload);
+  } catch (e) {
+    Alert.alert(i18n.t('recordCreate.importFailTitle'), importErrorMessage(e));
+  }
+}
+
+/** Kept for the 樣區 menu entry; it now accepts either kind of export file. */
+export const importPlotPromptAndOpen = importRecordPromptAndOpen;
+
+/** ImportError code → localized message. Exported so every import entry
+ *  (including the batch species importer) reports the same way. */
+export function importErrorMessage(e: unknown): string {
+  if (e instanceof ImportError) {
+    const key: Record<ImportErrorCode, string> = {
+      noYmlInZip: 'plotImport.noYmlInZip',
+      invalidYml: 'plotImport.invalidYml',
+      missingFields: 'plotImport.missingFields',
+      unsupportedCollection: 'recordImport.unsupportedCollection',
+      unsupportedBundle: 'recordImport.unsupportedBundle',
+      unknownKind: 'recordImport.unknownKind',
+    };
+    return i18n.t(key[e.code]);
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
+type ImportableRecord = { taxon_id: string; name?: string | null; family?: string | null };
+
+/**
+ * Re-point records whose `taxon_id` this device's checklist doesn't know.
+ *
+ * A record exported from a device on a newer TaiCOL (or a different bundle)
+ * can carry an id that resolves to nothing here — the row would import but
+ * render blank. The yml also carries the scientific name, so try that before
+ * giving up; anything still unresolved is imported as-is and reported.
+ */
+function remapUnknownTaxa(records: ImportableRecord[]): { remapped: number; unresolved: number } {
+  let remapped = 0;
+  let unresolved = 0;
+  for (const r of records) {
+    if (!r.taxon_id || searchByTaxonId(r.taxon_id)) continue;
+    const name = r.name?.trim();
+    const hit = name ? matchScientificName({ name, family: r.family ?? undefined }) : null;
+    if (hit?.kind === 'matched') {
+      r.taxon_id = hit.taxon_id;
+      remapped += 1;
+    } else {
+      unresolved += 1;
+    }
+  }
+  return { remapped, unresolved };
+}
+
+/** uuid clash → overwrite / save-as-new / cancel. null = cancelled. */
+async function askOverwrite(titleKey: string, msgKey: string, label: string): Promise<boolean | null> {
+  const choice = await showActionSheet({
+    title: i18n.t(titleKey),
+    message: i18n.t(msgKey, { plotid: label, name: label }),
+    cancelLabel: i18n.t('common.cancel'),
+    options: [
+      { label: i18n.t('recordCreate.overwrite'), destructive: true },
+      { label: i18n.t('recordCreate.saveAsNew') },
+    ],
+  });
+  if (choice === 0) return false; // overwrite → keep the uuid
+  if (choice === 1) return true; // save as new → mint a uuid
+  return null;
+}
+
+/**
+ * Photos, when overwriting a record that already has some.
+ *
+ * Photos.app assets cannot be overwritten in place — importing again always
+ * creates NEW assets. So the honest choice is: keep the ones already in the
+ * library (and re-link them), or import the zip's copies and leave the old
+ * ones in the album. Anything else would silently duplicate the user's photos.
+ *
+ * Returns a `zip filename → device URI` map, or null to import the zip's
+ * bytes as fresh assets.
+ */
+async function askPhotoReuse(
+  prevUrisByOccurrence: Map<string, string[]>,
+  filesByOccurrence: Map<string, string[]>,
+  photoCount: number,
+): Promise<Map<string, string> | null> {
+  const existing = [...prevUrisByOccurrence.values()].reduce((n, u) => n + u.length, 0);
+  if (existing === 0 || photoCount === 0) return null;
+
+  const choice = await showActionSheet({
+    title: i18n.t('recordImport.photoConflictTitle'),
+    message: i18n.t('recordImport.photoConflictMsg', { existing, incoming: photoCount }),
+    cancelLabel: i18n.t('common.cancel'),
+    options: [
+      { label: i18n.t('recordImport.photoKeepExisting') },
+      { label: i18n.t('recordImport.photoReimport') },
+    ],
+  });
+  // Only an explicit "import again" creates new assets; cancelling falls back
+  // to the non-destructive branch (relink what's already in the library).
+  if (choice === 1) return null;
+
+  // Positional: the export wrote one filename per existing asset, in order.
+  const map = new Map<string, string>();
+  for (const [occ, files] of filesByOccurrence) {
+    const prev = prevUrisByOccurrence.get(occ) ?? [];
+    files.forEach((f, i) => {
+      if (prev[i]) map.set(f, prev[i]);
     });
-    if (choice === 0) newUuid = false;
-    else if (choice === 1) newUuid = true;
-    else return; // cancel
+  }
+  return map;
+}
+
+/** Writing N assets into Photos.app takes a visible moment; say so, and keep
+ *  the count moving so a 100-photo record doesn't look frozen. */
+async function importPhotos(photos: { name: string; bytes: Uint8Array }[]) {
+  const toast = useToast.getState();
+  toast.show(i18n.t('recordImport.photoProgress', { done: 0, total: photos.length }), {
+    durationMs: 60000,
+  });
+  const written = await importPhotosToLibrary(photos, (done, total) => {
+    if (done === total || done % 5 === 0) {
+      toast.show(i18n.t('recordImport.photoProgress', { done, total }), { durationMs: 60000 });
+    }
+  });
+  toast.dismiss();
+  return written;
+}
+
+function summarize(
+  added: number,
+  taxa: { remapped: number; unresolved: number },
+  skippedPhotos: number,
+): void {
+  const parts = [i18n.t('recordImport.doneRecords', { count: added })];
+  if (taxa.remapped > 0) parts.push(i18n.t('recordImport.doneRemapped', { count: taxa.remapped }));
+  if (taxa.unresolved > 0) parts.push(i18n.t('recordImport.doneUnresolved', { count: taxa.unresolved }));
+  if (skippedPhotos > 0) parts.push(i18n.t('recordImport.donePhotosSkipped', { count: skippedPhotos }));
+  Alert.alert(i18n.t('recordImport.doneTitle'), parts.join('\n'));
+}
+
+async function finishPlotImport(payload: Extract<ReadRecordImport, { kind: 'plot' }>): Promise<void> {
+  const data = payload.plot;
+  let newUuid = false;
+  let prevPhotos = new Map<string, string[]>();
+  let prevEnvPhotos: string[] = [];
+
+  const prev = getPlotSurveyByUuid(data.uuid);
+  if (prev) {
+    const answer = await askOverwrite(
+      'recordCreate.plotExistsTitle',
+      'recordCreate.plotExistsMsg',
+      data.plotid,
+    );
+    if (answer === null) return;
+    newUuid = answer;
+    if (!newUuid) {
+      prevPhotos = new Map(
+        listPlotSpecies(prev.id).map((r) => [r.occurrence_id, parsePhotoUris(r.photo_paths)]),
+      );
+      prevEnvPhotos = parseEnvPhotos(prev.env_photos_json);
+    }
   }
 
-  try {
-    const { plotId } = importPlotSurvey(data, { newUuid });
-    // Imported plot is status='done'; refresh stores so lists pick it up.
-    useActivePlot.getState().refresh();
-    router.push(`/plot/${plotId}` as Href);
-  } catch (e) {
-    Alert.alert(i18n.t('recordCreate.importFailTitle'), e instanceof Error ? e.message : String(e));
+  const filesByOccurrence = new Map(
+    data.species
+      .filter((s) => s.occurrence_id && (s.photo_files?.length ?? 0) > 0)
+      .map((s) => [s.occurrence_id as string, s.photo_files as string[]]),
+  );
+  let photoUriByName = await askPhotoReuse(prevPhotos, filesByOccurrence, payload.photos.length);
+  let skippedPhotos = 0;
+  if (photoUriByName) {
+    // Keeping existing assets: env photos re-link positionally too.
+    (data.env_photo_files ?? []).forEach((f, i) => {
+      if (prevEnvPhotos[i]) photoUriByName!.set(f, prevEnvPhotos[i]);
+    });
+  } else if (payload.photos.length > 0) {
+    const written = await importPhotos(payload.photos);
+    photoUriByName = written.uriByName;
+    skippedPhotos = written.skipped;
   }
+
+  const taxa = remapUnknownTaxa(data.species);
+  const { plotId } = importPlotSurvey(data, {
+    newUuid,
+    photoUriByName: photoUriByName ?? undefined,
+  });
+  // Imported plot is status='done'; refresh stores so lists pick it up.
+  useActivePlot.getState().refresh();
+  summarize(data.species.length, taxa, skippedPhotos);
+  router.push(`/plot/${plotId}` as Href);
+}
+
+async function finishSessionImport(
+  payload: Extract<ReadRecordImport, { kind: 'session' }>,
+): Promise<void> {
+  const data = payload.session;
+  // Pre-v27 exports carry no uuid — nothing to match against, so they always
+  // come in as a new record.
+  let newUuid = !data.uuid;
+  let prevPhotos = new Map<string, string[]>();
+
+  const prev = data.uuid ? getSessionByUuid(data.uuid) : null;
+  if (prev) {
+    const answer = await askOverwrite(
+      'recordImport.sessionExistsTitle',
+      'recordImport.sessionExistsMsg',
+      data.name,
+    );
+    if (answer === null) return;
+    newUuid = answer;
+    if (!newUuid) {
+      prevPhotos = new Map(
+        listSessionRecords(prev.id).map((r) => [r.occurrence_id, parsePhotoUris(r.photo_paths)]),
+      );
+    }
+  }
+
+  const filesByOccurrence = new Map(
+    data.records
+      .filter((r) => r.occurrence_id && (r.photo_files?.length ?? 0) > 0)
+      .map((r) => [r.occurrence_id as string, r.photo_files as string[]]),
+  );
+  let photoUriByName = await askPhotoReuse(prevPhotos, filesByOccurrence, payload.photos.length);
+  let skippedPhotos = 0;
+  if (!photoUriByName && payload.photos.length > 0) {
+    const written = await importPhotos(payload.photos);
+    photoUriByName = written.uriByName;
+    skippedPhotos = written.skipped;
+  }
+
+  const taxa = remapUnknownTaxa(data.records);
+  const { sessionId } = importSession(data, {
+    newUuid,
+    photoUriByName: photoUriByName ?? undefined,
+  });
+  useActiveSession.getState().refresh();
+  summarize(data.records.length, taxa, skippedPhotos);
+  router.push(`/session/${sessionId}` as Href);
 }

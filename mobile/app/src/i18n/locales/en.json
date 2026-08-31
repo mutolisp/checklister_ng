@@ -220,7 +220,8 @@
     "defaultSession": "Default: quick checklist",
     "defaultPlot": "Default: plot survey",
     "kindCollection": "Collection",
-    "defaultCollection": "Default: collection"
+    "defaultCollection": "Default: collection",
+    "kindImport": "Import a record (.yml / .zip)"
   },
   "rank": {
     "kingdom": "Kingdom",
@@ -939,7 +940,7 @@
     "add": "Add",
     "paste": "Paste",
     "voice": "Voice",
-    "inputHint": "One name per line (common / scientific / family). Pasting .yml export content is supported.",
+    "inputHint": "One name per line (common / scientific / family). A .yml / .zip export can be read too — species only; to restore the whole record use ＋ → Import a record.",
     "readFromFile": "Read from file",
     "fileLoaded": "{{count}} names read",
     "fileHint": "File parsed. Tap Preview to match; tap ✕ to remove it and type instead.",
@@ -1157,5 +1158,22 @@
     "areaSavedBox": "The outline could not be used; its bounding box was saved",
     "matching": "Matching… ({{done}}/{{of}})",
     "errRateLimit": "GBIF is rate-limiting this client. Wait a few minutes, or narrow the area and groups."
+  },
+  "recordImport": {
+    "unsupportedCollection": "Collection records can't be imported yet — checklists and plots only.",
+    "unsupportedBundle": "This is a multi-record bundle; unzip it and import each record separately.",
+    "unknownKind": "Can't tell what kind of record this file holds.",
+    "sessionExistsTitle": "Checklist already exists",
+    "sessionExistsMsg": "\"{{name}}\" is already on this device. Overwrite it, or save as a new copy?",
+    "photoConflictTitle": "This record already has photos",
+    "photoConflictMsg": "This record has {{existing}} photo(s) on the device; the file holds {{incoming}}. Photos.app assets can't be overwritten — keep the existing ones, or import another copy.",
+    "photoKeepExisting": "Keep existing photos",
+    "photoReimport": "Import again (adds to your library)",
+    "doneTitle": "Import complete",
+    "doneRecords": "{{count}} species records imported",
+    "doneRemapped": "{{count}} re-matched to a local taxonID by scientific name",
+    "doneUnresolved": "{{count}} taxonIDs unknown to this device's checklist (imported anyway)",
+    "donePhotosSkipped": "{{count}} photo(s) not imported (permission or unreadable)",
+    "photoProgress": "Importing photos {{done}}/{{total}}…"
   }
 }

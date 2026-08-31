@@ -53,6 +53,27 @@ export function createProject(input: ProjectInput): number {
   return res.insertId ?? 0;
 }
 
+/**
+ * Resolve a project by name, for importers that only have the exported name.
+ *
+ * With `create: true` an unknown name becomes a new project instead of
+ * silently collapsing into 未分類 (id 0) — the exported `project` field is
+ * data the user entered, and dropping it on import loses it for good.
+ */
+export function resolveProjectIdByName(
+  name: string | null | undefined,
+  opts: { create?: boolean } = {},
+): number {
+  const trimmed = (name ?? '').trim();
+  if (!trimmed) return 0;
+  const db = getUserDb();
+  const res = db.executeSync(`SELECT id FROM projects WHERE name = ? LIMIT 1`, [trimmed]);
+  const found = (res.rows?.[0] as { id?: number } | undefined)?.id;
+  if (found !== undefined) return found;
+  if (!opts.create) return 0;
+  return createProject({ name: trimmed, abstract: null, location_description: null, notes: null });
+}
+
 export function updateProject(id: number, input: Partial<ProjectInput>): void {
   const db = getUserDb();
   const fields: string[] = [];

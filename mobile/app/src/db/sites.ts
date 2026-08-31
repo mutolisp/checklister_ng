@@ -121,6 +121,35 @@ export function deleteSite(id: number): void {
   db.executeSync(`DELETE FROM sites WHERE id = ?`, [id]);
 }
 
+/**
+ * Drop a site only when nothing points at it any more.
+ *
+ * Used by record import: re-importing the same record over itself creates a
+ * fresh site row, so the one the previous copy was bound to would pile up on
+ * every re-import. It may however be a site the user drew and shares with
+ * other records, so check all three references before deleting.
+ */
+export function deleteSiteIfUnreferenced(id: number): void {
+  const db = getUserDb();
+  const res = db.executeSync(
+    `SELECT
+       (SELECT COUNT(*) FROM sessions WHERE site_id = ?) +
+       (SELECT COUNT(*) FROM plot_surveys WHERE site_id = ?) +
+       (SELECT COUNT(*) FROM sites WHERE id = ? AND session_id IS NOT NULL) AS refs`,
+    [id, id, id],
+  );
+  const refs = Number((res.rows?.[0] as { refs?: number } | undefined)?.refs ?? 0);
+  if (refs === 0) deleteSite(id);
+}
+
+/** A site as carried by an exported record yml (`site:` block). Geometry is a
+ *  GeoJSON object, not the stringified DB column. */
+export type ImportedSite = {
+  name: string;
+  notes: string | null;
+  geometry: GeoJSONGeometry;
+};
+
 /** Flatten any GeoJSON geometry (including Multi*) into a list of [lng, lat] points. */
 function flattenPoints(g: GeoJSONGeometry): PointCoords[] {
   switch (g.type) {

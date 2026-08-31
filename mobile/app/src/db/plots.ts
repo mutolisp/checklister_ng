@@ -1,6 +1,9 @@
 import { EMPTY_TAXON_FIELDS, resolveTaxa } from './taxonLookup';
+import { buildTrackGeoJSON, parseTrackSegments, type TrackSegment } from '~/lib/track';
 import { generateUuid } from './uuid';
-import { getUserDb } from './init';
+import { getUserDb, withTransaction } from './init';
+import { resolveProjectIdByName } from './projects';
+import { createSite, deleteSiteIfUnreferenced, type ImportedSite } from './sites';
 import { defaultSurveyorString } from './surveyors';
 import i18n from '~/i18n';
 
@@ -636,35 +639,9 @@ export function updatePlotSurvey(id: number, patch: UpdatePlotPatch): void {
 // Transect track (MultiLineString segments)
 // ─────────────────────────────────────────────────────────────────────
 
-export type TrackSegment = [number, number][]; // [[lng, lat], ...]
-
-type MultiLineString = {
-  type: 'MultiLineString';
-  coordinates: TrackSegment[];
-};
-
-/** Parse plot.track_geojson into segments. Returns [] if missing/invalid. */
-export function parseTrackSegments(geojson: string | null): TrackSegment[] {
-  if (!geojson) return [];
-  try {
-    const obj = JSON.parse(geojson);
-    if (obj && obj.type === 'MultiLineString' && Array.isArray(obj.coordinates)) {
-      return obj.coordinates as TrackSegment[];
-    }
-    // Backward-compat: a legacy LineString gets wrapped as one segment.
-    if (obj && obj.type === 'LineString' && Array.isArray(obj.coordinates)) {
-      return [obj.coordinates as TrackSegment];
-    }
-  } catch {
-    // ignore
-  }
-  return [];
-}
-
-export function buildTrackGeoJSON(segments: TrackSegment[]): string {
-  const obj: MultiLineString = { type: 'MultiLineString', coordinates: segments };
-  return JSON.stringify(obj);
-}
+// 純資料形狀移到 ~/lib/track（匯入解析器也要用，不能相依 DB）；re-export 讓既有
+// import 路徑不變。
+export { buildTrackGeoJSON, parseTrackSegments, type TrackSegment };
 
 /** Replace the plot's track with the given segments (fast path used by UI). */
 export function writePlotTrack(plotId: number, segments: TrackSegment[]): void {
@@ -1010,6 +987,10 @@ export type ImportedSubplot = {
 export type ImportedPlotSpecies = {
   occurrence_id?: string | null;
   taxon_id: string;
+  /** Scientific name / family as exported. Not stored — used only to
+   *  re-resolve `taxon_id` when this device's checklist doesn't have it. */
+  name?: string | null;
+  family?: string | null;
   subplot?: string | null; // subplot label
   layer?: string | null;
   organism_quantity?: string | null;
@@ -1024,12 +1005,21 @@ export type ImportedPlotSpecies = {
   lng?: number | null;
   accuracy?: number | null;
   observed_at?: number | null;
+  /** Photo filenames inside the zip's `photos/` belonging to this record. */
+  photo_files?: string[];
 };
 
 export type ImportedPlot = {
   uuid: string;
   plotid: string;
   plot_type: PlotType;
+  /** `site:` block from the yml, or a geometry recovered from the zip's
+   *  `site.geojson|gpx|kml`. Becomes a new `sites` row + `site_id`. */
+  site?: ImportedSite | null;
+  /** Photo filenames inside the zip's `photos/`, plot-wide (environment
+   *  context photos). Resolved to device URIs by the caller. */
+  env_photo_files?: string[];
+  track_finalized?: number | null;
   project_name?: string | null;
   layer_count?: number | null;
   start_ts?: number | null;
@@ -1069,34 +1059,49 @@ export function getPlotSurveyByUuid(uuid: string): PlotSurvey | null {
 
 export function importPlotSurvey(
   data: ImportedPlot,
-  opts: { newUuid: boolean },
+  opts: { newUuid: boolean; photoUriByName?: Map<string, string> },
+): { plotId: number; plotid: string } {
+  // One transaction for the whole record: the overwrite path deletes the
+  // previous copy first, so a failure halfway through the species loop would
+  // otherwise leave the user with neither the old plot nor a complete new one.
+  return withTransaction(() => importPlotSurveyTx(data, opts));
+}
+
+function importPlotSurveyTx(
+  data: ImportedPlot,
+  opts: { newUuid: boolean; photoUriByName?: Map<string, string> },
 ): { plotId: number; plotid: string } {
   const db = getUserDb();
   const now = Date.now();
   const uuid = opts.newUuid ? generateUuid() : data.uuid;
+  const photoUri = (name: string) => opts.photoUriByName?.get(name) ?? null;
+  const photoPaths = (files: string[] | undefined): string | null => {
+    const uris = (files ?? []).map(photoUri).filter((u): u is string => u !== null);
+    return uris.length > 0 ? JSON.stringify(uris) : null;
+  };
 
   // Overwrite mode: drop any existing plot with this uuid first. The FK
   // cascades do NOT fire (PRAGMA foreign_keys is off), so children must be
   // deleted by hand exactly as deletePlotSurvey does — otherwise the previous
   // version's species rows survive as orphans carrying the very occurrence_ids
   // that are about to be re-inserted.
+  let prevSiteId: number | null = null;
   if (!opts.newUuid) {
-    const prev = db.executeSync(`SELECT id FROM plot_surveys WHERE uuid = ?`, [uuid]);
-    const prevId = (prev.rows?.[0] as { id?: number } | undefined)?.id;
-    if (prevId != null) deletePlotSurvey(prevId);
+    const prev = db.executeSync(`SELECT id, site_id FROM plot_surveys WHERE uuid = ?`, [uuid]);
+    const prevRow = prev.rows?.[0] as { id?: number; site_id?: number | null } | undefined;
+    if (prevRow?.id != null) {
+      prevSiteId = prevRow.site_id ?? null;
+      deletePlotSurvey(prevRow.id);
+    }
   }
 
-  // Resolve project by name; unknown → 0 (未指定).
-  let projectId = 0;
-  if (data.project_name) {
-    const pr = db.executeSync(`SELECT id FROM projects WHERE name = ? LIMIT 1`, [data.project_name]);
-    const row = pr.rows?.[0] as { id?: number } | undefined;
-    if (row?.id != null) projectId = row.id;
-  }
+  // Resolve project by name, creating it when unknown — the name is user data
+  // that would otherwise be lost to 未分類 on every cross-device import.
+  const projectId = resolveProjectIdByName(data.project_name, { create: true });
 
   const res = db.executeSync(
     `INSERT INTO plot_surveys (
-       uuid, plotid, plot_type, project_id, status, track_geojson, track_finalized,
+       uuid, plotid, plot_type, project_id, status, track_geojson, track_finalized, env_photos_json,
        start_ts, stop_ts, decimal_latitude, decimal_longitude, coord_uncertainty_m, point_radius_m,
        sample_size_value, sample_size_unit, sampling_protocol, total_cover_pct,
        recorded_by, locality, field_note,
@@ -1104,14 +1109,17 @@ export function importPlotSurvey(
        rock_cover_pct, gravel_cover_pct, bareland_cover_pct,
        vascular_cover_pct, bryophyte_cover_pct, lichen_cover_pct, litter_cover_pct,
        layer_count, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       uuid,
       data.plotid,
       data.plot_type,
       projectId,
       data.track_geojson ?? null,
-      data.track_geojson ? 1 : 0,
+      // Older ymls carry no track_finalized; a track that exists at all was
+      // finalized in every pre-v27 export, so that stays the fallback.
+      data.track_finalized ?? (data.track_geojson ? 1 : 0),
+      photoPaths(data.env_photo_files),
       data.start_ts ?? null,
       data.stop_ts ?? null,
       data.decimal_latitude ?? null,
@@ -1171,16 +1179,23 @@ export function importPlotSurvey(
     }
   }
 
-  const fallbackLayer = data.plot_type === 'fixed' ? 'E1' : 'T';
+  const fallbackLayer: Layer = data.plot_type === 'fixed' ? 'E1' : TRANSECT_LAYER;
   for (const sp of data.species ?? []) {
     const subplotId = sp.subplot ? subplotIdByLabel.get(sp.subplot) ?? null : null;
+    // `layer` has a CHECK constraint; anything else (a pre-v12 yml still using
+    // 'E0', a hand-edited file) would throw here and abort the import after the
+    // previous copy was already deleted. Coerce instead.
+    const layer: Layer =
+      sp.layer && (LAYERS as string[]).concat(TRANSECT_LAYER).includes(sp.layer)
+        ? (sp.layer as Layer)
+        : fallbackLayer;
     db.executeSync(
       `INSERT INTO plot_species_records (
          plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
          organism_quantity, organism_quantity_type, notes, sex, life_stage,
          reproductive_condition, leaf_phenology, lat, lng, accuracy, detection_type,
-         observed_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         photo_paths, observed_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         plotId,
         sp.taxon_id,
@@ -1188,7 +1203,7 @@ export function importPlotSurvey(
         // 同一個 occurrenceID 出現在兩筆記錄上（DwC 識別碼必須唯一）。
         opts.newUuid ? generateUuid() : (sp.occurrence_id ?? generateUuid()),
         subplotId,
-        sp.layer ?? fallbackLayer,
+        layer,
         sp.organism_quantity ?? null,
         sp.organism_quantity_type ?? null,
         sp.notes ?? null,
@@ -1200,11 +1215,30 @@ export function importPlotSurvey(
         sp.lng ?? null,
         sp.accuracy ?? null,
         sp.detection_type ?? null,
+        photoPaths(sp.photo_files),
         sp.observed_at ?? now,
         now,
       ],
     );
   }
+
+  // Site last: it needs no plot reference, but the plot needs its id.
+  if (data.site) {
+    const siteId = createSite({
+      project_id: projectId,
+      name: data.site.name,
+      geometry: data.site.geometry,
+      notes: data.site.notes,
+    });
+    db.executeSync(`UPDATE plot_surveys SET site_id = ?, updated_at = ? WHERE id = ?`, [
+      siteId,
+      now,
+      plotId,
+    ]);
+  }
+  // The overwritten copy's site is now unreferenced unless the user shares it
+  // with another record — otherwise every re-import would leave one behind.
+  if (prevSiteId !== null) deleteSiteIfUnreferenced(prevSiteId);
 
   return { plotId, plotid: data.plotid };
 }

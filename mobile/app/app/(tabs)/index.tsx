@@ -26,6 +26,7 @@ import {
   type ExportProgress,
 } from '~/lib/bundleExport';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
+import { importRecordPromptAndOpen } from '~/lib/recordCreate';
 import { estimateBundleSize, formatBytes } from '~/lib/exportSize';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -446,6 +447,16 @@ export default function RecordsListScreen() {
               >
                 <Ionicons name="star" size={14} color="#d97706" />
                 <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">{t('records.favorites')}</Text>
+              </Pressable>
+              <Pressable
+                onPress={async () => {
+                  await importRecordPromptAndOpen();
+                  reload();
+                }}
+                hitSlop={8}
+                className="rounded-full bg-gray-100 dark:bg-gray-800 p-1.5 active:bg-gray-200 dark:active:bg-gray-700"
+              >
+                <Ionicons name="download-outline" size={16} color="#4b5563" />
               </Pressable>
               <Pressable
                 onPress={() => setPrefOpen(true)}

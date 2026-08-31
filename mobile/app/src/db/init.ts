@@ -126,6 +126,44 @@ export function getUserDb(): DB {
   return userDb;
 }
 
+let txDepth = 0;
+
+/**
+ * Run `fn` inside a single SQLite transaction on the user DB.
+ *
+ * op-sqlite's own `db.transaction()` is async (its `execute` returns a
+ * Promise), so it can't wrap the synchronous `executeSync` call sites the DB
+ * layer is built on — hence explicit BEGIN/COMMIT here.
+ *
+ * Reentrant by depth counter: SQLite rejects a nested BEGIN, so an inner call
+ * just joins the outer transaction. `fn` must stay synchronous — awaiting
+ * inside would hold the write lock across the event loop.
+ *
+ * This is for multi-statement writes that must not half-apply (record import
+ * deletes the previous copy before inserting the new one). Migrations
+ * deliberately stay outside it: they rely on idempotent replay instead.
+ */
+export function withTransaction<T>(fn: () => T): T {
+  const db = getUserDb();
+  if (txDepth > 0) return fn();
+  db.executeSync('BEGIN IMMEDIATE;');
+  txDepth = 1;
+  try {
+    const out = fn();
+    db.executeSync('COMMIT;');
+    return out;
+  } catch (e) {
+    try {
+      db.executeSync('ROLLBACK;');
+    } catch {
+      // already rolled back by SQLite (e.g. a fatal statement error)
+    }
+    throw e;
+  } finally {
+    txDepth = 0;
+  }
+}
+
 export function closeDbs(): void {
   taicolDb?.close();
   userDb?.close();

@@ -1,8 +1,14 @@
-import { getUserDb } from './init';
+import { getUserDb, withTransaction } from './init';
+import { resolveProjectIdByName } from './projects';
+import { createSite, deleteSiteIfUnreferenced, getSite, type ImportedSite } from './sites';
 import { defaultSurveyorString } from './surveyors';
+import { generateUuid } from './uuid';
 
 export type Session = {
   id: number;
+  /** Stable identity across export/import (plots have had one since v5).
+   *  Backfilled for pre-v27 rows by the migration. */
+  uuid: string;
   name: string;
   type: 'checklist' | 'abundance';
   project_id: number;
@@ -95,9 +101,10 @@ export function createSession(input: CreateSessionInput = {}): number {
     [now, now],
   );
   const res = db.executeSync(
-    `INSERT INTO sessions (name, type, project_id, started_at, gps_mode, start_lat, start_lng, recorded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sessions (uuid, name, type, project_id, started_at, gps_mode, start_lat, start_lng, recorded_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
+      generateUuid(),
       input.name ?? defaultSessionName(),
       input.type ?? 'checklist',
       input.project_id ?? 0,
@@ -162,4 +169,171 @@ export function reopenSession(id: number): void {
     [now, now],
   );
   db.executeSync(`UPDATE sessions SET ended_at = NULL, resumed_at = ? WHERE id = ?`, [now, id]);
+}
+
+// ── Session round-trip import (v27+) ───────────────────────────────────────
+// Restore a checklist session from an exported yml. Mirrors `importPlotSurvey`
+// (src/db/plots.ts): `uuid` is the stable key, and the imported record must
+// never claim the single-active slot. reproductive_condition / leaf_phenology
+// arrive pre-serialized to the DB JSON-array format (sessionImport.ts).
+
+export type ImportedSessionRecord = {
+  occurrence_id?: string | null;
+  taxon_id: string;
+  /** Scientific name / family as exported. Not stored — used only to
+   *  re-resolve `taxon_id` when this device's checklist doesn't have it. */
+  name?: string | null;
+  family?: string | null;
+  observed_at?: number | null;
+  notes?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  accuracy?: number | null;
+  organism_quantity?: string | null;
+  organism_quantity_type?: string | null;
+  sex?: string | null;
+  life_stage?: string | null;
+  reproductive_condition?: string | null;
+  leaf_phenology?: string | null;
+  /** Photo filenames inside the zip's `photos/` belonging to this record. */
+  photo_files?: string[];
+};
+
+export type ImportedSession = {
+  uuid: string;
+  name: string;
+  type: 'checklist' | 'abundance';
+  project_name?: string | null;
+  started_at: number;
+  ended_at?: number | null;
+  recorded_by?: string | null;
+  notes?: string | null;
+  start_lat?: number | null;
+  start_lng?: number | null;
+  gps_mode?: 'off' | 'single_point' | 'full_track' | null;
+  track_geojson?: string | null;
+  site?: ImportedSite | null;
+  records: ImportedSessionRecord[];
+};
+
+export function getSessionByUuid(uuid: string): Session | null {
+  const res = getUserDb().executeSync(`SELECT * FROM sessions WHERE uuid = ? LIMIT 1`, [uuid]);
+  return ((res.rows ?? []) as unknown as Session[])[0] ?? null;
+}
+
+export function importSession(
+  data: ImportedSession,
+  opts: { newUuid: boolean; photoUriByName?: Map<string, string> },
+): { sessionId: number; name: string } {
+  // Same reasoning as importPlotSurvey: overwrite deletes the previous copy
+  // first, so the whole thing has to be atomic.
+  return withTransaction(() => importSessionTx(data, opts));
+}
+
+function importSessionTx(
+  data: ImportedSession,
+  opts: { newUuid: boolean; photoUriByName?: Map<string, string> },
+): { sessionId: number; name: string } {
+  const db = getUserDb();
+  const now = Date.now();
+  const uuid = opts.newUuid ? generateUuid() : data.uuid;
+  const photoPaths = (files: string[] | undefined): string | null => {
+    const uris = (files ?? [])
+      .map((f) => opts.photoUriByName?.get(f) ?? null)
+      .filter((u): u is string => u !== null);
+    return uris.length > 0 ? JSON.stringify(uris) : null;
+  };
+
+  // Overwrite mode: drop the previous copy by hand (FK cascades are off).
+  let prevSiteId: number | null = null;
+  if (!opts.newUuid) {
+    const prev = getSessionByUuid(uuid);
+    if (prev) {
+      // deleteSession drops checklist_records but not the bound site.
+      if (prev.site_id !== null) prevSiteId = prev.site_id;
+      const owned = getSite(prev.site_id ?? -1);
+      if (owned && owned.session_id === prev.id) {
+        // A site created FOR this session; nothing else can reference it once
+        // the session is gone.
+        db.executeSync(`UPDATE sites SET session_id = NULL WHERE id = ?`, [owned.id]);
+      }
+      deleteSession(prev.id);
+    }
+  }
+
+  const projectId = resolveProjectIdByName(data.project_name, { create: true });
+
+  // Sessions have no `status`: being active IS `ended_at IS NULL`. An imported
+  // record must never take the single-active slot (and must not end the user's
+  // in-progress one either, so this deliberately skips endAllActiveSessions).
+  const lastObserved = data.records.reduce(
+    (max, r) => (r.observed_at != null && r.observed_at > max ? r.observed_at : max),
+    0,
+  );
+  const endedAt = data.ended_at ?? (Math.max(data.started_at, lastObserved) || now);
+
+  const res = db.executeSync(
+    `INSERT INTO sessions (
+       uuid, name, type, project_id, started_at, ended_at, gps_mode,
+       start_lat, start_lng, track_geojson, notes, recorded_by
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      uuid,
+      data.name,
+      data.type,
+      projectId,
+      data.started_at,
+      endedAt,
+      data.gps_mode ?? null,
+      data.start_lat ?? null,
+      data.start_lng ?? null,
+      data.track_geojson ?? null,
+      data.notes ?? null,
+      data.recorded_by ?? null,
+    ],
+  );
+  const sessionId = res.insertId ?? 0;
+  if (sessionId === 0) throw new Error('importSession: insert failed');
+
+  for (const r of data.records) {
+    db.executeSync(
+      `INSERT INTO checklist_records (
+         session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths,
+         lat, lng, accuracy, sex, life_stage, reproductive_condition, leaf_phenology,
+         organism_quantity, organism_quantity_type
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        sessionId,
+        r.taxon_id,
+        // 另存新檔＝新的 occurrence，比照 importPlotSurvey 重新配號。
+        opts.newUuid ? generateUuid() : (r.occurrence_id ?? generateUuid()),
+        r.observed_at ?? data.started_at,
+        r.notes ?? null,
+        photoPaths(r.photo_files),
+        r.lat ?? null,
+        r.lng ?? null,
+        r.accuracy ?? null,
+        r.sex ?? null,
+        r.life_stage ?? null,
+        r.reproductive_condition ?? null,
+        r.leaf_phenology ?? null,
+        r.organism_quantity ?? null,
+        r.organism_quantity_type ?? null,
+      ],
+    );
+  }
+
+  if (data.site) {
+    const siteId = createSite({
+      project_id: projectId,
+      session_id: sessionId,
+      name: data.site.name,
+      geometry: data.site.geometry,
+      notes: data.site.notes,
+    });
+    db.executeSync(`UPDATE sessions SET site_id = ? WHERE id = ?`, [siteId, sessionId]);
+  }
+  if (prevSiteId !== null) deleteSiteIfUnreferenced(prevSiteId);
+
+  return { sessionId, name: data.name };
 }
