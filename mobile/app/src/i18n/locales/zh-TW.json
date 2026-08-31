@@ -168,7 +168,21 @@
     "favorites": "常用名錄",
     "deleteTitle": "刪除{{noun}}？",
     "deleteMsg": "「{{title}}」與其下 {{count}} 筆紀錄將全部移除，無法復原。",
-    "collectionCount": "採集 {{count}}"
+    "collectionCount": "採集 {{count}}",
+    "duplicate": "複製",
+    "duplicateTitle": "複製{{noun}}",
+    "duplicateFailTitle": "複製失敗",
+    "duplicated": "已複製為「{{name}}」",
+    "newName": "新名稱",
+    "nameTaken": "已有同名的{{noun}}",
+    "includeEnv": "帶入環境",
+    "includeEnvHint": "調查設定與環境數值（地點、面積、取樣方法、坡度坡向海拔、覆蓋度、分層與小區）。不含 GPS 座標、軌跡、環境照片。",
+    "includeSpecies": "帶入物種",
+    "includeSpeciesHint": "只帶物種清單與其分層／小區位置；豐度、屬性、備註、照片一律留空。",
+    "startNow": "複製後直接開始",
+    "startNowHint": "複製完就成為進行中的記錄。若已有其他進行中的記錄，會先問是否結束。",
+    "saveToFavorites": "存進常用名錄",
+    "includeSpeciesCollection": "標本的採集號是實體標本的編號，無法預先配發，因此不會一併複製。"
   },
   "export": {
     "preparing": "準備中…",

@@ -13,6 +13,8 @@ import {
   deleteSession,
   listRecords,
   listRecordsByProject,
+  takenRecordNames,
+  taxonIdsOfRecord,
   type ProjectGroup,
   type RecordItem,
   type RecordKind,
@@ -26,7 +28,14 @@ import {
   type ExportProgress,
 } from '~/lib/bundleExport';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
-import { importRecordPromptAndOpen } from '~/lib/recordCreate';
+import {
+  DuplicateRecordModal,
+  type DuplicateRequest,
+} from '~/components/DuplicateRecordModal';
+import { duplicateRecordAndOpen, importRecordPromptAndOpen } from '~/lib/recordCreate';
+import { nextRecordName } from '~/lib/recordName';
+import { pickFavoriteFolder } from '~/lib/pickFavoriteFolder';
+import { useFavorites } from '~/stores/favorites';
 import { estimateBundleSize, formatBytes } from '~/lib/exportSize';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -187,6 +196,7 @@ export default function RecordsListScreen() {
     collection: 0,
   });
   const [prefOpen, setPrefOpen] = useState(false);
+  const [duplicating, setDuplicating] = useState<{ item: RecordItem; request: DuplicateRequest } | null>(null);
   const [exportBusy, setExportBusy] = useState(false);
   const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
 
@@ -356,8 +366,75 @@ export default function RecordsListScreen() {
     });
   }
 
+  const nounOf = (kind: RecordKind): string =>
+    t(kind === 'session' ? 'nav.session' : kind === 'plot' ? 'nav.plot' : 'nav.collection');
+
+  const handleDuplicate = (item: RecordItem) => {
+    // Names of the SAME kind only: a 名錄 and a 樣區 may legitimately share one.
+    const taken = takenRecordNames(item.kind);
+    setDuplicating({
+      item,
+      request: {
+        suggested: nextRecordName(item.title, taken),
+        taken,
+        noun: nounOf(item.kind),
+        // plotid is an identifier, not prose.
+        autoCapitalize: item.kind === 'plot' ? 'none' : 'sentences',
+        // 採集號屬於實體標本，不能預先配發 —— 見 duplicateCollectionTrip。
+        speciesDisabled: item.kind === 'collection',
+      },
+    });
+  };
+
+  const handleDuplicateConfirm = async (opts: Parameters<typeof duplicateRecordAndOpen>[1]) => {
+    const pending = duplicating;
+    setDuplicating(null);
+    if (!pending) return;
+    // duplicateRecordAndOpen may present the "end the active record?" sheet.
+    // Presenting a system sheet in the same tick as dismissing our own Modal
+    // is the documented iOS crash/no-op case — let the dismissal land first.
+    await new Promise((r) => setTimeout(r, 450));
+    const id = await duplicateRecordAndOpen(pending.item, opts);
+    if (id === null) return;
+    reload();
+    toast(t('records.duplicated', { name: opts.name }));
+  };
+
+  const handleSaveSelectionToFavorites = async () => {
+    if (selected.size === 0) {
+      toast(t('records.noneSelected'));
+      return;
+    }
+    const byKey = new Map(items.map((it) => [selectionKey(it.kind, it.id), it]));
+    const picked = [...selected].map((k) => byKey.get(k)).filter((it): it is RecordItem => !!it);
+    if (picked.length === 0) return;
+
+    const folderId = await pickFavoriteFolder(picked[0].title);
+    if (folderId === null) return;
+
+    // Counts are reported over the DISTINCT species of the whole selection —
+    // summing per-record results would count a species shared by three records
+    // as "1 added, 2 skipped", which reads like a partial failure.
+    const distinct = new Set(picked.flatMap((it) => taxonIdsOfRecord(it.kind, it.id)));
+    let added = 0;
+    let unresolved = 0;
+    for (const it of picked) {
+      const r = useFavorites.getState().importFromRecord(it.kind, it.id, folderId);
+      added += r.added;
+      unresolved += r.unresolved;
+    }
+    selectClear();
+    toast(
+      t('favorites.importDone', {
+        added,
+        skipped: Math.max(0, distinct.size - added - unresolved),
+        unresolved,
+      }),
+    );
+  };
+
   const handleDelete = (item: RecordItem) => {
-    const noun = item.kind === 'session' ? t('nav.session') : t('nav.plot');
+    const noun = nounOf(item.kind);
     Alert.alert(
       t('records.deleteTitle', { noun }),
       t('records.deleteMsg', { title: item.title, count: item.recordCount }),
@@ -386,6 +463,12 @@ export default function RecordsListScreen() {
       <SwipeRowActions
         disabled={selectMode}
         actions={[
+          {
+            label: t('records.duplicate'),
+            icon: 'copy-outline',
+            color: 'emerald',
+            onPress: () => handleDuplicate(item),
+          },
           {
             label: t('common.export'),
             icon: 'share-outline',
@@ -424,6 +507,18 @@ export default function RecordsListScreen() {
             <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
               {t('records.selectedCount', { count: selected.size })}
             </Text>
+            <View className="flex-row items-center gap-4">
+            <Pressable
+              onPress={handleSaveSelectionToFavorites}
+              disabled={selected.size === 0}
+              hitSlop={8}
+            >
+              <Ionicons
+                name="star-outline"
+                size={20}
+                color={selected.size === 0 ? '#9ca3af' : '#d97706'}
+              />
+            </Pressable>
             <Pressable
               onPress={handleExportSelection}
               disabled={selected.size === 0 || exportBusy}
@@ -435,6 +530,7 @@ export default function RecordsListScreen() {
                 {t('common.export')}
               </Text>
             </Pressable>
+            </View>
           </View>
         ) : (
           <View className="flex-row items-center justify-between">
@@ -541,6 +637,11 @@ export default function RecordsListScreen() {
       )}
 
       <ExportPreferenceSheet visible={prefOpen} onClose={() => setPrefOpen(false)} />
+      <DuplicateRecordModal
+        request={duplicating?.request ?? null}
+        onCancel={() => setDuplicating(null)}
+        onConfirm={handleDuplicateConfirm}
+      />
     </View>
   );
 }

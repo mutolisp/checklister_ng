@@ -9,7 +9,9 @@
  * or plot survey. See `recordCreate.ensureNoConflictingActive` for the invariant
  * that governs those two.
  */
-import { getUserDb } from './init';
+import { getUserDb, withTransaction } from './init';
+import type { DuplicateRecordOptions } from './duplicate';
+import { existingProjectId } from './projects';
 import { generateUuid } from './plots';
 import { defaultSurveyorString } from './surveyors';
 import { resolveTaxa, EMPTY_TAXON_FIELDS, type TaxonFields } from './taxonLookup';
@@ -450,4 +452,67 @@ export function duplicateSpecimen(id: number): number | null {
 export function deleteSpecimen(id: number): void {
   const db = getUserDb();
   db.executeSync(`DELETE FROM collection_specimens WHERE id = ?`, [id]);
+}
+
+// ── 複製採集記錄 ────────────────────────────────────────────────────────────
+
+/**
+ * Copy a collection trip as the next outing.
+ *
+ * `opts.includeSpecies` is deliberately IGNORED here, and the UI hides the
+ * switch for 採集: a specimen is a physical gathering that owns a number from
+ * the collector's career series, and `nextRecordNumber()` derives that series
+ * from the rows actually stored. Pre-creating a trip's worth of specimens
+ * would burn that many real numbers on gatherings nobody made, and they can
+ * never be reclaimed. `duplicateSpecimen` burning ONE number is a different
+ * act — there, a second gathering really happened.
+ *
+ * Trips sit outside the app-wide single-active invariant, so `activate` closes
+ * other open TRIPS only and never touches a session or plot survey.
+ */
+export function duplicateCollectionTrip(
+  id: number,
+  opts: DuplicateRecordOptions,
+): number | null {
+  return withTransaction(() => duplicateCollectionTripTx(id, opts));
+}
+
+function duplicateCollectionTripTx(id: number, opts: DuplicateRecordOptions): number | null {
+  const source = getCollectionTrip(id);
+  if (!source) return null;
+  const name = opts.name.trim();
+  if (!name) return null;
+  const db = getUserDb();
+  const now = Date.now();
+
+  if (opts.activate) {
+    // Only one OPEN trip at a time, so 「加入採集」 has an unambiguous target.
+    db.executeSync(
+      `UPDATE collection_trips SET status = 'done', ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE status = 'active'`,
+      [now, now],
+    );
+  }
+
+  const res = db.executeSync(
+    `INSERT INTO collection_trips
+       (uuid, name, project_id, status, started_at, ended_at, recorded_by, locality, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      generateUuid(),
+      name,
+      existingProjectId(source.project_id),
+      opts.activate ? 'active' : 'done',
+      now,
+      opts.activate ? null : now,
+      source.recorded_by,
+      opts.includeEnv ? source.locality : null,
+      opts.includeEnv ? source.notes : null,
+      now,
+      now,
+    ],
+  );
+  const newId = res.insertId ?? 0;
+  if (newId === 0) return null;
+
+  return newId;
 }

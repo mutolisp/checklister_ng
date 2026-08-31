@@ -74,6 +74,19 @@ export function resolveProjectIdByName(
   return createProject({ name: trimmed, abstract: null, location_description: null, notes: null });
 }
 
+/**
+ * The source row's project, or 0 (未分類) when that project is gone.
+ *
+ * `PRAGMA foreign_keys` is ON at runtime (src/db/init.ts), and dangling
+ * project ids are only repaired at cold start, so copying one verbatim would
+ * raise a constraint error mid-transaction.
+ */
+export function existingProjectId(projectId: number): number {
+  if (!projectId) return 0;
+  const res = getUserDb().executeSync(`SELECT 1 FROM projects WHERE id = ? LIMIT 1`, [projectId]);
+  return (res.rows?.length ?? 0) > 0 ? projectId : 0;
+}
+
 export function updateProject(id: number, input: Partial<ProjectInput>): void {
   const db = getUserDb();
   const fields: string[] = [];

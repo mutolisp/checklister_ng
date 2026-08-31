@@ -1868,3 +1868,55 @@ Node 用內建 type stripping 跑 `.ts`，但不會自己補副檔名，所以�
 - `batchImport.inputHint` 補一句：這裡只取物種名單，要還原整筆記錄請走 ＋ →「匯入記錄」。
 
 同時把**這層變成可測**（原本測不到才會漏掉）：zip 解析／種類判別／yml 挑選／geo fallback 全部移到純模組 `src/lib/recordImportZip.ts`（`recordImport.ts` 只剩讀檔那一層），`buildTrackGeoJSON` / `parseTrackSegments` / `TrackSegment` 也抽到 `src/lib/track.ts`（`db/plots.ts` re-export）——匯入端要能組出跟錄製端**位元相同**的軌跡，兩份定義一定會漂。`check:roundtrip` 現在多測：真的用 fflate 打包一份 session zip 讀回來（含照片 entry）、zip→yml text、bare yml、只有 `track.gpx` 的 fallback、多筆打包 zip 與採集 zip 的拒絕碼。
+
+## Sprint：記錄列表複製記錄 + 存進常用名錄（2026-08-31 續 2）
+
+野外調查是一連串設定幾乎相同的記錄（JP-EH-12 → JP-EH-13），以前每一筆都要從頭建再手動抄環境設定。
+
+### 入口
+
+- 滑動列：**複製（emerald, copy-outline）／匯出／刪除**（三顆約 280pt，再多就滑不開；刪除維持最後）。長按維持進入多選。
+- **存進常用名錄**：多選模式 header 的星號（與批次匯出並列，可一次多筆）。單筆＝長按選中該筆 → 點星號。底層直接用既有的 `useFavorites.importFromRecord`（本來就支援三種記錄），只補一支共用的資料夾選擇器 `src/lib/pickFavoriteFolder.ts`（新建／既有）。
+- 名錄／樣區／採集三種都可複製、都可存。
+
+### 複製的語意：範本，不是副本
+
+`src/db/duplicate.ts` 定義共用 options（name / includeEnv / includeSpecies / activate），三支 `duplicate*` 各自放在 `plots.ts` / `sessions.ts` / `collections.ts`，都包 `withTransaction`。
+
+- **帶入環境**＝調查設定＋環境數值（地點、分層設定與每層值、小區、坡度坡向海拔、各項覆蓋度）。
+- **帶入物種**＝只帶物種清單與分層／小區位置；豐度、DwC 屬性、備註、照片、GPS、時間一律留空。
+- **一律不帶**：GPS 座標、軌跡、環境照片、地理樣區綁定、`resumed_at`、legacy `e0..e3_*`。
+- 取樣方法、樣區面積、定點半徑屬於「方法」不是「觀測值」，不受 includeEnv 影響。
+- 要一模一樣的完整副本 → 走既有的「匯出 → 匯入 → 另存新副本」。
+
+**刻意不重用 `importPlotSurvey` / `importSession`**：那是為 yml round-trip 寫的，對同一顆 DB 內的複製是有損的（沒有 legacy `bb_value`/`percent`/`dbh_values_json`、照片以 zip 檔名為 key、專案繞名稱、小區靠 label 對應）。
+
+### 命名：`src/lib/recordName.ts` + `npm run check:names`
+
+結尾數字 +1 並保留補零（`JP-EH-12→13`、`PLOT_009→010`），沒有數字就加今天日期，候選撞名就繼續往下找。
+
+`scripts/check-recordname.mjs` 當場抓到兩個真 bug：
+
+1. 預設名錄名是 `YYYY-MM-DD HH:MM`，結尾數字是**分鐘** → `14:59` 會變成 `14:60`。這是名錄最常見的路徑，不是邊緣案例。
+2. 自己產出的 `福山調查 2026-08-31` 再複製一次會變成 `2026-08-32`（無效日期，而且會一路爬）。
+
+修法：加 `TAIL_DATE` 偵測，結尾是日期／日期時間就走 `(2)`、`(3)` 分支，不進遞增。
+
+### 設計 review 抓到的其他問題（都已修）
+
+- **`PRAGMA foreign_keys` 在 runtime 是 ON**（`init.ts:107`，只有 cleanup 期間 OFF —— 檔案內多處註解說「FK 是失效的」只對 cascade 那段成立）。照抄 `project_id` 遇到已刪除的專案會在 transaction 中途丟 constraint error → 新增 `existingProjectId()`，查無就落 0。
+- **穿越線的物種閘門是 `start_ts != null`**（`plotCanAcceptSpecies`），代表「軌跡錄過」。複製時無條件寫 `start_ts = now` 會讓一條沒走過的穿越線解鎖物種頁 → transect 的複本 `start_ts` 留 null。
+- **E5/E6 物種被誤塞到 E1**：不帶環境時 `layer_count` 退回預設 4，原本的 clamp 會把 E5 記錄改成 E1（CHECK 允許 E1–E6 不會炸，但 `PlotSpeciesTab` 只渲染 active 層，超出範圍的列會**看不到也刪不掉**）。改成先掃物種用到的最大層數，把 `layer_count` 撐到足夠。
+- **採集複製會燒掉採集號**：`addSpecimen` 每筆取 `nextRecordNumber()`，而那是採集者**全域生涯序號**且由已存在的列推導、刪不回來。複製一趟 150 筆標本＝憑空燒掉 150 個真實編號。→ 採集**不複製標本**，Modal 該欄改成灰字說明（`duplicateSpecimen` 燒一個號是對的，因為那真的採了第二份）。
+- `listSessions` 是 INNER JOIN projects，專案被刪的名錄不在裡面 → 重名檢查改用 `takenRecordNames(kind)` 直接查表。
+- 重名採**警告不擋**：固定樣區隔年複查本來就沿用同一個 plotid（匯出的 `eventID` 靠它跨年份接起來），硬擋會擋掉最常見的正當用法。
+- 多選存進常用名錄的統計改用**整批去重後**的分母，否則同一物種出現在三筆記錄會report成「加入 1、略過 2」，看起來像失敗。
+- 順手修掉刪除確認把「採集」講成「樣區」（`nounOf` 統一）。
+
+### iOS present/dismiss 時序
+
+`pickFavoriteFolder` 在 action sheet 之後開 `promptText`（自家 Modal）、`handleDuplicateConfirm` 關掉自家 Modal 之後可能開「結束進行中記錄？」的 action sheet —— 兩處都加了等待（350 / 450ms，無平台分支），符合 CLAUDE.md 的「present 與 dismiss 永遠不要放在同一個 tick」。
+
+### 待驗證（實機）
+
+尚未上機。要測：JP-EH-12 → 預設 JP-EH-13；四種（環境 × 物種）組合；「複製後直接開始」在已有進行中記錄時要跳確認、不勾時原記錄不得被結束；三種記錄各一次；多選存進常用名錄（新建／既有資料夾）；複製完跑一次 設定 → 資料檢查。

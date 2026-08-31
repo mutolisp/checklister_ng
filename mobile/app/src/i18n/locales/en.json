@@ -168,7 +168,21 @@
     "favorites": "Favorites",
     "deleteTitle": "Delete {{noun}}?",
     "deleteMsg": "\"{{title}}\" and its {{count}} records will be permanently removed.",
-    "collectionCount": "{{count}} collections"
+    "collectionCount": "{{count}} collections",
+    "duplicate": "Duplicate",
+    "duplicateTitle": "Duplicate {{noun}}",
+    "duplicateFailTitle": "Duplicate failed",
+    "duplicated": "Copied as \"{{name}}\"",
+    "newName": "New name",
+    "nameTaken": "A {{noun}} with this name already exists",
+    "includeEnv": "Copy setup",
+    "includeEnvHint": "Survey setup and environmental values (locality, size, protocol, slope/aspect/elevation, cover, layers and subplots). No GPS fix, track or environment photos.",
+    "includeSpecies": "Copy species",
+    "includeSpeciesHint": "The species list and its layer / subplot slot only — quantities, attributes, remarks and photos are left blank.",
+    "startNow": "Start recording after copying",
+    "startNowHint": "The copy becomes the record in progress. If another one is open, you'll be asked to end it first.",
+    "saveToFavorites": "Save to favorites",
+    "includeSpeciesCollection": "Specimens carry career collection numbers that cannot be issued in advance, so they are not copied."
   },
   "export": {
     "preparing": "Preparing…",

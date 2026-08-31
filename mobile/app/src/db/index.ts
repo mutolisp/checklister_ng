@@ -1,5 +1,6 @@
 export * from './init';
 export * from './types';
+export * from './duplicate';
 export * from './regions';
 export * from './search';
 export * from './fuzzy';

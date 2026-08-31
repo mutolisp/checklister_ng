@@ -11,6 +11,9 @@ import { Alert } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import {
   createCollectionTrip,
+  duplicateCollectionTrip,
+  duplicatePlotSurvey,
+  duplicateSession,
   createPlotSurvey,
   endPlotSurvey,
   endSession,
@@ -23,7 +26,9 @@ import {
   listSessionRecords,
   parseEnvPhotos,
   searchByTaxonId,
+  type DuplicateRecordOptions,
   type PlotType,
+  type RecordItem,
 } from '~/db';
 import { parsePhotoUris } from '~/lib/bundleExport';
 import { matchScientificName } from '~/lib/sciMatch';
@@ -33,7 +38,7 @@ import { readRecordImport, type ReadRecordImport } from '~/lib/recordImport';
 import { useToast } from '~/stores/toast';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
-import { isRecordingTarget, pauseRecording as pauseTrackRecording } from '~/lib/trackRecorder';
+import { isRecordingTarget, pauseIfNot, pauseRecording as pauseTrackRecording } from '~/lib/trackRecorder';
 import { promptText } from '~/components/TextPromptModal';
 import { showActionSheet } from '~/components/ActionSheet';
 import i18n from '~/i18n';
@@ -475,4 +480,58 @@ async function finishSessionImport(
   useActiveSession.getState().refresh();
   summarize(data.records.length, taxa, skippedPhotos);
   router.push(`/session/${sessionId}` as Href);
+}
+
+/**
+ * Duplicate a record from the records list, opening the copy only when it is
+ * meant to be recorded in right away.
+ *
+ * Lives here rather than in the screen because it needs the single-active gate
+ * and the two active-record stores: a copy that opens for recording has to
+ * close whatever was open first, and the user has to be asked before that
+ * happens. A copy that lands finished touches nothing.
+ *
+ * Returns the new record's id, or null when nothing was created (the user
+ * declined to end the active record, or the source vanished).
+ */
+export async function duplicateRecordAndOpen(
+  item: RecordItem,
+  opts: DuplicateRecordOptions,
+): Promise<number | null> {
+  if (opts.activate && item.kind !== 'collection') {
+    // 採集 sits outside the invariant; the other two must ask first.
+    const ok = await ensureNoConflictingActive(item.kind);
+    if (!ok) return null;
+    // Stop the GPS watch before the DB layer force-ends whatever it was
+    // recording for — otherwise the next batch flush writes to a closed record.
+    pauseIfNot(null);
+  }
+
+  let newId: number | null = null;
+  try {
+    if (item.kind === 'plot') newId = duplicatePlotSurvey(item.id, opts);
+    else if (item.kind === 'session') newId = duplicateSession(item.id, opts);
+    else newId = duplicateCollectionTrip(item.id, opts);
+  } catch (e) {
+    Alert.alert(i18n.t('records.duplicateFailTitle'), e instanceof Error ? e.message : String(e));
+    return null;
+  }
+  if (newId === null) return null;
+
+  useActiveSession.getState().refresh();
+  useActivePlot.getState().refresh();
+
+  // Only jump into the copy when the user asked to start recording in it.
+  // A plain copy leaves them in the list, where the new row is already
+  // visible — handy when duplicating several in a row.
+  if (opts.activate) {
+    const href =
+      item.kind === 'plot'
+        ? `/plot/${newId}`
+        : item.kind === 'session'
+          ? `/session/${newId}`
+          : `/collection/${newId}`;
+    router.push(href as Href);
+  }
+  return newId;
 }

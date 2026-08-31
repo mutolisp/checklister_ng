@@ -12,7 +12,8 @@
     "check:dock": "node ./scripts/check-bottom-dock.mjs",
     "check:i18n": "node ./scripts/check-i18n.mjs",
     "check:kav": "node ./scripts/check-kav.mjs",
-    "check:roundtrip": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/ts-resolve-register.mjs ./scripts/check-roundtrip.mjs"
+    "check:roundtrip": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/ts-resolve-register.mjs ./scripts/check-roundtrip.mjs",
+    "check:names": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./scripts/ts-resolve-register.mjs ./scripts/check-recordname.mjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

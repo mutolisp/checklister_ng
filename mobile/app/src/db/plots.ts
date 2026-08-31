@@ -2,8 +2,9 @@ import { EMPTY_TAXON_FIELDS, resolveTaxa } from './taxonLookup';
 import { buildTrackGeoJSON, parseTrackSegments, type TrackSegment } from '~/lib/track';
 import { generateUuid } from './uuid';
 import { getUserDb, withTransaction } from './init';
-import { resolveProjectIdByName } from './projects';
+import { existingProjectId, resolveProjectIdByName } from './projects';
 import { createSite, deleteSiteIfUnreferenced, type ImportedSite } from './sites';
+import type { DuplicateRecordOptions } from './duplicate';
 import { defaultSurveyorString } from './surveyors';
 import i18n from '~/i18n';
 
@@ -1241,4 +1242,186 @@ function importPlotSurveyTx(
   if (prevSiteId !== null) deleteSiteIfUnreferenced(prevSiteId);
 
   return { plotId, plotid: data.plotid };
+}
+
+// ── 複製樣區 ────────────────────────────────────────────────────────────────
+
+/**
+ * Copy a plot survey as the next one in the series.
+ *
+ * Deliberately NOT routed through `importPlotSurvey`: that path exists for the
+ * yml round trip and is lossy inside one DB (no legacy bb_value / percent /
+ * dbh_values_json, photos keyed by zip filename, project resolved by name,
+ * subplots matched by label). Copying columns directly is both shorter and
+ * exact about what is carried.
+ *
+ * Never carried, whatever the options say: the GPS fix, the walked track, the
+ * bound site, environment photos, and every per-record observation value —
+ * those describe one survey, not the setup it shared.
+ */
+export function duplicatePlotSurvey(
+  id: number,
+  opts: DuplicateRecordOptions,
+): number | null {
+  return withTransaction(() => duplicatePlotSurveyTx(id, opts));
+}
+
+function duplicatePlotSurveyTx(id: number, opts: DuplicateRecordOptions): number | null {
+  const source = getPlotSurvey(id);
+  if (!source) return null;
+  const name = opts.name.trim();
+  if (!name) return null;
+  const db = getUserDb();
+  const now = Date.now();
+
+  if (opts.activate) {
+    // Same belt + suspenders as createPlotSurvey: the copy can only become the
+    // active record if nothing else is.
+    db.executeSync(
+      `UPDATE plot_surveys SET status = 'done', stop_ts = COALESCE(stop_ts, ?), updated_at = ? WHERE status = 'active'`,
+      [now, now],
+    );
+    db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`, [now]);
+  }
+
+  // Species rows are read up front: without the source's layer settings the
+  // copy still has to keep enough layers to hold them, or an E5 record would
+  // have to be misfiled into E1 (the CHECK allows E1–E6 regardless of
+  // layer_count, but `PlotSpeciesTab` only renders the active ones, so an
+  // out-of-range row becomes invisible AND undeletable).
+  const species = opts.includeSpecies
+    ? ((db.executeSync(
+        `SELECT taxon_id, layer, subplot_id FROM plot_species_records
+          WHERE plot_survey_id = ? AND taxon_id IS NOT NULL AND taxon_id != ''
+          ORDER BY id`,
+        [id],
+      ).rows ?? []) as unknown as Array<
+        Pick<PlotSpeciesRecord, 'taxon_id' | 'layer' | 'subplot_id'>
+      >)
+    : [];
+  const usedLayerIdx = species.reduce(
+    (max, sp) => (sp.layer !== TRANSECT_LAYER ? Math.max(max, Number(sp.layer.slice(1)) || 0) : max),
+    0,
+  );
+  const layerCount = opts.includeEnv
+    ? source.layer_count
+    : Math.min(MAX_LAYER_COUNT, Math.max(DEFAULT_LAYER_COUNT, usedLayerIdx));
+  const env = <T,>(v: T): T | null => (opts.includeEnv ? v : null);
+
+  const res = db.executeSync(
+    `INSERT INTO plot_surveys (
+       uuid, plotid, plot_type, project_id, status, recorded_by, sampling_protocol,
+       layer_count, sample_size_value, sample_size_unit, point_radius_m,
+       locality, field_note, elevation_m, slope_deg, aspect_deg, terrain_position,
+       total_cover_pct, rock_cover_pct, gravel_cover_pct, bareland_cover_pct,
+       vascular_cover_pct, bryophyte_cover_pct, lichen_cover_pct, litter_cover_pct,
+       start_ts, stop_ts, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      generateUuid(),
+      name,
+      source.plot_type,
+      existingProjectId(source.project_id),
+      opts.activate ? 'active' : 'done',
+      source.recorded_by,
+      // Protocol, plot size and point-count radius describe the METHOD, not
+      // this survey's observations, so they follow the plot type even when the
+      // environmental values are left out.
+      source.sampling_protocol,
+      layerCount,
+      source.sample_size_value,
+      source.sample_size_unit,
+      source.point_radius_m,
+      env(source.locality),
+      env(source.field_note),
+      env(source.elevation_m),
+      env(source.slope_deg),
+      env(source.aspect_deg),
+      env(source.terrain_position),
+      env(source.total_cover_pct),
+      env(source.rock_cover_pct),
+      env(source.gravel_cover_pct),
+      env(source.bareland_cover_pct),
+      env(source.vascular_cover_pct),
+      env(source.bryophyte_cover_pct),
+      env(source.lichen_cover_pct),
+      env(source.litter_cover_pct),
+      // A transect is "ready to record" precisely when start_ts is set (see
+      // plotCanAcceptSpecies) — that flag means the track recorder ran. A copy
+      // has walked nothing, so it must start null or the species tab unlocks
+      // on a survey that never happened.
+      source.plot_type === 'transect' ? null : now,
+      opts.activate ? null : now,
+      now,
+      now,
+    ],
+  );
+  const newId = res.insertId ?? 0;
+  if (newId === 0) return null;
+
+  // Layers: `plot_survey_layers` must stay in lockstep with layer_count
+  // (setPlotLayerCount's invariant), so both branches write layerCount rows.
+  if (source.plot_type === 'fixed') {
+    const sourceLayers = new Map(getPlotLayers(id).map((l) => [l.layer_index, l]));
+    for (let i = 1; i <= layerCount; i++) {
+      const l = opts.includeEnv ? sourceLayers.get(i) : undefined;
+      db.executeSync(
+        `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, cover_pct, height_cm, height_unit, method)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          i,
+          l?.cover_pct ?? null,
+          l?.height_cm ?? null,
+          l?.height_unit ?? 'cm',
+          // Matches createPlotSurvey's seeding when there is nothing to copy.
+          l?.method ?? (i === 4 ? 'DBH' : 'percent'),
+        ],
+      );
+    }
+  }
+
+  // Subplots are part of the plot's structure, so they ride with 環境.
+  const subplotIdByOldId = new Map<number, number>();
+  if (opts.includeEnv) {
+    for (const s of listSubplots(id)) {
+      const sres = db.executeSync(
+        `INSERT INTO plot_subplots (plot_survey_id, idx, label, width_m, length_m, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newId, s.idx, s.label, s.width_m, s.length_m, now],
+      );
+      const newSubplotId = sres.insertId ?? 0;
+      subplotIdByOldId.set(s.id, newSubplotId);
+      for (const sl of getSubplotLayers(s.id)) {
+        db.executeSync(
+          `INSERT INTO subplot_layers (subplot_id, layer_index, cover_pct, height_cm) VALUES (?, ?, ?, ?)`,
+          [newSubplotId, sl.layer_index, sl.cover_pct, sl.height_cm],
+        );
+      }
+    }
+  }
+
+  if (opts.includeSpecies) {
+    const activeLayers = getActiveLayers(layerCount) as string[];
+    const seen = new Set<string>();
+    for (const sp of species) {
+      // A layer beyond the copy's layer_count would be invisible in the UI.
+      const layer: Layer =
+        sp.layer === TRANSECT_LAYER || activeLayers.includes(sp.layer) ? sp.layer : 'E1';
+      const subplotId = subplotIdByOldId.get(sp.subplot_id ?? -1) ?? null;
+      // Without subplots, rows that differed only by subplot collapse into
+      // duplicates of the same taxon+layer.
+      const key = `${sp.taxon_id}|${layer}|${subplotId ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      db.executeSync(
+        `INSERT INTO plot_species_records
+           (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer, observed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [newId, sp.taxon_id, generateUuid(), subplotId, layer, now, now],
+      );
+    }
+  }
+
+  return newId;
 }

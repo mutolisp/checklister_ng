@@ -157,6 +157,27 @@ export function listRecordsByProject(filter: RecordFilter = 'all'): ProjectGroup
 }
 
 /** Column holding the parent id, per record kind. */
+/**
+ * Every existing name of one record kind, for the duplicate dialog's
+ * collision check.
+ *
+ * Queried straight from the tables rather than through `listRecords`:
+ * `listSessions` INNER JOINs projects, so a session whose project was deleted
+ * is missing from it — and a name missing from this set is a collision the
+ * dialog would fail to warn about.
+ */
+export function takenRecordNames(kind: RecordKind): Set<string> {
+  const db = getUserDb();
+  const sql =
+    kind === 'plot'
+      ? `SELECT plotid AS name FROM plot_surveys`
+      : kind === 'session'
+        ? `SELECT name FROM sessions`
+        : `SELECT name FROM collection_trips`;
+  const rows = (db.executeSync(sql).rows ?? []) as { name?: string }[];
+  return new Set(rows.map((r) => (r.name ?? '').trim()).filter(Boolean));
+}
+
 const RECORD_SPECIES_SOURCE: Record<RecordKind, { table: string; fk: string }> = {
   session: { table: 'checklist_records', fk: 'session_id' },
   plot: { table: 'plot_species_records', fk: 'plot_survey_id' },

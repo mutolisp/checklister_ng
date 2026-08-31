@@ -1,8 +1,9 @@
 import { getUserDb, withTransaction } from './init';
-import { resolveProjectIdByName } from './projects';
+import { existingProjectId, resolveProjectIdByName } from './projects';
 import { createSite, deleteSiteIfUnreferenced, getSite, type ImportedSite } from './sites';
 import { defaultSurveyorString } from './surveyors';
 import { generateUuid } from './uuid';
+import type { DuplicateRecordOptions } from './duplicate';
 
 export type Session = {
   id: number;
@@ -336,4 +337,77 @@ function importSessionTx(
   if (prevSiteId !== null) deleteSiteIfUnreferenced(prevSiteId);
 
   return { sessionId, name: data.name };
+}
+
+// ── 複製名錄 ────────────────────────────────────────────────────────────────
+
+/**
+ * Copy a checklist session as the next visit.
+ *
+ * Same contract as `duplicatePlotSurvey`: setup travels, observations do not.
+ * The start GPS fix, the recorded track and the bound site all describe one
+ * outing and are always left out.
+ */
+export function duplicateSession(id: number, opts: DuplicateRecordOptions): number | null {
+  return withTransaction(() => duplicateSessionTx(id, opts));
+}
+
+function duplicateSessionTx(id: number, opts: DuplicateRecordOptions): number | null {
+  const source = getSession(id);
+  if (!source) return null;
+  const name = opts.name.trim();
+  if (!name) return null;
+  const db = getUserDb();
+  const now = Date.now();
+
+  if (opts.activate) {
+    // Mirrors createSession: at most one open record across both kinds.
+    db.executeSync(`UPDATE sessions SET ended_at = ? WHERE ended_at IS NULL`, [now]);
+    db.executeSync(
+      `UPDATE plot_surveys SET status = 'done', stop_ts = COALESCE(stop_ts, ?), updated_at = ? WHERE status = 'active'`,
+      [now, now],
+    );
+  }
+
+  const res = db.executeSync(
+    `INSERT INTO sessions (uuid, name, type, project_id, recorded_by, gps_mode, notes, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      generateUuid(),
+      name,
+      source.type,
+      // FKs are enforced at runtime; a project deleted since the last cold
+      // start would make this INSERT throw.
+      existingProjectId(source.project_id),
+      source.recorded_by,
+      // 記錄方式（關閉／單點／軌跡）是設定而非觀測值，一律跟著走。
+      source.gps_mode,
+      opts.includeEnv ? source.notes : null,
+      now,
+      opts.activate ? null : now,
+    ],
+  );
+  const newId = res.insertId ?? 0;
+  if (newId === 0) return null;
+
+  if (opts.includeSpecies) {
+    // Straight from the table: the copy needs taxon ids only, not the taxon
+    // join `listSessionRecords` does. DISTINCT because the list is the point.
+    const rows = db.executeSync(
+      `SELECT taxon_id FROM checklist_records
+        WHERE session_id = ? AND taxon_id IS NOT NULL AND taxon_id != ''
+        GROUP BY taxon_id ORDER BY MIN(id)`,
+      [id],
+    );
+    for (const r of (rows.rows ?? []) as { taxon_id?: string }[]) {
+      if (!r.taxon_id) continue;
+      db.executeSync(
+        `INSERT INTO checklist_records (session_id, taxon_id, occurrence_id, observed_at)
+         VALUES (?, ?, ?, ?)`,
+        [newId, r.taxon_id, generateUuid(), now],
+      );
+    }
+  }
+
+  return newId;
 }
