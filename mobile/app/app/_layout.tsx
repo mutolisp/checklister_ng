@@ -16,6 +16,7 @@ import { DBProvider } from '~/components/DBProvider';
 import { FontScaleProvider } from '~/components/FontScaleProvider';
 import { StalePlotWatcher } from '~/components/StalePlotWatcher';
 import { StaleSessionWatcher } from '~/components/StaleSessionWatcher';
+import { GbifLookupHost } from '~/components/GbifLookupHost';
 import { TextPromptHost } from '~/components/TextPromptModal';
 import { ToastHost } from '~/components/ToastHost';
 import { useThemeSync } from '~/hooks/useThemeSync';
@@ -94,6 +95,7 @@ function ThemedShell() {
         </View>
         <ToastHost />
         <TextPromptHost />
+        <GbifLookupHost />
         <ActionSheetHost />
       </FontScaleProvider>
       {/* Active record → green ActiveSessionBar covers status bar → need

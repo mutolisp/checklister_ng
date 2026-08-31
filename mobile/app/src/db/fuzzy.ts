@@ -3,6 +3,7 @@ import { pinyin } from 'pinyin-pro';
 import { getTaicolDb } from './init';
 import { SEARCH_COLUMNS, searchSpecies, searchSpeciesJp, groupFilterClause, markJpAlias } from './search';
 import { getEnabledRegions, crossRegionVernacular, normalizeSci } from './regions';
+import { searchExternalTaxa } from './externalTaxa';
 import type { SearchResult, TaxonGroup } from './types';
 
 type FuzzyOptions = {
@@ -367,7 +368,36 @@ function enrichSharedVernacular(results: SearchResult[], regions: ('TW' | 'JP')[
  * Taiwanese + Japanese vernacular names appear together. With only ['TW'] this
  * is byte-identical to the pre-region behavior.
  */
+/**
+ * The bundled checklists, then the user's own external taxa.
+ *
+ * External ('g…') taxa live in user.db while the checklists live in
+ * twnamelist.db, and this app never ATTACHes, so they cannot be part of the
+ * SQL above — they are merged in here instead. Without this a species the
+ * user added from GBIF stays invisible to the search box that offered to add
+ * it, and the app would keep offering to add it again.
+ */
 export function searchWithFuzzyFallback(opts: {
+  q: string;
+  groups?: TaxonGroup[];
+  phonetic?: boolean;
+}): SearchResult[] {
+  const local = searchBundledChecklists(opts);
+  let external: SearchResult[] = [];
+  try {
+    external = searchExternalTaxa(opts.q);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[search] external taxa search failed:', e);
+  }
+  if (external.length === 0) return local;
+  // Bundled results first: a species that IS in the checklist must keep its
+  // local identity, and the external row is at best a duplicate of it.
+  const seen = new Set(local.map((r) => r.taxon_id));
+  return [...local, ...external.filter((r) => !seen.has(r.taxon_id))];
+}
+
+function searchBundledChecklists(opts: {
   q: string;
   groups?: TaxonGroup[];
   /** Forwarded to `fuzzySearch` — enable toneless-pinyin homophone matching

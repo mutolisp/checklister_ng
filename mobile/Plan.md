@@ -1913,10 +1913,61 @@ Node 用內建 type stripping 跑 `.ts`，但不會自己補副檔名，所以�
 - 多選存進常用名錄的統計改用**整批去重後**的分母，否則同一物種出現在三筆記錄會report成「加入 1、略過 2」，看起來像失敗。
 - 順手修掉刪除確認把「採集」講成「樣區」（`nounOf` 統一）。
 
+### 複製視窗做成全螢幕，不是浮動 bottom sheet
+
+第一版把它做成貼底的 sheet 外包 `KeyboardAvoidingView`，鍵盤一開就把整張表往上推、表頭衝出畫面上緣（使用者回報「提示選單會超出上方範圍」）。**只要 Modal 內有 `TextInput`，就照 `SaveSiteModal` / `BatchImportModal` 的形狀**：全螢幕 + root 套 `insets.top`/`insets.bottom` + header + `KAV(flex-1)` 包 `ScrollView`。上緣先天被 inset 釘住，KAV 只壓縮 ScrollView 不搬容器。浮動 sheet 只留給沒有輸入框的選單，而且長內容要配 `maxHeight` + ScrollView。
+
 ### iOS present/dismiss 時序
 
 `pickFavoriteFolder` 在 action sheet 之後開 `promptText`（自家 Modal）、`handleDuplicateConfirm` 關掉自家 Modal 之後可能開「結束進行中記錄？」的 action sheet —— 兩處都加了等待（350 / 450ms，無平台分支），符合 CLAUDE.md 的「present 與 dismiss 永遠不要放在同一個 tick」。
 
+### 修：常用名錄畫完範圍後跑到別的畫面
+
+`map.tsx` 的 favoriteArea 分支畫完是 `router.back()`，註解還寫著「back 就會回到常用名錄」——不成立。`/favorites` 是 root stack 中疊在 `(tabs)` **上面**的畫面，`router.push('/(tabs)/map?...')` 進到 tabs group 時 favorites 已經不在我們後面了，back 於是落到別的畫面（使用者遇到的是樣區管理）。
+
+改成跟同檔案裡「樣點交接回名錄」一樣顯式導回：`router.navigate('/favorites?folder=${fid}')`；`favorites.tsx` 新增 `folder` param，收到就 `setFolderId` 並把 param 清掉（與 map.tsx 消費 `draw`/`session` param 同一套寫法）。`navigate` 會重用還在 stack 上的 favorites 實例，不會疊出第二份。
+
 ### 待驗證（實機）
 
-尚未上機。要測：JP-EH-12 → 預設 JP-EH-13；四種（環境 × 物種）組合；「複製後直接開始」在已有進行中記錄時要跳確認、不勾時原記錄不得被結束；三種記錄各一次；多選存進常用名錄（新建／既有資料夾）；複製完跑一次 設定 → 資料檢查。
+尚未上機。要測：常用名錄畫完範圍要回到原本那份名錄（不是資料夾列表、也不是樣區管理）；JP-EH-12 → 預設 JP-EH-13；四種（環境 × 物種）組合；「複製後直接開始」在已有進行中記錄時要跳確認、不勾時原記錄不得被結束；三種記錄各一次；多選存進常用名錄（新建／既有資料夾）；複製完跑一次 設定 → 資料檢查。
+
+## Sprint：本地查無物種 → GBIF 查名並可加入本機名錄（2026-08-31 續 3）
+
+搜尋只查得到 bundle 的兩份名錄（TaiCOL `t…`、日本 YList `y…`），名錄沒收錄的物種完全沒有入口；`SearchBox` 甚至連「查無結果」的空狀態都沒有（`results.length > 0 ? … : null`，什麼都不畫）。底層其實備齊了——`gbif.ts`、`external_taxa`、`g…` id 命名空間、`resolveTaxa` 的外部分支——缺的只是入口。
+
+### 使用者流程
+
+搜尋框查無結果 → 顯示「本地名錄查無『X』」＋「到 GBIF 查詢」按鈕（**點才查**，野外沒訊號不白等，也不會每個按鍵打一次 API）→ 候選列（學名／作者／rank／階層／GBIF 俗名／異名標記）→ 選一筆 →
+
+1. **先用 GBIF 給的接受名回頭比對本地名錄**（`matchScientificName`）。命中就直接回本地 `t…`／`y…` id 並提示「本地名錄已收錄」——臺灣的物種絕不能拿到 GBIF id，否則同種兩個身分，記錄／匯出／統計全部分裂。
+2. 本地真的沒有 → 確認畫面，中文俗名預填 GBIF 的 vernacularName（`zho`/`zh*` 優先，退英文，都沒有就空白讓使用者自己打）→ `upsertExternalTaxon` 鑄造 `g{usageKey}` → 直接當成搜尋結果交回原本的加入流程。
+
+批次匯入的「找不到」清單每一列也可點，走同一個視窗，成功後那筆會從「找不到」移到「精確匹配」。
+
+### 為什麼做成 host 而不是 modal
+
+第一版寫成 `<GbifLookupModal>` 掛在呼叫端，但批次匯入本身就是 Modal，**iOS 不允許在 Modal 之上再開 Modal**。改成與 `TextPromptModal` / `ActionSheet` 同一套：module-level zustand store ＋ `lookupGbifName(q): Promise<{result, viaLocal} | null>` ＋ `<GbifLookupHost />` 掛在 `app/_layout.tsx`。這正是這個 app 對「Modal 內要開 Modal」既有的答案。
+
+### 前置：外部物種原本在 app 內「不算數」
+
+- **`searchByTaxonId` 不認得 `g…`**（`search.ts:178` 只用 `isJpTaxonId` 二選一，`g…` 落到 `taicol_names` → null）。這讓常用名錄裡的外部物種**點不開、也加不進記錄**，`addById` 回 false、`importFromRecord` 計為 unresolved 丟棄、`remapUnknownTaxa` 甚至可能把合法的 `g…` 改指到別的物種。改成依 `sourceOfTaxonId()` 分三路 + 新的 `externalToSearchResult()` adapter，一次解掉七個既有壞點。
+- **`external_taxa` 不在搜尋路徑上**（在 user.db，而名錄在 twnamelist.db，全 app 沒有 ATTACH）。`searchWithFuzzyFallback` 現在在本地結果之後併入 `searchExternalTaxa()`，加過的物種下次搜得到、也不會被重複推去打 GBIF。
+- `SearchBox` 的結果快取永不失效 → 鑄造後 `clearSearchResultCache()`；`getResultKey` 改用 `taxon_id`（`id` 是 `name_id`，外部列是 0 會撞）。
+
+### 一併修掉的既有 bug
+
+- **`findExternalTaxonIdByName` 只比名字不看界**。bundle DB 有 72 個屬名、2 個種名是跨界同名（`sciMatch.ts` 有記載），搜尋框是長期累積任意名稱，兩個不同生物會 collapse 成同一個 `taxon_id`，指向它的記錄全部變成同一種。改成可帶 kingdom 一起比對。
+- **`upsertExternalTaxon` 的 `DO UPDATE` 更新 `source` 卻不更新 `source_key`**：iNat 來的 `gi12345` 被 GBIF 刷新後會變成 `source='gbif'` 但 `source_key='12345'`，指向一個真實但無關的 GBIF taxon，而 `idx_external_source` 還把這個謊言建了索引。
+
+### 其他
+
+- `searchNames()`（新，走 `/species/search` + backbone datasetKey）與既有的 `matchName()`（`/species/match`，單一最佳解）分工不同：前者給人挑，後者給批次校正。**timeout 縮到 8 秒**——預設 20s 加上 `classifyFailure` 的 6s 探測要 26 秒，站在森林裡等這個不合理。
+- rank 過濾只留 genus 及以下：`/species/search` 會回科、目，而 `matchName` 的 `HIGHERRANK` 過濾擋不掉「打 Ficus 得到 genus 精確命中」。每列都顯示 rank。
+- `AreaSpeciesModal` 的 `messageFor()` 抽成 `src/lib/apiErrorMessage.ts` 共用（`apiFetch.ts` 本來就寫「failure has a single vocabulary」）。
+- 新增 `npm run check:gbif`：把 `searchNames` 拆成 `nameSearchUrl`（請求）與 `parseNameSearch`（回應）兩個純函式，用 fixture 驗俗名語言優先序、rank 過濾、異名接受名、畸形回應——**不打真的 API**。（ESM 的 live binding 是唯讀的，stub 不了 `getJson`；拆純函式反而更直接。）
+
+**已知限制**：`taxonLookup` 的外部分支只取 11 欄，外部物種的保育欄位與各階層中文名天生為空，DwC 匯出時那些欄位會空白。GBIF backbone 本來就沒這些資料。
+
+### 待驗證（實機）
+
+尚未上機。要測：查一個 TaiCOL 沒有的學名 → 加入 → **再搜一次要在本地就找到**；挑一個 GBIF 有、本地也收錄的異名 → 必須回本地 id 不得新增外部物種；打屬名要標 genus；飛航模式要在 ~8 秒內說沒網路；加入後到常用名錄點該物種要能開詳細、能加入記錄；匯出確認 `taxonID` 是 `g…`。

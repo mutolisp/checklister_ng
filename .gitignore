@@ -22,6 +22,7 @@ backend/twnamelist.db.bak.*
 # TaiCOL raw data (users download themselves)
 references/TaiCOL_*.csv
 references/TaiCOL_*.zip
+references/*
 
 # IDE / editor
 .vscode/

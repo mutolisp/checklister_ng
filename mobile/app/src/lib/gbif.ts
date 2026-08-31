@@ -25,6 +25,15 @@ import type { IconicTaxon } from './inat';
 
 const API = 'https://api.gbif.org/v1';
 
+/** GBIF Backbone Taxonomy. Restricting name search to it keeps results on the
+ *  one taxonomy the rest of this app already speaks (`matchName` resolves
+ *  against the same backbone). */
+const BACKBONE_DATASET_KEY = 'd7dddbf4-2cf0-4f39-9b2a-bb099caae36c';
+
+/** Name search runs in front of a waiting user, so it must fail fast — the
+ *  20 s default plus connectivity.ts's 6 s probe is 26 s of nothing. */
+const NAME_SEARCH_TIMEOUT_MS = 8000;
+
 /**
  * How many group requests run at once.
  *
@@ -306,4 +315,120 @@ export async function matchName(name: string, signal?: AbortSignal): Promise<Gbi
     genus: str('genus'),
     acceptedName: str('accepted'),
   };
+}
+
+// ── Name lookup for the search box ─────────────────────────────────────────
+
+/**
+ * Ranks a user may add as a record.
+ *
+ * `/species/search` happily returns families and orders for a short query, and
+ * unlike `matchName` there is no `matchType: HIGHERRANK` to filter on — the
+ * hit IS an exact match, it just happens to be a family. Genus is kept (a
+ * "Ficus sp." observation is a real field record); anything coarser is not
+ * something to file an occurrence under.
+ */
+const ADDABLE_RANKS = new Set([
+  'GENUS', 'SPECIES', 'SUBSPECIES', 'VARIETY', 'SUBVARIETY', 'FORM', 'SUBFORM',
+]);
+
+/** Chinese first — this is a Taiwanese checklist app — then English, then
+ *  whatever GBIF listed first. ISO 639-3 'zho' is what GBIF actually emits. */
+const VERNACULAR_LANGS = ['zho', 'zh', 'zh-hant', 'zh-hans', 'cmn'];
+
+export type GbifNameCandidate = {
+  usageKey: number;
+  canonicalName: string;
+  author: string;
+  rank: string;
+  /** ACCEPTED / SYNONYM / DOUBTFUL … */
+  status: string;
+  /** The accepted name when this row is a synonym; '' otherwise. */
+  acceptedName: string;
+  kingdom: string;
+  phylum: string;
+  class: string;
+  order: string;
+  family: string;
+  genus: string;
+  /** GBIF's vernacular name, Chinese preferred; '' when it has none. */
+  vernacularName: string;
+};
+
+function pickVernacular(json: Record<string, unknown>): string {
+  const list = Array.isArray(json.vernacularNames) ? json.vernacularNames : [];
+  const rows = list as Array<{ vernacularName?: string; language?: string }>;
+  const named = rows.filter((v) => (v?.vernacularName ?? '').trim());
+  for (const lang of VERNACULAR_LANGS) {
+    const hit = named.find((v) => (v.language ?? '').toLowerCase() === lang);
+    if (hit) return String(hit.vernacularName).trim();
+  }
+  const en = named.find((v) => (v.language ?? '').toLowerCase().startsWith('en'));
+  if (en) return String(en.vernacularName).trim();
+  return named[0]?.vernacularName?.trim() ?? '';
+}
+
+/**
+ * Search the GBIF backbone by name, for the "not in the local checklist"
+ * fallback in the search box.
+ *
+ * Separate from `matchName`, which resolves ONE name to its single best match
+ * — right for batch correction, wrong for a person who needs to see what the
+ * options are and pick.
+ *
+ * Timeout is deliberately far below the 20 s default: this runs while someone
+ * is standing in a forest waiting on the screen, and `classifyFailure` adds a
+ * further probe on top before it can even say "you're offline".
+ */
+export function nameSearchUrl(q: string): string {
+  return `${API}/species/search?${qs({
+    q: q.trim(),
+    datasetKey: BACKBONE_DATASET_KEY,
+    limit: '30',
+  })}`;
+}
+
+/**
+ * The response → candidates half, kept separate from the request so it can be
+ * checked against fixtures without a network (scripts/check-gbif-parse.mjs).
+ */
+export function parseNameSearch(json: Record<string, unknown>): GbifNameCandidate[] {
+  const results = Array.isArray(json.results) ? (json.results as Record<string, unknown>[]) : [];
+  const out: GbifNameCandidate[] = [];
+  const seen = new Set<number>();
+  for (const r of results) {
+    const rank = String(r.rank ?? '').toUpperCase();
+    if (!ADDABLE_RANKS.has(rank)) continue;
+    const key = Number(r.key ?? r.nubKey ?? 0);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const str = (k: string) => String(r[k] ?? '');
+    // `canonicalName` is absent on some rows; scientificName carries the
+    // author, so fall back through the same splitter the area path uses.
+    const split = splitScientificName(str('scientificName'));
+    out.push({
+      usageKey: key,
+      canonicalName: str('canonicalName') || split.name,
+      author: str('authorship').trim() || split.author,
+      rank,
+      status: str('taxonomicStatus') || str('status'),
+      acceptedName: str('accepted'),
+      kingdom: str('kingdom'),
+      phylum: str('phylum'),
+      class: str('class'),
+      order: str('order'),
+      family: str('family'),
+      genus: str('genus'),
+      vernacularName: pickVernacular(r),
+    });
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
+export async function searchNames(q: string, signal?: AbortSignal): Promise<GbifNameCandidate[]> {
+  const trimmed = (q ?? '').trim();
+  if (!trimmed) return [];
+  const json = await getJson('gbif', nameSearchUrl(trimmed), signal, NAME_SEARCH_TIMEOUT_MS);
+  return parseNameSearch(json);
 }

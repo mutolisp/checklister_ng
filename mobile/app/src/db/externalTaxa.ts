@@ -11,6 +11,14 @@
  * the next app update.
  */
 import { getUserDb } from './init';
+import type { SearchResult } from './types';
+
+/** LIKE wildcards in user input must not act as wildcards. Local copy of
+ *  search.ts's helper on purpose: search.ts imports THIS module (for the
+ *  external branch of `searchByTaxonId`), so importing back would cycle. */
+function escapeLike(s: string): string {
+  return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
 
 export type ExternalTaxonSource = 'gbif' | 'inat';
 
@@ -61,7 +69,7 @@ export function externalTaxonId(source: ExternalTaxonSource, sourceKey: string):
  */
 export function upsertExternalTaxon(input: ExternalTaxonInput): string {
   const taxonId =
-    findExternalTaxonIdByName(input.simple_name) ??
+    findExternalTaxonIdByName(input.simple_name, input.kingdom) ??
     externalTaxonId(input.source, input.source_key);
   getUserDb().executeSync(
     `INSERT INTO external_taxa
@@ -70,6 +78,10 @@ export function upsertExternalTaxon(input: ExternalTaxonInput): string {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(taxon_id) DO UPDATE SET
        source = excluded.source,
+       -- Must move WITH source: updating one without the other leaves the row
+       -- claiming e.g. source='gbif' with an iNaturalist key, which
+       -- idx_external_source then indexes as if it were true.
+       source_key = excluded.source_key,
        simple_name = excluded.simple_name,
        name_author = excluded.name_author,
        rank = excluded.rank,
@@ -136,13 +148,29 @@ export function getExternalTaxon(taxonId: string): ExternalTaxon | null {
  * minting a second one. Comparison is on the lowercased name because both
  * sources supply canonical names, already free of authors.
  */
-export function findExternalTaxonIdByName(simpleName: string): string | null {
+export function findExternalTaxonIdByName(
+  simpleName: string,
+  kingdom?: string | null,
+): string | null {
   const n = (simpleName ?? '').trim().toLowerCase();
   if (!n) return null;
-  const res = getUserDb().executeSync(
-    `SELECT taxon_id FROM external_taxa WHERE LOWER(simple_name) = ? LIMIT 1;`,
-    [n],
-  );
+  // Kingdom narrows the match when the caller knows it. A scientific name is
+  // NOT an identity on its own: the bundled checklist alone holds 72 genus
+  // names and 2 species names that are cross-kingdom homonyms (see
+  // src/lib/sciMatch.ts), and collapsing two organisms onto one taxon_id
+  // silently merges every record that points at either.
+  const k = (kingdom ?? '').trim();
+  const res = k
+    ? getUserDb().executeSync(
+        `SELECT taxon_id FROM external_taxa
+          WHERE LOWER(simple_name) = ? AND (kingdom IS NULL OR kingdom = '' OR kingdom = ?)
+          LIMIT 1;`,
+        [n, k],
+      )
+    : getUserDb().executeSync(
+        `SELECT taxon_id FROM external_taxa WHERE LOWER(simple_name) = ? LIMIT 1;`,
+        [n],
+      );
   const row = (res.rows ?? [])[0] as { taxon_id?: string } | undefined;
   return row?.taxon_id ?? null;
 }
@@ -158,4 +186,82 @@ export function countOrphanExternalTaxa(): number {
         AND NOT EXISTS (SELECT 1 FROM collection_specimens s WHERE s.taxon_id = e.taxon_id);`,
   );
   return Number(((res.rows ?? [])[0] as { n?: number })?.n ?? 0);
+}
+
+/**
+ * An external taxon as a `SearchResult`, so it slots into the search box, the
+ * detail sheet and every other place a local taxon goes.
+ *
+ * Modelled on `taxonSpeciesToSearchResult` (src/lib/taxonSpecies.ts): the
+ * fields GBIF/iNat cannot supply are '' and the detail UI hides empty rows.
+ * `id` is 0 — that field is TaiCOL's `name_id`, and an external taxon has
+ * none; callers key lists by `taxon_id`, which is unique across all three
+ * namespaces.
+ */
+export function externalToSearchResult(t: ExternalTaxon): SearchResult {
+  const fullname = t.name_author ? `${t.simple_name} ${t.name_author}` : t.simple_name;
+  return {
+    id: 0,
+    name: t.simple_name,
+    fullname,
+    cname: t.common_name_c ?? '',
+    _raw_cname: t.common_name_c ?? '',
+    family: t.family ?? '',
+    family_cname: '',
+    iucn_category: '',
+    redlist: '',
+    endemic: 0,
+    source: '',
+    alien_type: '',
+    pt_name: '',
+    taxon_id: t.taxon_id,
+    usage_status: 'accepted',
+    alternative_name_c: '',
+    kingdom: t.kingdom ?? '',
+    kingdom_c: '',
+    phylum: t.phylum ?? '',
+    phylum_c: '',
+    class_name: t.class ?? '',
+    class_c: '',
+    order: t.order ?? '',
+    order_c: '',
+    genus: t.genus ?? '',
+    genus_c: '',
+    nomenclature_name: '',
+    cites: '',
+    protected: '',
+    is_hybrid: '',
+    is_terrestrial: '',
+    is_freshwater: '',
+    is_brackish: '',
+    is_marine: '',
+    is_fossil: '',
+    alien_status_note: '',
+    rank: t.rank ?? '',
+    is_autonym: false,
+    is_sensu_lato: false,
+    region: 'TW',
+  };
+}
+
+/**
+ * Name search over the user's own external taxa.
+ *
+ * They live in user.db while the two bundled checklists live in
+ * twnamelist.db, and this app never ATTACHes, so they cannot be part of the
+ * main query — `searchWithFuzzyFallback` merges this in afterwards. The table
+ * is user-accumulated (tens of rows, not 300k) and `idx_external_name` covers
+ * the scientific name, so a LIKE sweep is cheap.
+ */
+export function searchExternalTaxa(q: string, limit = 10): SearchResult[] {
+  const trimmed = q.trim();
+  if (!trimmed) return [];
+  const like = `%${escapeLike(trimmed)}%`;
+  const res = getUserDb().executeSync(
+    `SELECT * FROM external_taxa
+      WHERE simple_name LIKE ? ESCAPE "\\" OR common_name_c LIKE ? ESCAPE "\\"
+      ORDER BY simple_name LIMIT ?;`,
+    [like, like, limit],
+  );
+  return ((res.rows ?? []) as unknown as ExternalTaxon[]).map(externalToSearchResult);
 }

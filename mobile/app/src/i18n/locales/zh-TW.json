@@ -254,7 +254,9 @@
     "placeholder": "輸入物種/分類群關鍵字...",
     "taxonomyPlaceholder": "搜尋分類群（俗名 / 學名 / 科名 ...）",
     "youEntered": "↳ 你輸入：",
-    "synonymStatus": "（{{status}}）"
+    "synonymStatus": "（{{status}}）",
+    "noLocalMatch": "本地名錄查無「{{q}}」",
+    "lookupGbif": "到 GBIF 查詢"
   },
   "taxonGroup": {
     "all": "全部類群",
@@ -1189,5 +1191,20 @@
     "doneUnresolved": "{{count}} 筆在本機名錄查無 taxon_id，仍已匯入",
     "donePhotosSkipped": "{{count}} 張照片未匯入（權限或檔案無法讀取）",
     "photoProgress": "正在匯入照片 {{done}}/{{total}}…"
+  },
+  "gbifLookup": {
+    "title": "GBIF 查名",
+    "searching": "正在 GBIF 查詢「{{q}}」⋯",
+    "noResults": "GBIF 也查不到「{{q}}」。請確認拼寫，或改用更完整的學名。",
+    "synonymOf": "異名，接受名：{{name}}",
+    "add": "加入",
+    "willAdd": "將加入這個物種",
+    "cname": "中文俗名",
+    "cnamePlaceholder": "可留空",
+    "cnameFromGbif": "取自 GBIF 的俗名，可自行修改。",
+    "cnameMissing": "GBIF 沒有提供俗名，可自行輸入或留空。",
+    "externalNote": "此物種不在臺灣或日本名錄中，會以 GBIF 的分類資料存進本機名錄，可離線使用。保育狀態（紅皮書／IUCN／CITES／保育類）等欄位 GBIF 沒有提供，會是空白。",
+    "added": "已加入本機名錄：{{name}}",
+    "resolvedLocal": "本地名錄已收錄（以 GBIF 的接受名對應）：{{name}}"
   }
 }

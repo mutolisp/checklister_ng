@@ -9,7 +9,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import type { DuplicateRecordOptions } from '~/db';
@@ -58,46 +58,47 @@ export function DuplicateRecordModal({ request, onCancel, onConfirm }: Props) {
   const canConfirm = trimmed.length > 0;
 
   return (
-    <Modal visible={request !== null} transparent animationType="slide" onRequestClose={onCancel}>
-      <View className="flex-1">
-        <Pressable
-          onPress={onCancel}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}
-        />
-        <KeyboardAvoidingView behavior="padding" className="flex-1 justify-end">
-          <View
-            className="rounded-t-2xl bg-white dark:bg-gray-900"
-            style={{ paddingBottom: insets.bottom + 8 }}
+    <Modal visible={request !== null} animationType="slide" onRequestClose={onCancel}>
+      {/* Full-screen with a manual top inset — NOT a floating bottom sheet.
+          A sheet anchored to the bottom gets pushed up by the keyboard, and on
+          a short screen its top runs off the display (the header ends up under
+          the status bar / notch). Same shape as SaveSiteModal / BatchImportModal:
+          insets padding on the root, KAV + ScrollView for the body. */}
+      <View
+        className="flex-1 bg-white dark:bg-gray-900"
+        style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      >
+        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+          <Pressable onPress={onCancel} hitSlop={8}>
+            <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
+          </Pressable>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            {t('records.duplicateTitle', { noun: request?.noun ?? '' })}
+          </Text>
+          <Pressable
+            onPress={() =>
+              onConfirm({
+                name: trimmed,
+                includeEnv,
+                includeSpecies: request?.speciesDisabled ? false : includeSpecies,
+                activate,
+              })
+            }
+            disabled={!canConfirm}
+            hitSlop={8}
           >
-            <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-              <Pressable onPress={onCancel} hitSlop={8}>
-                <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
-              </Pressable>
-              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                {t('records.duplicateTitle', { noun: request?.noun ?? '' })}
-              </Text>
-              <Pressable
-                onPress={() =>
-                  onConfirm({
-                    name: trimmed,
-                    includeEnv,
-                    includeSpecies: request?.speciesDisabled ? false : includeSpecies,
-                    activate,
-                  })
-                }
-                disabled={!canConfirm}
-                hitSlop={8}
-              >
-                <Text
-                  className={`text-base font-semibold ${
-                    canConfirm ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300 dark:text-gray-600'
-                  }`}
-                >
-                  {t('records.duplicate')}
-                </Text>
-              </Pressable>
-            </View>
+            <Text
+              className={`text-base font-semibold ${
+                canConfirm ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300 dark:text-gray-600'
+              }`}
+            >
+              {t('records.duplicate')}
+            </Text>
+          </Pressable>
+        </View>
 
+        <KeyboardAvoidingView className="flex-1" behavior="padding">
+          <ScrollView className="flex-1" keyboardShouldPersistTaps="handled">
             <View className="px-4 pt-4">
               <Text className="text-xs text-gray-500 dark:text-gray-400">{t('records.newName')}</Text>
               <TextInput
@@ -120,7 +121,7 @@ export function DuplicateRecordModal({ request, onCancel, onConfirm }: Props) {
               ) : null}
             </View>
 
-            <View className="mt-2 px-4">
+            <View className="mt-2 px-4 pb-6">
               <Row
                 label={t('records.includeEnv')}
                 hint={t('records.includeEnvHint')}
@@ -151,7 +152,7 @@ export function DuplicateRecordModal({ request, onCancel, onConfirm }: Props) {
                 onChange={setActivate}
               />
             </View>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </View>
     </Modal>

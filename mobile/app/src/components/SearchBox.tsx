@@ -5,9 +5,11 @@ import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-nati
 import { prewarmFuzzyIndex, searchWithFuzzyFallback, type SearchResult } from '~/db';
 import type { TaxonGroup } from '~/db/types';
 import { alienBadge } from '~/lib/conservationColors';
+import { lookupGbifName } from './GbifLookupHost';
 import { TaxonGroupPicker } from './TaxonGroupPicker';
 import { ScientificName } from './ScientificName';
 import { useSettings } from '~/stores/settings';
+import { useToast } from '~/stores/toast';
 
 /**
  * Debounce window between the last keystroke and the actual search firing.
@@ -38,6 +40,9 @@ type Props = {
    *     just opened.
    */
   afterSelect?: 'refocus' | 'dismiss';
+  /** Offer the GBIF lookup when the local checklists have nothing. Default on;
+   *  turn it off where adding a brand-new taxon makes no sense. */
+  gbifFallback?: boolean;
 };
 
 /**
@@ -50,6 +55,16 @@ const resultCache = new Map<string, SearchResult[]>();
 function cacheGet(key: string): SearchResult[] | undefined {
   return resultCache.get(key);
 }
+/** Drop every cached result.
+ *
+ *  The cache has no other invalidation, so after the user mints an external
+ *  taxon the empty result for the very query that offered it would otherwise
+ *  survive until 20 other queries evict it — and the search box would keep
+ *  insisting the species does not exist. */
+export function clearSearchResultCache(): void {
+  resultCache.clear();
+}
+
 function cacheSet(key: string, value: SearchResult[]): void {
   if (resultCache.has(key)) resultCache.delete(key);
   resultCache.set(key, value);
@@ -59,7 +74,13 @@ function cacheSet(key: string, value: SearchResult[]): void {
   }
 }
 
-export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afterSelect = 'refocus' }: Props) {
+export function SearchBox({
+  onSelect,
+  onLongPressResult,
+  autoFocus = false,
+  afterSelect = 'refocus',
+  gbifFallback = true,
+}: Props) {
   const { t } = useTranslation();
   const lastGroups = useSettings((s) => s.last_search_groups);
   const setSetting = useSettings((s) => s.set);
@@ -69,6 +90,10 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
   const [results, setResults] = useState<SearchResult[]>([]);
   const inputRef = useRef<TextInput>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trimmedQuery = query.trim();
+  // Only offer the network once the local search has actually run and come
+  // back empty — not while the debounce is still pending.
+  const noLocalHit = gbifFallback && trimmedQuery.length > 0 && results.length === 0;
 
   useEffect(() => {
     setGroupsLocal(lastGroups);
@@ -163,6 +188,41 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
             )}
           />
         </View>
+      ) : noLocalHit ? (
+        <View className="items-center border-b border-gray-100 dark:border-gray-800 px-4 py-4">
+          <Text className="text-center text-xs text-gray-500 dark:text-gray-400">
+            {t('search.noLocalMatch', { q: trimmedQuery })}
+          </Text>
+          <Pressable
+            onPress={async () => {
+              Keyboard.dismiss();
+              const picked = await lookupGbifName(trimmedQuery);
+              if (!picked) return;
+              // A freshly minted taxon must not stay invisible behind the
+              // cached "nothing found" for this very query.
+              clearSearchResultCache();
+              setResults([]);
+              handleSelect(picked.result);
+              useToast
+                .getState()
+                .show(
+                  picked.viaLocal
+                    ? t('gbifLookup.resolvedLocal', {
+                        name: picked.result.cname || picked.result.name,
+                      })
+                    : t('gbifLookup.added', {
+                        name: picked.result.cname || picked.result.name,
+                      }),
+                );
+            }}
+            className="mt-2 flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
+          >
+            <Ionicons name="earth-outline" size={14} color="#2563eb" />
+            <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+              {t('search.lookupGbif')}
+            </Text>
+          </Pressable>
+        </View>
       ) : null}
       <View className="flex-row items-center justify-start gap-2 border-b border-gray-100 dark:border-gray-800 px-3 py-2">
         <TaxonGroupPicker value={groups} onChange={handleGroupChange} />
@@ -193,7 +253,10 @@ export function SearchBox({ onSelect, onLongPressResult, autoFocus = false, afte
 }
 
 function getResultKey(r: SearchResult): string {
-  return `${r.id}`;
+  // taxon_id is unique across all three namespaces ('t…' / 'y…' / 'g…');
+  // `id` is TaiCOL's name_id and is 0 for external taxa, so keying on it
+  // would collide the moment two of them show up together.
+  return r.taxon_id || `${r.id}`;
 }
 
 const AutocompleteRow = memo(function AutocompleteRow({

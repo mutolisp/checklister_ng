@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -552,10 +552,15 @@ export default function MapScreen() {
       setFavoriteFolderArea(fid, JSON.stringify(polygon), '');
       useFavorites.getState().refresh();
       cancelDraw();
-      // No "go to" action on this one: router.back() lands the user on the
-      // favourites screen already, and the action would push a duplicate.
       toast(simplified ? t('areaSpecies.areaSavedBox') : t('areaSpecies.areaSaved'));
-      router.back();
+      // Return to the list the area belongs to, explicitly — same shape as the
+      // session handoff below. `router.back()` does NOT work here: getting to
+      // the map means navigating into the (tabs) group, which sits BELOW
+      // /favorites in the root stack, so the favourites route is no longer the
+      // thing behind us and back lands on whatever screen is.
+      // `navigate` reuses the existing favourites route when it survived, and
+      // the `folder` param reopens the folder either way.
+      router.navigate(`/favorites?folder=${fid}` as Href);
       return;
     }
     if (drawPurpose === 'species') {

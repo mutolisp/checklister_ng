@@ -254,7 +254,9 @@
     "placeholder": "Search species / taxon keywords...",
     "taxonomyPlaceholder": "Search taxa (common / scientific / family name ...)",
     "youEntered": "↳ You entered: ",
-    "synonymStatus": "({{status}})"
+    "synonymStatus": "({{status}})",
+    "noLocalMatch": "\"{{q}}\" isn't in the local checklists",
+    "lookupGbif": "Look up on GBIF"
   },
   "taxonGroup": {
     "all": "All groups",
@@ -1189,5 +1191,20 @@
     "doneUnresolved": "{{count}} taxonIDs unknown to this device's checklist (imported anyway)",
     "donePhotosSkipped": "{{count}} photo(s) not imported (permission or unreadable)",
     "photoProgress": "Importing photos {{done}}/{{total}}…"
+  },
+  "gbifLookup": {
+    "title": "GBIF name lookup",
+    "searching": "Searching GBIF for \"{{q}}\"…",
+    "noResults": "GBIF has no match for \"{{q}}\" either. Check the spelling, or try the full scientific name.",
+    "synonymOf": "Synonym; accepted name: {{name}}",
+    "add": "Add",
+    "willAdd": "This species will be added",
+    "cname": "Chinese common name",
+    "cnamePlaceholder": "Optional",
+    "cnameFromGbif": "Taken from GBIF; edit it if you like.",
+    "cnameMissing": "GBIF has no vernacular name for this taxon — type one or leave it blank.",
+    "externalNote": "This species is in neither the Taiwan nor the Japan checklist. It will be stored locally from GBIF's taxonomy and works offline. Conservation status (national red list / IUCN / CITES / protected) is blank — GBIF does not supply it.",
+    "added": "Added to your local name list: {{name}}",
+    "resolvedLocal": "Already in the local checklist (matched via GBIF's accepted name): {{name}}"
   }
 }

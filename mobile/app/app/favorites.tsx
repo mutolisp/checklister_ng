@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { strToU8 } from 'fflate';
 import { DOCX_MIME } from '~/lib/docx';
 import { buildFavoritesCsv, buildFavoritesDocx } from '~/lib/favoritesExport';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Alert,
@@ -87,6 +87,18 @@ export default function FavoritesScreen() {
    *  selects species inside one folder — the two views never coexist. */
   const [folderSelectMode, setFolderSelectMode] = useState(false);
   const [pickedFolders, setPickedFolders] = useState<Set<number>>(new Set());
+
+  // Reopen a folder on request — the map hands the user back here after
+  // drawing a list's area, and landing on the folder LIST instead of the
+  // folder they were editing loses their place. Param is cleared once
+  // consumed so a later back/refocus doesn't re-enter the folder.
+  const params = useLocalSearchParams<{ folder?: string }>();
+  useEffect(() => {
+    const id = Number(params.folder);
+    if (!params.folder || !Number.isFinite(id)) return;
+    setFolderId(id);
+    router.setParams({ folder: undefined });
+  }, [params.folder]);
 
   const current = folders.find((f) => f.id === folderId) ?? null;
 

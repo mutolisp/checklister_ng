@@ -27,6 +27,8 @@ import {
   type CategorizedImport,
   type ParsedEntry,
 } from '~/lib/batchImport';
+import { lookupGbifName } from './GbifLookupHost';
+import { clearSearchResultCache } from './SearchBox';
 import { importErrorMessage } from '~/lib/recordCreate';
 import { readRecordYamlText } from '~/lib/recordImport';
 import { splitVoiceInput } from '~/lib/voiceSplit';
@@ -142,6 +144,23 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
     for (let i = 0; i < r.ambiguous.length; i++) picks.set(i, r.ambiguous[i].matches[0] ?? null);
     setAmbiguousPicks(picks);
     setStep('preview');
+  };
+
+  /** 找不到 row → GBIF. On success the name moves into 精確匹配, so the user
+   *  sees it join the import rather than having to start over. */
+  const handleLookupGbif = async (raw: string) => {
+    const picked = await lookupGbifName(raw);
+    if (!picked) return;
+    clearSearchResultCache();
+    setResolved((prev) =>
+      prev
+        ? {
+            ...prev,
+            exact: [...prev.exact, { raw, matches: [picked.result] }],
+            unmatched: prev.unmatched.filter((u) => u.raw !== raw),
+          }
+        : prev,
+    );
   };
 
   const handleCommit = () => {
@@ -403,9 +422,14 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
                 color="red"
               >
                 {resolved.unmatched.map((e, idx) => (
-                  <View key={idx} className="border-b border-gray-100 dark:border-gray-800 px-4 py-2">
-                    <Text className="text-sm text-gray-700 dark:text-gray-300">{e.raw}</Text>
-                  </View>
+                  <Pressable
+                    key={idx}
+                    onPress={() => handleLookupGbif(e.raw)}
+                    className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-2 active:bg-gray-50 dark:active:bg-gray-800"
+                  >
+                    <Text className="flex-1 text-sm text-gray-700 dark:text-gray-300">{e.raw}</Text>
+                    <Ionicons name="earth-outline" size={16} color="#2563eb" />
+                  </Pressable>
                 ))}
               </Section>
             ) : null}

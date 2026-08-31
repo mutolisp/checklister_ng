@@ -1,6 +1,7 @@
 import { getTaicolDb } from './init';
 import i18n from '~/i18n';
-import { isJpTaxonId } from './regions';
+import { isJpTaxonId, sourceOfTaxonId } from './regions';
+import { externalToSearchResult, getExternalTaxon } from './externalTaxa';
 import type { TaicolRow, SearchResult, AdvancedFilters, TaxonGroup } from './types';
 
 export const TAXON_GROUP_FILTERS: Record<TaxonGroup, Partial<Record<'kingdom' | 'phylum' | 'class', string>>> = {
@@ -177,6 +178,14 @@ export type SearchOptions = {
  *  shape so the result fits into existing UI like LookupResultSheet. */
 export function searchByTaxonId(taxonId: string): SearchResult | null {
   if (!taxonId) return null;
+  // Three namespaces, three homes. External ('g…') taxa live in user.db and
+  // have no row in twnamelist.db at all — sending one to taicol_names is
+  // exactly the silent-null that regions.ts warns about, and it is what made
+  // an externally-added species un-openable and un-addable from 常用名錄.
+  if (sourceOfTaxonId(taxonId) === 'external') {
+    const ext = getExternalTaxon(taxonId);
+    return ext ? externalToSearchResult(ext) : null;
+  }
   const db = getTaicolDb();
   // Query the dataset's real table directly by 't…'/'y…' prefix (no UNION
   // view). Prefer the accepted row; fall back to any row so synonyms still

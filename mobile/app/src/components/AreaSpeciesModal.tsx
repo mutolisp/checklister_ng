@@ -30,7 +30,7 @@ import { showActionSheet } from './ActionSheet';
 import { ScientificName } from './ScientificName';
 import { useThemeColors } from '~/hooks/useThemeColors';
 import { ApiError } from '~/lib/apiFetch';
-import { classifyFailure } from '~/lib/connectivity';
+import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import {
   fetchSpeciesInBBox,
   ICONIC_TAXA,
@@ -167,25 +167,8 @@ export function AreaSpeciesModal({
     });
   };
 
-  const messageFor = async (e: unknown): Promise<string> => {
-    if (!(e instanceof ApiError)) return String((e as Error)?.message ?? e);
-    if (e.kind === 'aborted') return t('areaSpecies.errAborted');
-    if (e.kind === 'rate_limit') return t('areaSpecies.errRateLimit');
-    if (e.kind === 'http') {
-      // GBIF's 400s name the actual problem; passing that through beats a bare
-      // status the user can do nothing with.
-      return e.detail
-        ? t('areaSpecies.errServerDetail', { status: e.status ?? '?', detail: e.detail })
-        : t('areaSpecies.errServer', { status: e.status ?? '?' });
-    }
-    // One probe of the OTHER service turns "request failed" into something the
-    // user can act on: go find signal, or come back later.
-    const cause = await classifyFailure(e);
-    if (cause === 'offline') return t('areaSpecies.errOffline');
-    if (cause === 'timeout') return t('areaSpecies.errTimeout');
-    if (cause === 'service') return t('areaSpecies.errService');
-    return t('areaSpecies.errParse');
-  };
+  // Shared with the search box's GBIF fallback — see src/lib/apiErrorMessage.ts.
+  const messageFor = apiErrorMessage;
 
   const runQuery = async () => {
     const ctrl = new AbortController();
