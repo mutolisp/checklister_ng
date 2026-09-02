@@ -5,6 +5,7 @@ import { parsePhotoPaths, type RecordWithTaxon } from '~/db';
 import { alienBadge } from '~/lib/conservationColors';
 import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
+import { SynonymStatusBadge } from './CollapsibleSection';
 
 type Props = {
   record: RecordWithTaxon;
@@ -47,13 +48,21 @@ export function SpeciesCard({ record, onPress, onLongPress }: Props) {
         <Text className="font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
           {record.common_name_c || t('species.noChineseName')}
         </Text>
-        <ScientificName
-          name={record.simple_name}
-          author={record.name_author}
-          kingdom={record.kingdom}
-          className="mt-0.5 text-sm text-gray-700 dark:text-gray-300"
-          numberOfLines={1}
-        />
+        <View className="mt-0.5 flex-row items-center">
+          <ScientificName
+            name={record.simple_name}
+            author={record.name_author}
+            kingdom={record.kingdom}
+            className="flex-shrink text-sm text-gray-700 dark:text-gray-300"
+            numberOfLines={1}
+          />
+          {/* This record was filed under a name the checklist does not treat as
+              accepted — without the badge the name looks like a data error
+              rather than the recorder's decision. */}
+          {record.used_status && record.used_status !== 'accepted' ? (
+            <SynonymStatusBadge status={record.used_status} />
+          ) : null}
+        </View>
         <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
           {record.family_c} {record.family}
         </Text>

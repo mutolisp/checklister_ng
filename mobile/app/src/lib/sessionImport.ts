@@ -64,6 +64,10 @@ export function sessionFromDoc(doc: Record<string, unknown> | null): ImportedSes
       reproductive_condition: pipeToJson(r.reproductiveCondition),
       leaf_phenology: pipeToJson(r.leafPhenology),
       photo_files: pipeToList(r.associatedMedia),
+      // Name usage: `scientificName` already holds the adopted name, so the id
+      // is a hint and the string is the durable half.
+      used_name_id: num(r.scientificNameID),
+      used_scientific_name: r.taxonomicStatus ? str(r.scientificName) : null,
     }))
     .filter((r) => r.taxon_id);
 

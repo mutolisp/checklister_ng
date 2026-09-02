@@ -540,7 +540,8 @@
     "integrityFk": "外鍵違規 {{n}} 筆",
     "integrityFailed": "資料檢查失敗：{{error}}",
     "defaultDeterminer": "預設鑑定者",
-    "defaultDeterminerPlaceholder": "例:林政道(Cheng-Tao Lin)"
+    "defaultDeterminerPlaceholder": "例:林政道(Cheng-Tao Lin)",
+    "integrityAdopted": "{{table}}：{{n}} 筆採用名與現行名錄對不上（名錄改版後該名字被更名、移到別的分類群或已移除）。記錄仍顯示你當初選的名字，要不要跟著改由你決定。"
   },
   "taxonomy": {
     "loadingTree": "載入分類樹...",
@@ -1205,6 +1206,23 @@
     "cnameMissing": "GBIF 沒有提供俗名，可自行輸入或留空。",
     "externalNote": "此物種不在臺灣或日本名錄中，會以 GBIF 的分類資料存進本機名錄，可離線使用。保育狀態（紅皮書／IUCN／CITES／保育類）等欄位 GBIF 沒有提供，會是空白。",
     "added": "已加入本機名錄：{{name}}",
-    "resolvedLocal": "本地名錄已收錄（以 GBIF 的接受名對應）：{{name}}"
+    "resolvedLocal": "本地名錄已收錄（以 GBIF 的接受名對應）：{{name}}",
+    "localHitTitle": "本地名錄已經有這個名字對應的分類群。",
+    "youPicked": "你選的",
+    "localHas": "本地名錄",
+    "useLocal": "用本地名錄的",
+    "useMineAnyway": "仍用我選的名字",
+    "useMineAnywayHint": "會以 GBIF 的分類資料建立一個獨立分類群，與本地那筆在統計上分開計算。"
+  },
+  "adoptName": {
+    "title": "要用哪個名字記錄？",
+    "message": "你輸入的「{{typed}}」在本地名錄是同物異名，接受名為「{{accepted}}」。同一種植物的不同叫法，分類見解不同時可以自己決定。",
+    "useAccepted": "用接受名「{{name}}」",
+    "useMineSameTaxon": "用「{{name}}」記錄，仍歸到同一分類群",
+    "useMineOwnTaxon": "用「{{name}}」作為獨立分類群（查 GBIF 取階層）",
+    "useOtherConcept": "改歸到本地的另一個分類群",
+    "adopted": "已用「{{name}}」記錄",
+    "messageMisapplied": "本地名錄把「{{typed}}」記為誤用名——意思是臺灣的文獻曾用這個名字指「{{accepted}}」。但這個名字本身通常是另一個合法物種；若你採到的就是真正的「{{typed}}」，請選獨立分類群。",
+    "useMineSameTaxonMisapplied": "用「{{name}}」，並認定它就是「{{accepted}}」"
   }
 }

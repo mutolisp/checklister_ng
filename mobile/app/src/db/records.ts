@@ -1,4 +1,10 @@
-import { EMPTY_TAXON_FIELDS, resolveTaxa } from './taxonLookup';
+import type { AdoptionInput, AdoptionStatus } from './taxonLookup';
+import {
+  EMPTY_TAXON_FIELDS,
+  applyAdoptedName,
+  resolveAdoptedNames,
+  resolveTaxa,
+} from './taxonLookup';
 import { getUserDb } from './init';
 import { generateUuid } from './plots';
 
@@ -24,9 +30,13 @@ export type ChecklistRecord = {
   // DwC abundance generalization (v9).
   organism_quantity: string | null;
   organism_quantity_type: string | null;
+  /** The name this record was deliberately filed under, when it is not the
+   *  taxon's accepted name. Both NULL = the accepted name (the default). */
+  used_name_id: number | null;
+  used_scientific_name: string | null;
 };
 
-export type RecordWithTaxon = ChecklistRecord & {
+export type RecordWithTaxon = ChecklistRecord & AdoptionStatus & {
   simple_name: string;
   name_author: string;
   common_name_c: string;
@@ -66,6 +76,9 @@ export type CreateRecordInput = {
   lng?: number | null;
   organism_quantity?: string | null;
   organism_quantity_type?: string | null;
+  /** Set only when the user deliberately chose a name the checklist does not
+   *  treat as accepted. Omitted = the accepted name, as before. */
+  adopted?: AdoptionInput | null;
 };
 
 export function addRecord(input: CreateRecordInput): number {
@@ -73,8 +86,8 @@ export function addRecord(input: CreateRecordInput): number {
   const res = db.executeSync(
     `INSERT INTO checklist_records
        (session_id, taxon_id, occurrence_id, observed_at, notes, lat, lng,
-        organism_quantity, organism_quantity_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        organism_quantity, organism_quantity_type, used_name_id, used_scientific_name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.session_id,
       input.taxon_id,
@@ -85,6 +98,8 @@ export function addRecord(input: CreateRecordInput): number {
       input.lng ?? null,
       input.organism_quantity ?? null,
       input.organism_quantity_type ?? null,
+      input.adopted?.name_id ?? null,
+      input.adopted?.scientific_name ?? null,
     ],
   );
   return res.insertId ?? 0;
@@ -171,7 +186,8 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   const recordsRes = userDb.executeSync(
     `SELECT id, session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths, lat, lng, accuracy,
             sex, life_stage, reproductive_condition, leaf_phenology,
-            organism_quantity, organism_quantity_type
+            organism_quantity, organism_quantity_type,
+            used_name_id, used_scientific_name
      FROM checklist_records WHERE session_id = ? ORDER BY observed_at ASC`,
     [sessionId],
   );
@@ -179,7 +195,11 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   if (records.length === 0) return [];
 
   const taxa = resolveTaxa(records.map((r) => r.taxon_id));
-  return records.map((r) => ({ ...r, ...(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS) }));
+  const adopted = resolveAdoptedNames(records);
+  return records.map((r) => ({
+    ...r,
+    ...applyAdoptedName(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS, r, adopted),
+  }));
 }
 
 /** Most recent `observed_at` (Date.now() millis) of any record in the

@@ -29,6 +29,7 @@ import {
 } from '~/lib/batchImport';
 import { lookupGbifName } from './GbifLookupHost';
 import { clearSearchResultCache } from './SearchBox';
+import type { AdoptionInput } from '~/db';
 import { importErrorMessage } from '~/lib/recordCreate';
 import { readRecordYamlText } from '~/lib/recordImport';
 import { splitVoiceInput } from '~/lib/voiceSplit';
@@ -55,8 +56,15 @@ function targetHas(target: BatchImportTarget, taxonId: string): boolean {
     : isTaxonInFolder(target.folderId, taxonId);
 }
 
-function targetAdd(target: BatchImportTarget, m: SearchResult): void {
-  if (target.kind === 'session') addRecord({ session_id: target.sessionId, taxon_id: m.taxon_id });
+function targetAdd(
+  target: BatchImportTarget,
+  m: SearchResult,
+  adopted?: AdoptionInput,
+): void {
+  // 常用名錄 keys on taxon_id alone and cannot hold two names for one taxon,
+  // so an adoption is only meaningful on the session path.
+  if (target.kind === 'session')
+    addRecord({ session_id: target.sessionId, taxon_id: m.taxon_id, adopted });
   else addFavorite(m, target.folderId);
 }
 
@@ -165,18 +173,18 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
 
   const handleCommit = () => {
     if (!resolved) return;
-    const toAdd: SearchResult[] = [];
+    const toAdd: Array<{ m: SearchResult; adopted?: AdoptionInput }> = [];
     resolved.exact.forEach((e, idx) => {
-      if (!skipExact.has(idx) && e.matches[0]) toAdd.push(e.matches[0]);
+      if (!skipExact.has(idx) && e.matches[0]) toAdd.push({ m: e.matches[0], adopted: e.adopted });
     });
     resolved.ambiguous.forEach((_, idx) => {
       const pick = ambiguousPicks.get(idx);
-      if (pick) toAdd.push(pick);
+      if (pick) toAdd.push({ m: pick });
     });
 
     let added = 0;
     let skipped = 0;
-    for (const m of toAdd) {
+    for (const { m, adopted } of toAdd) {
       if (!m.taxon_id) {
         skipped++;
         continue;
@@ -185,7 +193,7 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
         skipped++;
         continue;
       }
-      targetAdd(target, m);
+      targetAdd(target, m, adopted);
       added++;
     }
     onCommitted(added);

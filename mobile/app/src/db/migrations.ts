@@ -877,6 +877,38 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(`CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_uuid ON sessions(uuid);`);
     },
   },
+  // v28：使用者採用的名字（分類見解）。
+  //
+  // TaiCOL 的 taxon_id 是「分類概念」、name_id 是「名字」——269,824 個名字掛在
+  // 96,677 個概念上，約 27.7% 的概念有異名。以前記錄只存 taxon_id，等於一律
+  // 採用 TaiCOL 的接受名；但 synonym / misapplied 常常代表另一種分類處理，
+  // 使用者可能刻意要用那個名字記錄。
+  //
+  // 存兩欄而不是一欄：name_id 是 TaiCOL CSV 自帶的識別碼（實測 2026-02→04 兩版
+  // 之間 242,282 個共同 id 只有 13 個改了學名、3 個消失），精確；學名字串則是
+  // 自我描述的，id 查不到或對不上時還能顯示得出來，不會靜默變成別的名字。
+  //
+  // 兩欄皆 NULL＝沿用接受名，也就是既有每一列的狀態，所以不需要回填。
+  // 刻意不存 usage_status：TaiCOL 的意見會變（同兩版之間有 283 個名字換了狀態），
+  // 使用者的選擇才是要持久化的東西，狀態一律在顯示／匯出當下即時查。
+  {
+    version: 28,
+    up: (db) => {
+      for (const t of ['checklist_records', 'plot_species_records', 'collection_specimens']) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN used_name_id INTEGER;`);
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN used_scientific_name TEXT;`);
+      }
+      // external_taxa 能誠實描述自己：它可能是使用者刻意採用的非接受名，
+      // 而不是每一列都像現在這樣自稱 accepted。
+      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN taxonomic_status TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN accepted_name TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN local_taxon_id TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN local_status TEXT;`);
+      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN higher_classification TEXT;`);
+      // 1 = 使用者刻意採用（而非範圍匯入順手鑄的）。upsert 時必須保留。
+      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;`);
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

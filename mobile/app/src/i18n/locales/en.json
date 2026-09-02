@@ -540,7 +540,8 @@
     "integrityFk": "{{n}} foreign-key violation(s)",
     "integrityFailed": "Data check failed: {{error}}",
     "defaultDeterminer": "Default determiner",
-    "defaultDeterminerPlaceholder": "e.g. Cheng-Tao Lin"
+    "defaultDeterminerPlaceholder": "e.g. Cheng-Tao Lin",
+    "integrityAdopted": "{{table}}: {{n}} adopted name(s) no longer match the current checklist (renamed, moved to another taxon, or removed in a newer release). Records still show the name you chose; whether to follow is your call."
   },
   "taxonomy": {
     "loadingTree": "Loading taxonomy tree...",
@@ -1205,6 +1206,23 @@
     "cnameMissing": "GBIF has no vernacular name for this taxon — type one or leave it blank.",
     "externalNote": "This species is in neither the Taiwan nor the Japan checklist. It will be stored locally from GBIF's taxonomy and works offline. Conservation status (national red list / IUCN / CITES / protected) is blank — GBIF does not supply it.",
     "added": "Added to your local name list: {{name}}",
-    "resolvedLocal": "Already in the local checklist (matched via GBIF's accepted name): {{name}}"
+    "resolvedLocal": "Already in the local checklist (matched via GBIF's accepted name): {{name}}",
+    "localHitTitle": "The local checklist already covers this name.",
+    "youPicked": "You picked",
+    "localHas": "Local checklist",
+    "useLocal": "Use the local one",
+    "useMineAnyway": "Use my name anyway",
+    "useMineAnywayHint": "Creates a separate taxon from GBIF's data; it will not aggregate with the local one in statistics."
+  },
+  "adoptName": {
+    "title": "Which name should this record use?",
+    "message": "The local checklist treats \"{{typed}}\" as a synonym of \"{{accepted}}\" — two names for the same organism. Where taxonomic opinion differs, the choice is yours.",
+    "useAccepted": "Use the accepted name \"{{name}}\"",
+    "useMineSameTaxon": "Use \"{{name}}\", same taxon",
+    "useMineOwnTaxon": "Use \"{{name}}\" as its own taxon (fetch hierarchy from GBIF)",
+    "useOtherConcept": "File under the other local taxon",
+    "adopted": "Recorded as \"{{name}}\"",
+    "messageMisapplied": "The checklist records \"{{typed}}\" as misapplied: Taiwanese literature has used this name for \"{{accepted}}\". The name itself is usually a legitimate species of its own, so if you collected the true \"{{typed}}\", choose the independent taxon.",
+    "useMineSameTaxonMisapplied": "Use \"{{name}}\", treating it as \"{{accepted}}\""
   }
 }

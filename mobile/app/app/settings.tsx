@@ -88,6 +88,9 @@ export default function SettingsScreen() {
       for (const d of r.danglingProjectIds) {
         lines.push(t('settings.integrityProject', { table: d.table, n: d.n }));
       }
+      for (const a of r.staleAdoptedNames) {
+        lines.push(t('settings.integrityAdopted', { table: a.table, n: a.n }));
+      }
       if (r.fkViolations > 0) lines.push(t('settings.integrityFk', { n: r.fkViolations }));
       Alert.alert(
         t('settings.integrityTitle'),

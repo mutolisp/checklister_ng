@@ -140,6 +140,10 @@ function rowToResult(
       name: matchedRow.simple_name ?? '',
       fullname: matchedFullname,
       status: matchedRow.usage_status ?? '',
+      // Only TaiCOL name_ids are stable identifiers. jp_names mints its own in
+      // a private offset range that is renumbered on every wamei re-import, so
+      // those must never be persisted on a record.
+      ...(isJpTaxonId(matchedRow.taxon_id) ? {} : { name_id: matchedRow.name_id }),
     };
   }
 

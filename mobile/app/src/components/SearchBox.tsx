@@ -3,7 +3,9 @@ import { memo, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { prewarmFuzzyIndex, searchWithFuzzyFallback, type SearchResult } from '~/db';
+import type { AdoptionInput } from '~/db';
 import type { TaxonGroup } from '~/db/types';
+import { applyChoice, chooseNameUsage } from '~/lib/adoptName';
 import { alienBadge } from '~/lib/conservationColors';
 import { lookupGbifName } from './GbifLookupHost';
 import { TaxonGroupPicker } from './TaxonGroupPicker';
@@ -27,7 +29,9 @@ const DEBOUNCE_MS = 250;
 const CACHE_LIMIT = 20;
 
 type Props = {
-  onSelect: (result: SearchResult) => void;
+  /** `adopted` is set only when the user chose a name the checklist does not
+   *  treat as accepted; pass it straight through to the add path. */
+  onSelect: (result: SearchResult, adopted?: AdoptionInput | null) => void;
   onLongPressResult?: (result: SearchResult) => void;
   autoFocus?: boolean;
   /**
@@ -155,8 +159,17 @@ export function SearchBox({
     setSetting('last_search_groups', next);
   };
 
-  const handleSelect = (result: SearchResult) => {
-    onSelect(result);
+  /** The user tapped the 「你輸入：X」 line: ask which name to file under. */
+  const handleAdopt = async (result: SearchResult) => {
+    Keyboard.dismiss();
+    const choice = await chooseNameUsage(result);
+    if (!choice) return;
+    const { result: picked, adopted } = applyChoice(result, choice);
+    handleSelect(picked, adopted);
+  };
+
+  const handleSelect = (result: SearchResult, adopted: AdoptionInput | null = null) => {
+    onSelect(result, adopted);
     setQuery('');
     setResults([]);
     if (afterSelect === 'refocus') {
@@ -184,6 +197,7 @@ export function SearchBox({
                 result={item}
                 onPress={() => handleSelect(item)}
                 onLongPress={onLongPressResult ? () => onLongPressResult(item) : undefined}
+                onAdopt={() => handleAdopt(item)}
               />
             )}
           />
@@ -263,10 +277,12 @@ const AutocompleteRow = memo(function AutocompleteRow({
   result,
   onPress,
   onLongPress,
+  onAdopt,
 }: {
   result: SearchResult;
   onPress: () => void;
   onLongPress?: () => void;
+  onAdopt: () => void;
 }) {
   const { t } = useTranslation();
   const isSynonym = !!result.matched_as;
@@ -301,15 +317,26 @@ const AutocompleteRow = memo(function AutocompleteRow({
         ) : null}
       </View>
       {result.matched_as ? (
-        <Text className="mt-0.5 text-xs text-orange-700 dark:text-orange-300" numberOfLines={1}>
-          {t('search.youEntered')}
-          <ScientificName
-            name={result.matched_as.name}
-            kingdom={result.kingdom}
-            nomenclature={result.nomenclature_name}
-          />
-          （{result.matched_as.status}）
-        </Text>
+        // Tappable: the checklist calls this name not-accepted, but that is an
+        // opinion the recorder may not share. Sits inside the row's Pressable,
+        // so it needs its own generous hit area and a visible affordance —
+        // this is used one-handed in the field.
+        <Pressable
+          onPress={onAdopt}
+          hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+          className="mt-0.5 flex-row items-center"
+        >
+          <Text className="flex-1 text-xs text-orange-700 dark:text-orange-300" numberOfLines={1}>
+            {t('search.youEntered')}
+            <ScientificName
+              name={result.matched_as.name}
+              kingdom={result.kingdom}
+              nomenclature={result.nomenclature_name}
+            />
+            （{result.matched_as.status}）
+          </Text>
+          <Ionicons name="chevron-forward" size={12} color="#c2410c" />
+        </Pressable>
       ) : null}
       {result.family_cname || result.family ? (
         <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>

@@ -37,9 +37,33 @@ export type ExternalTaxon = {
   genus: string;
   common_name_c: string;
   fetched_at: number;
+  /** GBIF's own status for this name (ACCEPTED / SYNONYM / …). */
+  taxonomic_status: string | null;
+  accepted_name: string | null;
+  /** What the bundled checklist calls this name, when it knows it at all. */
+  local_taxon_id: string | null;
+  local_status: string | null;
+  /** Serialized GBIF parent chain — the ranks this app has no column for. */
+  higher_classification: string | null;
+  /** 1 = the user deliberately adopted this name over the checklist's. */
+  adopted: number;
 };
 
-export type ExternalTaxonInput = Omit<ExternalTaxon, 'taxon_id' | 'fetched_at'>;
+/** The v28 columns are optional: a routine GBIF/iNat cache fill knows none of
+ *  them, and only the deliberate-adoption path fills them in. */
+type AdoptionColumns =
+  | 'taxonomic_status'
+  | 'accepted_name'
+  | 'local_taxon_id'
+  | 'local_status'
+  | 'higher_classification'
+  | 'adopted';
+
+export type ExternalTaxonInput = Omit<
+  ExternalTaxon,
+  'taxon_id' | 'fetched_at' | AdoptionColumns
+> &
+  Partial<Pick<ExternalTaxon, AdoptionColumns>>;
 
 /**
  * Mint the local id for an external taxon.
@@ -74,8 +98,10 @@ export function upsertExternalTaxon(input: ExternalTaxonInput): string {
   getUserDb().executeSync(
     `INSERT INTO external_taxa
        (taxon_id, source, source_key, simple_name, name_author, rank,
-        kingdom, phylum, class, "order", family, genus, common_name_c, fetched_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        kingdom, phylum, class, "order", family, genus, common_name_c, fetched_at,
+        taxonomic_status, accepted_name, local_taxon_id, local_status,
+        higher_classification, adopted)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(taxon_id) DO UPDATE SET
        source = excluded.source,
        -- Must move WITH source: updating one without the other leaves the row
@@ -92,7 +118,16 @@ export function upsertExternalTaxon(input: ExternalTaxonInput): string {
        family = excluded.family,
        genus = excluded.genus,
        common_name_c = excluded.common_name_c,
-       fetched_at = excluded.fetched_at;`,
+       fetched_at = excluded.fetched_at,
+       -- A later cache refresh may update GBIF's own view of the name, but must
+       -- never erase the user's decision: COALESCE keeps whatever is already
+       -- stored when the incoming payload says nothing.
+       taxonomic_status = COALESCE(excluded.taxonomic_status, external_taxa.taxonomic_status),
+       accepted_name = COALESCE(excluded.accepted_name, external_taxa.accepted_name),
+       local_taxon_id = COALESCE(excluded.local_taxon_id, external_taxa.local_taxon_id),
+       local_status = COALESCE(excluded.local_status, external_taxa.local_status),
+       higher_classification = COALESCE(excluded.higher_classification, external_taxa.higher_classification),
+       adopted = MAX(excluded.adopted, external_taxa.adopted);`,
     [
       taxonId,
       input.source,
@@ -108,6 +143,12 @@ export function upsertExternalTaxon(input: ExternalTaxonInput): string {
       input.genus || null,
       input.common_name_c || null,
       Date.now(),
+      input.taxonomic_status || null,
+      input.accepted_name || null,
+      input.local_taxon_id || null,
+      input.local_status || null,
+      input.higher_classification || null,
+      input.adopted ?? 0,
     ],
   );
   return taxonId;
@@ -135,6 +176,12 @@ export function getExternalTaxon(taxonId: string): ExternalTaxon | null {
     genus: str('genus'),
     common_name_c: str('common_name_c'),
     fetched_at: (row.fetched_at as number) ?? 0,
+    taxonomic_status: (row.taxonomic_status as string) ?? null,
+    accepted_name: (row.accepted_name as string) ?? null,
+    local_taxon_id: (row.local_taxon_id as string) ?? null,
+    local_status: (row.local_status as string) ?? null,
+    higher_classification: (row.higher_classification as string) ?? null,
+    adopted: Number(row.adopted ?? 0),
   };
 }
 
@@ -159,16 +206,20 @@ export function findExternalTaxonIdByName(
   // names and 2 species names that are cross-kingdom homonyms (see
   // src/lib/sciMatch.ts), and collapsing two organisms onto one taxon_id
   // silently merges every record that points at either.
+  // Adopted rows are excluded: they carry a decision (`adopted`, `local_*`)
+  // that a routine GBIF/iNat cache fill of the same name string must not
+  // inherit or overwrite. They are found by id, never by name reuse.
   const k = (kingdom ?? '').trim();
   const res = k
     ? getUserDb().executeSync(
         `SELECT taxon_id FROM external_taxa
-          WHERE LOWER(simple_name) = ? AND (kingdom IS NULL OR kingdom = '' OR kingdom = ?)
+          WHERE LOWER(simple_name) = ? AND adopted = 0
+            AND (kingdom IS NULL OR kingdom = '' OR kingdom = ?)
           LIMIT 1;`,
         [n, k],
       )
     : getUserDb().executeSync(
-        `SELECT taxon_id FROM external_taxa WHERE LOWER(simple_name) = ? LIMIT 1;`,
+        `SELECT taxon_id FROM external_taxa WHERE LOWER(simple_name) = ? AND adopted = 0 LIMIT 1;`,
         [n],
       );
   const row = (res.rows ?? [])[0] as { taxon_id?: string } | undefined;
@@ -215,7 +266,9 @@ export function externalToSearchResult(t: ExternalTaxon): SearchResult {
     alien_type: '',
     pt_name: '',
     taxon_id: t.taxon_id,
-    usage_status: 'accepted',
+    // Was hardcoded 'accepted', which made every externally-sourced name claim
+    // a status nobody had checked. An adopted synonym must not look accepted.
+    usage_status: t.taxonomic_status ? t.taxonomic_status.toLowerCase() : 'accepted',
     alternative_name_c: '',
     kingdom: t.kingdom ?? '',
     kingdom_c: '',

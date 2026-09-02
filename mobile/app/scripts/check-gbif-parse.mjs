@@ -11,7 +11,7 @@
  *
  * Run: npm run check:gbif
  */
-import { nameSearchUrl, parseNameSearch } from '../src/lib/gbif.ts';
+import { nameSearchUrl, parseNameSearch, parseParents } from '../src/lib/gbif.ts';
 
 let failures = 0;
 const fail = (m) => {
@@ -121,6 +121,24 @@ stub({ results: [{ key: 7, scientificName: 'Dup', rank: 'SPECIES' },
                  { key: 7, scientificName: 'Dup', rank: 'SPECIES' }] });
 eq('duplicate keys collapse', (await searchNames('x')).length, 1);
 eq('empty query never calls out', (await searchNames('   ')).length, 0);
+
+// ── The parent chain used when a name is adopted as its own taxon ──────────
+// Ranks between family and genus have no column anywhere in this app, so the
+// chain is kept as one serialized string.
+eq(
+  'parents chain',
+  parseParents([
+    { rank: 'KINGDOM', canonicalName: 'Plantae' },
+    { rank: 'FAMILY', canonicalName: 'Moraceae' },
+    { rank: 'TRIBE', canonicalName: 'Ficeae' },
+    { rank: 'GENUS', canonicalName: 'Ficus' },
+  ]),
+  'kingdom:Plantae | family:Moraceae | tribe:Ficeae | genus:Ficus',
+);
+eq('parents falls back to scientificName', parseParents([{ scientificName: 'Ficus L.' }]), 'Ficus L.');
+eq('parents drops nameless entries', parseParents([{ rank: 'GENUS' }]), '');
+eq('parents of a non-array', parseParents(null), '');
+eq('parents of an empty chain', parseParents([]), '');
 
 if (failures > 0) {
   console.error(`\n✗ gbif parse: ${failures} failure(s)`);

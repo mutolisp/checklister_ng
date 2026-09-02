@@ -159,3 +159,131 @@ export function resolveTaxa(taxonIds: string[]): Map<string, TaxonFields> {
   }
   return out;
 }
+
+// ── 使用者採用的名字 ─────────────────────────────────────────────────────────
+
+/**
+ * The name a record was deliberately recorded under.
+ *
+ * TaiCOL's `taxon_id` is a taxon *concept* and `name_id` is a *name*: 269,824
+ * names hang off 96,677 concepts, and ~27.7% of concepts carry a synonym. A
+ * record stores the concept (so statistics never split) plus, optionally, the
+ * name its recorder chose — which may be one TaiCOL calls not-accepted or
+ * misapplied, because taxonomic opinion legitimately differs.
+ */
+export type AdoptedName = {
+  simple_name: string;
+  name_author: string;
+  /** Read live from the checklist, never frozen into the record: TaiCOL
+   *  changes its mind (283 names changed status between the 2026-02 and
+   *  2026-04 releases). '' when the id no longer resolves. */
+  usage_status: string;
+  /** The checklist no longer agrees with what was stored — the name_id is gone
+   *  or now spells a different name. The stored string is shown instead, and
+   *  the data-check screen counts these. */
+  stale: boolean;
+};
+
+/** What `applyAdoptedName` adds on top of the taxon fields, for callers that
+ *  need to render or export the disagreement. */
+export type AdoptionStatus = {
+  /** The adopted name's status in the checklist right now ('' = none adopted). */
+  used_status: string;
+  /** The checklist no longer confirms the stored name. */
+  used_stale: boolean;
+  /** The name the checklist WOULD have used. Only set when an adoption is in
+   *  effect — `simple_name` has been overwritten by then, and DwC's
+   *  `acceptedNameUsage` needs the name that was displaced. */
+  used_accepted_name: string;
+};
+
+/**
+ * What a caller passes when the user deliberately picked a non-accepted name.
+ *
+ * `name_id` is only ever a TaiCOL `taicol_names.name_id`. It must NOT be taken
+ * from `SearchResult.id`: that field is 0 for external taxa and, for Japanese
+ * names, a locally minted offset that is renumbered on every wamei re-import.
+ * When the name has no stable id (a JP alias, a free-typed name) leave it null
+ * and store the string alone.
+ */
+export type AdoptionInput = {
+  name_id?: number | null;
+  scientific_name: string;
+};
+
+/** A record row's stored adoption, as written by the three add paths. */
+export type AdoptionFields = {
+  used_name_id: number | null;
+  used_scientific_name: string | null;
+};
+
+/**
+ * Resolve adopted names for a batch of records.
+ *
+ * `name_id` is `INTEGER NOT NULL PRIMARY KEY` in `taicol_names`, i.e. the
+ * rowid — this is the cheapest lookup SQLite has, no extra index needed.
+ */
+export function resolveAdoptedNames(rows: AdoptionFields[]): Map<number, AdoptedName> {
+  const out = new Map<number, AdoptedName>();
+  const ids = Array.from(
+    new Set(rows.map((r) => r.used_name_id).filter((v): v is number => typeof v === 'number')),
+  );
+  if (ids.length === 0) return out;
+
+  const ph = ids.map(() => '?').join(',');
+  const res = getTaicolDb().executeSync(
+    `SELECT name_id, simple_name, name_author, usage_status FROM taicol_names WHERE name_id IN (${ph})`,
+    ids,
+  );
+  for (const row of (res.rows ?? []) as Array<Record<string, unknown>>) {
+    const id = Number(row.name_id);
+    out.set(id, {
+      simple_name: (row.simple_name as string) ?? '',
+      name_author: (row.name_author as string) ?? '',
+      usage_status: (row.usage_status as string) ?? '',
+      stale: false,
+    });
+  }
+  return out;
+}
+
+/**
+ * Overlay the adopted name onto resolved taxon fields.
+ *
+ * Only the name changes — hierarchy, conservation status and vernacular still
+ * come from the taxon, because adopting a name is a statement about
+ * nomenclature, not about where the organism sits.
+ */
+export function applyAdoptedName<T extends TaxonFields>(
+  fields: T,
+  rec: AdoptionFields,
+  resolved: Map<number, AdoptedName>,
+): T & AdoptionStatus {
+  const stored = (rec.used_scientific_name ?? '').trim();
+  if (rec.used_name_id == null && !stored) {
+    return { ...fields, used_status: '', used_stale: false, used_accepted_name: '' };
+  }
+  const acceptedName = fields.simple_name;
+  const hit = rec.used_name_id != null ? resolved.get(rec.used_name_id) : undefined;
+  // The stored string wins whenever the checklist can't confirm it — showing a
+  // name the user never chose would be worse than showing a stale one.
+  const agrees = !!hit && (!stored || hit.simple_name === stored);
+  if (agrees && hit) {
+    return {
+      ...fields,
+      simple_name: hit.simple_name,
+      name_author: hit.name_author,
+      used_status: hit.usage_status,
+      used_stale: false,
+      used_accepted_name: acceptedName,
+    };
+  }
+  return {
+    ...fields,
+    simple_name: stored || fields.simple_name,
+    name_author: hit?.name_author ?? '',
+    used_status: hit?.usage_status ?? '',
+    used_stale: true,
+    used_accepted_name: acceptedName,
+  };
+}

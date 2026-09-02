@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import type { AdoptionInput } from '~/db';
 import * as Location from 'expo-location';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { BackHeaderLeft, goBackOrHome } from '~/lib/goBack';
@@ -194,7 +195,7 @@ export default function SessionDetailScreen() {
     return map;
   }, [records]);
 
-  const handleAdd = (result: SearchResult) => {
+  const handleAdd = (result: SearchResult, adopted?: AdoptionInput | null) => {
     if (!result.taxon_id) {
       toast(t('session.noTaxonId'));
       return;
@@ -203,7 +204,7 @@ export default function SessionDetailScreen() {
       toast(t('session.alreadyExists', { name: result.cname || result.name }));
       return;
     }
-    const recordId = addRecord({ session_id: sessionId, taxon_id: result.taxon_id });
+    const recordId = addRecord({ session_id: sessionId, taxon_id: result.taxon_id, adopted });
     reload();
     toast(t('session.added', { name: result.cname || result.name }), {
       action: {

@@ -24,6 +24,7 @@ import {
   type Layer,
   type SearchResult,
 } from '~/db';
+import type { AdoptionInput } from '~/db';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { useToast } from '~/stores/toast';
@@ -42,6 +43,8 @@ type PlotTarget = {
   plotId: number;
   plotType: PlotType;
   layer: Layer;
+  /** Survives the trip through the abundance modal. */
+  adopted?: AdoptionInput | null;
 };
 
 function headerOf(sp: SearchResult): PlotModalHeader {
@@ -60,7 +63,7 @@ function headerOf(sp: SearchResult): PlotModalHeader {
 }
 
 export function useAddToActiveRecord(): {
-  addSpecies: (sp: SearchResult) => void;
+  addSpecies: (sp: SearchResult, adopted?: AdoptionInput | null) => void;
   /** Explicit collection route, reached by long-pressing the add button.
    *  Never taken by `addSpecies` — collections stay off the default path so the
    *  existing plot → session behaviour is unchanged. */
@@ -88,7 +91,7 @@ export function useAddToActiveRecord(): {
 
   const targetLabel = plot ? t('addToRecord.toPlot') : session ? t('addToRecord.toSession') : t('addToRecord.newSession');
 
-  const addSpecies = (sp: SearchResult) => {
+  const addSpecies = (sp: SearchResult, adopted?: AdoptionInput | null) => {
     if (!sp.taxon_id) {
       toast(t('addToRecord.noTaxonId'));
       return;
@@ -99,7 +102,7 @@ export function useAddToActiveRecord(): {
       // Non-stratified plots (transect / point count) store every row under
       // 'T'; fixed plots default to E2 (草本層), matching the key runner.
       const layer: Layer = activePlot.plot_type === 'fixed' ? 'E2' : 'T';
-      setPlotTarget({ sp, plotId: activePlot.id, plotType: activePlot.plot_type, layer });
+      setPlotTarget({ sp, plotId: activePlot.id, plotType: activePlot.plot_type, layer, adopted });
       return;
     }
     // Session path (or start a fresh one).
@@ -108,7 +111,7 @@ export function useAddToActiveRecord(): {
       toast(t('addToRecord.alreadyInRecord', { name: sp.cname || sp.name }));
       return;
     }
-    addRecord({ session_id: target.id, taxon_id: sp.taxon_id });
+    addRecord({ session_id: target.id, taxon_id: sp.taxon_id, adopted });
     useActiveSession.getState().refresh();
     toast(t('session.added', { name: sp.cname || sp.name }), {
       action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}`) },
@@ -164,11 +167,12 @@ export function useAddToActiveRecord(): {
 
   const handlePlotSave = (v: PlotValueDraft) => {
     if (!plotTarget) return;
-    const { sp, plotId, layer } = plotTarget;
+    const { sp, plotId, layer, adopted } = plotTarget;
     addPlotSpecies({
       plot_survey_id: plotId,
       taxon_id: sp.taxon_id,
       layer,
+      adopted,
       organism_quantity: v.organism_quantity,
       organism_quantity_type: v.organism_quantity_type,
       notes: v.notes,

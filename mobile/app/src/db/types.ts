@@ -81,7 +81,16 @@ export type SearchResult = {
   /** Source dataset. 'TW' (TaiCOL, default) or 'JP' (YList). Set when the
    *  Japan regional database is enabled; absent ⇒ treat as 'TW'. */
   region?: 'TW' | 'JP';
-  matched_as?: { name: string; fullname: string; status: string };
+  matched_as?: {
+    name: string;
+    fullname: string;
+    status: string;
+    /** The matched row's own `taicol_names.name_id`, so the UI can offer to
+     *  record under THAT name. Absent for the Japanese alias path, which
+     *  synthesises `matched_as` from a comma-split field with no row of its
+     *  own — those can still be adopted, by string only. */
+    name_id?: number;
+  };
   fuzzy_match?: { query: string; matched: string; score: number };
 };
 

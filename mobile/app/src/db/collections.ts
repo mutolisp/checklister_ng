@@ -14,7 +14,15 @@ import type { DuplicateRecordOptions } from './duplicate';
 import { existingProjectId } from './projects';
 import { generateUuid } from './plots';
 import { defaultSurveyorString } from './surveyors';
-import { resolveTaxa, EMPTY_TAXON_FIELDS, type TaxonFields } from './taxonLookup';
+import {
+  resolveTaxa,
+  EMPTY_TAXON_FIELDS,
+  applyAdoptedName,
+  resolveAdoptedNames,
+  type AdoptionInput,
+  type AdoptionStatus,
+  type TaxonFields,
+} from './taxonLookup';
 
 export type CollectionTrip = {
   id: number;
@@ -68,13 +76,18 @@ export type Specimen = {
   leaf_phenology: string | null;
   notes: string | null;
   photo_paths: string | null;
+  /** The name this specimen was deliberately determined as (v28). Both NULL =
+   *  the taxon's accepted name. */
+  used_name_id: number | null;
+  used_scientific_name: string | null;
 };
 
-export type SpecimenWithTaxon = Specimen & TaxonFields;
+export type SpecimenWithTaxon = Specimen & TaxonFields & AdoptionStatus;
 
 const SPECIMEN_COLS = `id, trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
   collected_at, recorded_by, identified_by, lat, lng, accuracy, locality,
-  sex, life_stage, reproductive_condition, leaf_phenology, notes, photo_paths`;
+  sex, life_stage, reproductive_condition, leaf_phenology, notes, photo_paths,
+  used_name_id, used_scientific_name`;
 
 function defaultTripName(now: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -318,7 +331,11 @@ export function listSpecimens(tripId: number): SpecimenWithTaxon[] {
   const rows = (res.rows ?? []) as unknown as Specimen[];
   if (rows.length === 0) return [];
   const taxa = resolveTaxa(rows.map((r) => r.taxon_id));
-  return rows.map((r) => ({ ...r, ...(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS) }));
+  const adopted = resolveAdoptedNames(rows);
+  return rows.map((r) => ({
+    ...r,
+    ...applyAdoptedName(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS, r, adopted),
+  }));
 }
 
 export function getSpecimen(id: number): SpecimenWithTaxon | null {
@@ -327,12 +344,18 @@ export function getSpecimen(id: number): SpecimenWithTaxon | null {
   const row = ((res.rows ?? []) as unknown as Specimen[])[0];
   if (!row) return null;
   const taxa = resolveTaxa([row.taxon_id]);
-  return { ...row, ...(taxa.get(row.taxon_id) ?? EMPTY_TAXON_FIELDS) };
+  const adopted = resolveAdoptedNames([row]);
+  return {
+    ...row,
+    ...applyAdoptedName(taxa.get(row.taxon_id) ?? EMPTY_TAXON_FIELDS, row, adopted),
+  };
 }
 
 export type AddSpecimenInput = {
   trip_id: number;
   taxon_id: string;
+  /** Set only when the user deliberately chose a non-accepted name (v28). */
+  adopted?: AdoptionInput | null;
   /** Omit to take the next number in the series. */
   record_number?: string;
   collected_at?: number;
@@ -355,8 +378,9 @@ export function addSpecimen(input: AddSpecimenInput): number {
   const res = db.executeSync(
     `INSERT INTO collection_specimens
        (trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
-        collected_at, recorded_by, identified_by, lat, lng, accuracy, locality, notes, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        collected_at, recorded_by, identified_by, lat, lng, accuracy, locality, notes,
+        used_name_id, used_scientific_name, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.trip_id,
       generateUuid(),
@@ -375,6 +399,8 @@ export function addSpecimen(input: AddSpecimenInput): number {
       input.accuracy ?? null,
       input.locality ?? null,
       input.notes ?? null,
+      input.adopted?.name_id ?? null,
+      input.adopted?.scientific_name ?? null,
       now,
     ],
   );

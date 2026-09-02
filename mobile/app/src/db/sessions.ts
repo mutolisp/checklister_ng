@@ -198,6 +198,9 @@ export type ImportedSessionRecord = {
   leaf_phenology?: string | null;
   /** Photo filenames inside the zip's `photos/` belonging to this record. */
   photo_files?: string[];
+  /** The name this record was filed under, when not the accepted one (v28). */
+  used_name_id?: number | null;
+  used_scientific_name?: string | null;
 };
 
 export type ImportedSession = {
@@ -301,8 +304,8 @@ function importSessionTx(
       `INSERT INTO checklist_records (
          session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths,
          lat, lng, accuracy, sex, life_stage, reproductive_condition, leaf_phenology,
-         organism_quantity, organism_quantity_type
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         organism_quantity, organism_quantity_type, used_name_id, used_scientific_name
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         sessionId,
         r.taxon_id,
@@ -320,6 +323,8 @@ function importSessionTx(
         r.leaf_phenology ?? null,
         r.organism_quantity ?? null,
         r.organism_quantity_type ?? null,
+        r.used_name_id ?? null,
+        r.used_scientific_name ?? null,
       ],
     );
   }
@@ -394,17 +399,22 @@ function duplicateSessionTx(id: number, opts: DuplicateRecordOptions): number | 
     // Straight from the table: the copy needs taxon ids only, not the taxon
     // join `listSessionRecords` does. DISTINCT because the list is the point.
     const rows = db.executeSync(
-      `SELECT taxon_id FROM checklist_records
+      `SELECT taxon_id, used_name_id, used_scientific_name FROM checklist_records
         WHERE session_id = ? AND taxon_id IS NOT NULL AND taxon_id != ''
-        GROUP BY taxon_id ORDER BY MIN(id)`,
+        GROUP BY taxon_id, used_scientific_name ORDER BY MIN(id)`,
       [id],
     );
-    for (const r of (rows.rows ?? []) as { taxon_id?: string }[]) {
+    for (const r of (rows.rows ?? []) as Array<{
+      taxon_id?: string;
+      used_name_id?: number | null;
+      used_scientific_name?: string | null;
+    }>) {
       if (!r.taxon_id) continue;
       db.executeSync(
-        `INSERT INTO checklist_records (session_id, taxon_id, occurrence_id, observed_at)
-         VALUES (?, ?, ?, ?)`,
-        [newId, r.taxon_id, generateUuid(), now],
+        `INSERT INTO checklist_records
+           (session_id, taxon_id, occurrence_id, observed_at, used_name_id, used_scientific_name)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newId, r.taxon_id, generateUuid(), now, r.used_name_id ?? null, r.used_scientific_name ?? null],
       );
     }
   }

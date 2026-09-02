@@ -1,4 +1,11 @@
-import { EMPTY_TAXON_FIELDS, resolveTaxa } from './taxonLookup';
+import {
+  EMPTY_TAXON_FIELDS,
+  applyAdoptedName,
+  resolveAdoptedNames,
+  resolveTaxa,
+  type AdoptionInput,
+  type AdoptionStatus,
+} from './taxonLookup';
 import { buildTrackGeoJSON, parseTrackSegments, type TrackSegment } from '~/lib/track';
 import { generateUuid } from './uuid';
 import { getUserDb, withTransaction } from './init';
@@ -171,9 +178,13 @@ export type PlotSpeciesRecord = {
   // Detection method (v13): 'seen' | 'heard' | 'flying'. Point count / animal
   // records; null for plant/unspecified.
   detection_type: string | null;
+  /** The name this record was deliberately filed under (v28). Both NULL = the
+   *  taxon's accepted name. */
+  used_name_id: number | null;
+  used_scientific_name: string | null;
 };
 
-export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & {
+export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & AdoptionStatus & {
   simple_name: string;
   name_author: string;
   common_name_c: string;
@@ -787,6 +798,8 @@ export type AddPlotSpeciesInput = {
   accuracy?: number | null;
   /** Detection method (v13): 'seen' | 'heard' | 'flying'. */
   detection_type?: string | null;
+  /** Set only when the user deliberately chose a non-accepted name (v28). */
+  adopted?: AdoptionInput | null;
 };
 
 export function addPlotSpecies(input: AddPlotSpeciesInput): number {
@@ -798,8 +811,9 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
         organism_quantity, organism_quantity_type,
         notes, sex, life_stage, reproductive_condition, leaf_phenology,
         lat, lng, accuracy, detection_type,
+        used_name_id, used_scientific_name,
         observed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.plot_survey_id,
       input.taxon_id,
@@ -817,6 +831,8 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
       input.lng ?? null,
       input.accuracy ?? null,
       input.detection_type ?? null,
+      input.adopted?.name_id ?? null,
+      input.adopted?.scientific_name ?? null,
       now,
       now,
     ],
@@ -960,7 +976,11 @@ export function listPlotSpecies(
   if (records.length === 0) return [];
 
   const taxa = resolveTaxa(records.map((r) => r.taxon_id));
-  return records.map((r) => ({ ...r, ...(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS) }));
+  const adopted = resolveAdoptedNames(records);
+  return records.map((r) => ({
+    ...r,
+    ...applyAdoptedName(taxa.get(r.taxon_id) ?? EMPTY_TAXON_FIELDS, r, adopted),
+  }));
 }
 
 // ── Plot round-trip import (v18+) ──────────────────────────────────────────
@@ -1008,6 +1028,9 @@ export type ImportedPlotSpecies = {
   observed_at?: number | null;
   /** Photo filenames inside the zip's `photos/` belonging to this record. */
   photo_files?: string[];
+  /** The name this record was filed under, when not the accepted one (v28). */
+  used_name_id?: number | null;
+  used_scientific_name?: string | null;
 };
 
 export type ImportedPlot = {
@@ -1195,8 +1218,8 @@ function importPlotSurveyTx(
          plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
          organism_quantity, organism_quantity_type, notes, sex, life_stage,
          reproductive_condition, leaf_phenology, lat, lng, accuracy, detection_type,
-         photo_paths, observed_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         photo_paths, used_name_id, used_scientific_name, observed_at, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         plotId,
         sp.taxon_id,
@@ -1217,6 +1240,8 @@ function importPlotSurveyTx(
         sp.accuracy ?? null,
         sp.detection_type ?? null,
         photoPaths(sp.photo_files),
+        sp.used_name_id ?? null,
+        sp.used_scientific_name ?? null,
         sp.observed_at ?? now,
         now,
       ],
@@ -1291,12 +1316,16 @@ function duplicatePlotSurveyTx(id: number, opts: DuplicateRecordOptions): number
   // out-of-range row becomes invisible AND undeletable).
   const species = opts.includeSpecies
     ? ((db.executeSync(
-        `SELECT taxon_id, layer, subplot_id FROM plot_species_records
+        `SELECT taxon_id, layer, subplot_id, used_name_id, used_scientific_name
+           FROM plot_species_records
           WHERE plot_survey_id = ? AND taxon_id IS NOT NULL AND taxon_id != ''
           ORDER BY id`,
         [id],
       ).rows ?? []) as unknown as Array<
-        Pick<PlotSpeciesRecord, 'taxon_id' | 'layer' | 'subplot_id'>
+        Pick<
+        PlotSpeciesRecord,
+        'taxon_id' | 'layer' | 'subplot_id' | 'used_name_id' | 'used_scientific_name'
+      >
       >)
     : [];
   const usedLayerIdx = species.reduce(
@@ -1411,14 +1440,27 @@ function duplicatePlotSurveyTx(id: number, opts: DuplicateRecordOptions): number
       const subplotId = subplotIdByOldId.get(sp.subplot_id ?? -1) ?? null;
       // Without subplots, rows that differed only by subplot collapse into
       // duplicates of the same taxon+layer.
-      const key = `${sp.taxon_id}|${layer}|${subplotId ?? ''}`;
+      // The adopted name is part of the identity here: the same taxon filed
+      // under two different names is two rows, not a duplicate.
+      const key = `${sp.taxon_id}|${layer}|${subplotId ?? ''}|${sp.used_scientific_name ?? ''}`;
       if (seen.has(key)) continue;
       seen.add(key);
       db.executeSync(
         `INSERT INTO plot_species_records
-           (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer, observed_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [newId, sp.taxon_id, generateUuid(), subplotId, layer, now, now],
+           (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
+            used_name_id, used_scientific_name, observed_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          sp.taxon_id,
+          generateUuid(),
+          subplotId,
+          layer,
+          sp.used_name_id ?? null,
+          sp.used_scientific_name ?? null,
+          now,
+          now,
+        ],
       );
     }
   }

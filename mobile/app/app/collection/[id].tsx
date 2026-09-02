@@ -8,6 +8,7 @@
  * never disturbs an in-progress checklist or plot survey.
  */
 import { Ionicons } from '@expo/vector-icons';
+import type { AdoptionInput } from '~/db';
 import * as Location from 'expo-location';
 import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
@@ -277,7 +278,7 @@ export default function CollectionTripScreen() {
 
   const isActive = trip?.status === 'active';
 
-  const handleAdd = async (result: SearchResult) => {
+  const handleAdd = async (result: SearchResult, adopted?: AdoptionInput | null) => {
     if (!result.taxon_id) {
       toast(t('session.noTaxonId'));
       return;
@@ -320,6 +321,7 @@ export default function CollectionTripScreen() {
     addSpecimen({
       trip_id: tripId,
       taxon_id: result.taxon_id,
+      adopted,
       record_number: number,
       locality: trip?.locality ?? null,
       lat: coords?.lat ?? null,

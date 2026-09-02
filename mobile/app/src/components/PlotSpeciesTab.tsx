@@ -32,6 +32,7 @@ import {
   updatePlotSpeciesValue,
 } from '~/db';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
+import type { AdoptionInput } from '~/db';
 import { ScientificName } from './ScientificName';
 import { SearchBox } from './SearchBox';
 import { SwipeRow } from './SwipeRow';
@@ -52,7 +53,7 @@ import {
 } from '~/lib/dwcAbundance';
 
 type ValueModalState =
-  | { mode: 'create'; taxon: SearchResult; layer: Layer }
+  | { mode: 'create'; taxon: SearchResult; layer: Layer; adopted?: AdoptionInput | null }
   | { mode: 'edit'; record: PlotSpeciesRecordWithTaxon };
 
 export function PlotSpeciesTab({
@@ -227,7 +228,7 @@ export function PlotSpeciesTab({
     setSetting('last_record_sort_dir', sortDir === 'asc' ? 'desc' : 'asc');
   };
 
-  const handleSelect = async (taxon: SearchResult) => {
+  const handleSelect = async (taxon: SearchResult, adopted?: AdoptionInput | null) => {
     // Re-identification keeps the record and swaps only the name.
     if (replaceTarget) {
       const target = replaceTarget;
@@ -247,7 +248,7 @@ export function PlotSpeciesTab({
     Keyboard.dismiss();
     if (Platform.OS === 'ios') await new Promise((r) => setTimeout(r, 150));
     setPendingPhotos([]);
-    setModal({ mode: 'create', taxon, layer });
+    setModal({ mode: 'create', taxon, layer, adopted });
   };
 
   const handleSaveValue = (v: PlotValueDraft) => {
@@ -266,6 +267,7 @@ export function PlotSpeciesTab({
         reproductive_condition: serializeMultiAttribute(v.reproductive_condition),
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
         detection_type: v.detection_type,
+        adopted: modal.adopted,
       });
       // Attach any photos taken before the record existed.
       if (newId > 0 && pendingPhotos.length > 0) {

@@ -432,3 +432,74 @@ export async function searchNames(q: string, signal?: AbortSignal): Promise<Gbif
   const json = await getJson('gbif', nameSearchUrl(trimmed), signal, NAME_SEARCH_TIMEOUT_MS);
   return parseNameSearch(json);
 }
+
+// ── One taxon in full, for a deliberately adopted name ─────────────────────
+
+export type GbifTaxonDetail = {
+  usageKey: number;
+  /** ACCEPTED / SYNONYM / DOUBTFUL … as GBIF sees it. */
+  taxonomicStatus: string;
+  /** The accepted name GBIF would redirect to, '' when this IS the accepted one. */
+  acceptedName: string;
+  acceptedKey: number | null;
+  /** The full parent chain, coarsest first, as `rank:name` pairs joined by ' | '.
+   *  Ranks between family and genus (subfamily, tribe…) have no column anywhere
+   *  in this app, so the chain is kept as one serialized string rather than
+   *  forcing six new columns through every table and export. */
+  higherClassification: string;
+};
+
+/**
+ * Fetch one taxon's status and full parent chain.
+ *
+ * Two requests, and that is fine here: the file-level rule against per-key
+ * fetching is about resolving 300 facet keys in a batch, not about the single
+ * name a user has deliberately chosen to adopt. Same short timeout as the name
+ * search — someone is waiting on it.
+ */
+export async function fetchTaxonDetail(
+  usageKey: number,
+  signal?: AbortSignal,
+): Promise<GbifTaxonDetail> {
+  const detail = await getJson(
+    'gbif',
+    `${API}/species/${usageKey}`,
+    signal,
+    NAME_SEARCH_TIMEOUT_MS,
+  );
+  let chain = '';
+  try {
+    const parents = await getJson(
+      'gbif',
+      `${API}/species/${usageKey}/parents`,
+      signal,
+      NAME_SEARCH_TIMEOUT_MS,
+    );
+    chain = parseParents(parents);
+  } catch {
+    // The chain is enrichment, not identity — a name is still adoptable
+    // without it, and failing the whole adoption over it would be wrong.
+  }
+  const str = (k: string) => String(detail[k] ?? '');
+  const acceptedKey = Number(detail.acceptedKey ?? 0);
+  return {
+    usageKey,
+    taxonomicStatus: str('taxonomicStatus') || str('status'),
+    acceptedName: str('accepted'),
+    acceptedKey: acceptedKey || null,
+    higherClassification: chain,
+  };
+}
+
+/** `/species/{key}/parents` returns an ordered array, coarsest first. */
+export function parseParents(json: unknown): string {
+  if (!Array.isArray(json)) return '';
+  return (json as Array<Record<string, unknown>>)
+    .map((p) => {
+      const rank = String(p.rank ?? '').toLowerCase();
+      const name = String(p.canonicalName ?? p.scientificName ?? '').trim();
+      return name ? (rank ? `${rank}:${name}` : name) : '';
+    })
+    .filter(Boolean)
+    .join(' | ');
+}

@@ -56,6 +56,16 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   life_stage: 'lifeStage',
   reproductive_condition: 'reproductiveCondition',
   leaf_phenology: 'leafPhenology',
+  // Name usage. `taxonID` is the taxon CONCEPT; `scientificName` is whichever
+  // name the recorder filed under, which may be one the checklist calls
+  // not-accepted. The other three say so explicitly rather than leaving the
+  // reader to assume the name was accepted.
+  used_name_id: 'scientificNameID',
+  used_status: 'taxonomicStatus',
+  accepted_name: 'acceptedNameUsage',
+  // DwC requires this to share an identifier space with taxonID — so it is the
+  // taxon's own id, NOT a name_id.
+  accepted_taxon_id: 'acceptedNameUsageID',
   // Photo filenames inside an export zip's photos/ — pipe-joined, the same
   // multi-value convention as reproductiveCondition. Mobile-only: the desktop
   // backend (backend/utils/mapper.py) has no photos.

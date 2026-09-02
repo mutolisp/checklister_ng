@@ -2,10 +2,13 @@ import yaml from 'js-yaml';
 import { searchWithFuzzyFallback } from '~/db/fuzzy';
 import { searchByTaxonId } from '~/db/search';
 import type { SearchResult } from '~/db/types';
+import type { AdoptionInput } from '~/db';
 
 export type ImportEntry = {
   raw: string;          // original input line
   matches: SearchResult[];  // search results
+  /** Set when the source said this record used a non-accepted name. */
+  adopted?: AdoptionInput;
 };
 
 export type CategorizedImport = {
@@ -17,12 +20,21 @@ export type CategorizedImport = {
 /** One parsed input item. `taxonId` is set only when the source carried a
  *  TaiCOL id (a checklist .yml export) — those resolve by id, skipping the
  *  name search entirely. */
-export type ParsedEntry = { raw: string; taxonId?: string };
+export type ParsedEntry = {
+  raw: string;
+  taxonId?: string;
+  /** Carried through so a record exported under a deliberately adopted name
+   *  comes back as that name instead of silently reverting to the accepted
+   *  one. `scientificName` in such an export IS the adopted name. */
+  adopted?: AdoptionInput;
+};
 
 /** Keys carrying a taxon id / a name, across the yml shapes we emit:
  *  web export (`checklist:` + DwC terms), mobile session export (`event:` +
  *  `checklist:`), mobile plot export (`plot:` + `species:`). */
 const ID_KEYS = ['taxonID', 'taxon_id'];
+/** The name the record was filed under, when it is not the accepted one. */
+const USED_NAME_KEYS = ['scientificNameID', 'used_name_id'];
 const NAME_KEYS = ['vernacularName', 'cname', 'common_name_c', 'scientificName', 'name', 'simple_name'];
 
 /** Parse text input — pasted names, or the full contents of an exported .yml —
@@ -78,7 +90,16 @@ function collectEntries(data: unknown): ParsedEntry[] {
     const taxonId = firstString(obj, ID_KEYS);
     const name = firstString(obj, NAME_KEYS);
     if (taxonId) {
-      out.push({ raw: name ?? taxonId, taxonId });
+      // Only an export that actually says the status was non-accepted carries
+      // an adoption; a plain export has neither key.
+      const usedId = firstString(obj, USED_NAME_KEYS);
+      const status = firstString(obj, ['taxonomicStatus', 'used_status']);
+      const sciName = firstString(obj, ['scientificName', 'name', 'simple_name']);
+      const adopted =
+        status && sciName
+          ? { name_id: usedId ? Number(usedId) : null, scientific_name: sciName }
+          : undefined;
+      out.push({ raw: name ?? taxonId, taxonId, adopted });
       return;
     }
     if (name) {
@@ -101,12 +122,13 @@ export function resolveBatch(
 ): CategorizedImport {
   const out: CategorizedImport = { exact: [], ambiguous: [], unmatched: [] };
   for (const item of items) {
-    const { raw, taxonId } = typeof item === 'string' ? { raw: item, taxonId: undefined } : item;
+    const { raw, taxonId, adopted } =
+      typeof item === 'string' ? { raw: item, taxonId: undefined, adopted: undefined } : item;
 
     if (taxonId) {
       const hit = searchByTaxonId(taxonId);
       if (hit) {
-        out.exact.push({ raw, matches: [hit] });
+        out.exact.push({ raw, matches: [hit], adopted });
         continue;
       }
       // id not in this bundle's TaiCOL version — fall back to the name below

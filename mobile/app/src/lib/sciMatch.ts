@@ -119,7 +119,7 @@ function queryTable(tbl: string, source: 'taicol' | 'jp', variants: string[]): S
   const ph = variants.map(() => '?').join(',');
   const res = getTaicolDb().executeSync(
     `SELECT ${CAND_COLS} FROM ${tbl}
-      WHERE simple_name IN (${ph}) AND usage_status LIKE '%accepted%'
+      WHERE simple_name IN (${ph}) AND usage_status = 'accepted'
         AND taxon_id IS NOT NULL AND taxon_id != ''`,
     variants,
   );
@@ -160,7 +160,7 @@ function querySynonyms(
     seen.add(tid);
     const acc = db.executeSync(
       `SELECT ${CAND_COLS} FROM ${tbl}
-        WHERE taxon_id = ? AND usage_status LIKE '%accepted%' LIMIT 1`,
+        WHERE taxon_id = ? AND usage_status = 'accepted' LIMIT 1`,
       [tid],
     );
     const a = ((acc.rows ?? []) as Record<string, unknown>[])[0];

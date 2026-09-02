@@ -70,10 +70,122 @@ function flatten(obj, prefix = '', out = new Set()) {
   return out;
 }
 
-const locales = LOCALES.map((f) => ({
-  file: f,
-  keys: flatten(JSON.parse(readFileSync(f, 'utf8'))),
-}));
+/** Flatten {a:{b:'x'}} → Map{'a.b' => 'x'} — the values, for placeholder checks. */
+function flattenValues(obj, prefix = '', out = new Map()) {
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) flattenValues(v, key, out);
+    else if (typeof v === 'string') out.set(key, v);
+  }
+  return out;
+}
+
+/** `{{name}}` / `{{- name}}` / `{{obj.field}}` → the root param name i18next
+ *  needs supplied. */
+const PLACEHOLDER_RE = /\{\{\s*-?\s*([\w.]+)\s*\}\}/g;
+function placeholdersOf(value) {
+  const out = new Set();
+  for (const m of value.matchAll(PLACEHOLDER_RE)) out.add(m[1].split('.')[0]);
+  return out;
+}
+
+const KEY_SHAPE = /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$/;
+
+/** Walk from an opening delimiter to its match, skipping over string and
+ *  template literals so a brace or paren inside a quoted string cannot end the
+ *  scan early. Returns the index of the closing delimiter, or -1. */
+function matchDelim(src, open) {
+  const PAIRS = { '(': ')', '{': '}', '[': ']' };
+  const stack = [PAIRS[src[open]]];
+  for (let i = open + 1; i < src.length; i++) {
+    const c = src[i];
+    if (c === '\'' || c === '"' || c === '`') {
+      const quote = c;
+      for (i++; i < src.length; i++) {
+        if (src[i] === '\\') i++;
+        else if (src[i] === quote) break;
+        else if (quote === '`' && src[i] === '$' && src[i + 1] === '{') {
+          const end = matchDelim(src, i + 1);
+          if (end < 0) return -1;
+          i = end;
+        }
+      }
+      continue;
+    }
+    if (PAIRS[c]) stack.push(PAIRS[c]);
+    else if (c === ')' || c === '}' || c === ']') {
+      if (stack.pop() !== c) return -1;
+      if (stack.length === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/** Split an argument list on top-level commas (same literal-skipping rules). */
+function splitArgs(text) {
+  const out = [];
+  let depth = 0, start = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\'' || c === '"' || c === '`') {
+      const quote = c;
+      for (i++; i < text.length; i++) {
+        if (text[i] === '\\') i++;
+        else if (text[i] === quote) break;
+      }
+      continue;
+    }
+    if (c === '(' || c === '{' || c === '[') depth++;
+    else if (c === ')' || c === '}' || c === ']') depth--;
+    else if (c === ',' && depth === 0) {
+      out.push(text.slice(start, i));
+      start = i + 1;
+    }
+  }
+  out.push(text.slice(start));
+  return out.map((a) => a.trim());
+}
+
+/** Top-level property names of an object literal: `{a: 1, b, c: {d: 2}}` →
+ *  {a, b, c}. Returns null when the object spreads (`...opts`), because the
+ *  supplied params are then not statically knowable. */
+function objectKeys(text) {
+  if (!text.startsWith('{') || !text.endsWith('}')) return null;
+  const inner = text.slice(1, -1);
+  const out = new Set();
+  for (const part of splitArgs(inner)) {
+    if (!part) continue;
+    if (part.startsWith('...')) return null;
+    const m = /^(?:\.\.\.)?['"]?([A-Za-z_$][\w$]*)['"]?\s*(?::|$)/.exec(part);
+    if (!m) return null;
+    out.add(m[1]);
+  }
+  return out;
+}
+
+/** Every t(...) / tr(...) / i18n.t(...) call, with its arguments split. Unlike
+ *  KEY_RE this brace-matches the call, so `t(cond ? 'a.b' : 'c.d', {…})` is
+ *  visible — that form matches NEITHER of the line regexes above, so its keys
+ *  were never checked at all until this pass existed. */
+const CALL_RE = /\b(?:i18n\.)?(tr?)\(/g;
+function* callSites(src) {
+  for (const m of src.matchAll(CALL_RE)) {
+    const open = m.index + m[0].length - 1;
+    const close = matchDelim(src, open);
+    if (close < 0) continue;
+    const args = splitArgs(src.slice(open + 1, close));
+    const keys = [...args[0].matchAll(/['"]([^'"]+)['"]/g)]
+      .map((k) => k[1])
+      .filter((k) => KEY_SHAPE.test(k));
+    if (keys.length === 0) continue;
+    yield { index: m.index, keys, params: args.length > 1 ? objectKeys(args[1]) : new Set() };
+  }
+}
+
+const locales = LOCALES.map((f) => {
+  const json = JSON.parse(readFileSync(f, 'utf8'));
+  return { file: f, keys: flatten(json), values: flattenValues(json) };
+});
 
 // Structural drift between locales.
 const problems = [];
@@ -122,11 +234,62 @@ for (const [key, where] of referenced) {
   }
 }
 
+// Placeholders a string needs vs. what the call site supplies. i18next leaves
+// an unsatisfied `{{x}}` in the output verbatim, so this ships as literal
+// braces on screen: `useMineSameTaxonMisapplied` was authored with {{typed}}
+// while its caller passed { name, accepted }, and the action sheet rendered
+// 用「{{typed}}」. Nothing above could see it — both locales had the key, and
+// its value was a perfectly valid string.
+//
+// Only unsatisfied placeholders fail. An extra unused param is not reported:
+// it is harmless, and several call sites legitimately pass one object to two
+// sibling keys.
+const unchecked = [];
+for (const root of ROOTS) {
+  for (const file of walk(root)) {
+    const src = readFileSync(file, 'utf8');
+    const lineAt = (i) => src.slice(0, i).split('\n').length;
+    for (const { index, keys, params } of callSites(src)) {
+      const where = `${relative('.', file)}:${lineAt(index)}`;
+      for (const key of keys) {
+        for (const { file: lf, keys: lk, values } of locales) {
+          if (!lk.has(key)) {
+            problems.push(`${lf}: missing "${key}"  (used at ${where})`);
+            continue;
+          }
+          const value = values.get(key);
+          if (!value) continue;
+          const needed = placeholdersOf(value);
+          if (needed.size === 0) continue;
+          if (params === null) {
+            unchecked.push(`${where}  t('${key}') — params spread, not checked`);
+            continue;
+          }
+          for (const n of needed) {
+            if (!params.has(n)) {
+              problems.push(
+                `${lf}: "${key}" needs {{${n}}} but ${where} passes ` +
+                  `{${[...params].join(', ') || ''}}`,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 if (problems.length > 0) {
   console.error('\n✗ i18n key problems:\n');
   for (const p of [...new Set(problems)].sort()) console.error(`  ${p}`);
   console.error(`\n${new Set(problems).size} problem(s).\n`);
   process.exit(1);
+}
+
+if (unchecked.length > 0) {
+  console.log(`\nℹ  ${unchecked.length} call(s) with spread params — placeholders NOT checked:`);
+  for (const u of unchecked) console.log(`   ${u}`);
+  console.log('');
 }
 
 if (dynamic.length > 0) {

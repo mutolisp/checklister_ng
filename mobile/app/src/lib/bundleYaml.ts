@@ -101,7 +101,34 @@ export function recordToYamlItem(
   // → DwC `associatedMedia`; the filenames inside the zip's photos/.
   const photos = photoField(photoNames, r.occurrence_id);
   if (photos) item.photo_files = photos;
+  addNameUsage(item, r);
   return item;
+}
+
+/**
+ * Write the recorder's name choice, when it differs from the accepted name.
+ *
+ * Omitted entirely for the ordinary case, so existing exports are unchanged
+ * byte for byte. `simple_name` has already been overlaid with the adopted name
+ * by `applyAdoptedName`, so `scientificName` needs no further work — what is
+ * added here is the evidence that it was a choice: which name row, what the
+ * checklist calls it, and what the checklist would have used instead.
+ */
+function addNameUsage(
+  item: Record<string, unknown>,
+  r: {
+    used_name_id: number | null;
+    used_scientific_name: string | null;
+    used_status?: string;
+    used_accepted_name?: string;
+    taxon_id: string;
+  },
+): void {
+  if (r.used_name_id == null && !r.used_scientific_name) return;
+  if (r.used_name_id != null) item.used_name_id = r.used_name_id;
+  if (r.used_status) item.used_status = r.used_status;
+  if (r.used_accepted_name) item.accepted_name = r.used_accepted_name;
+  item.accepted_taxon_id = r.taxon_id;
 }
 
 export type SessionYamlInput = {
@@ -195,6 +222,7 @@ export function buildPlotYamlDoc(input: PlotYamlInput): Record<string, unknown> 
     item.observed_at = r.observed_at;
     const photos = photoField(input.photoNames, r.occurrence_id);
     if (photos) item.photo_files = photos;
+    addNameUsage(item, r);
     return item;
   });
 

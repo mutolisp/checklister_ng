@@ -1,5 +1,255 @@
 # 更新紀錄
 
+## 2026-09-02：Mobile — 採用名選單顯示 `{{typed}}` 字面；check:i18n 補兩個洞
+
+> mobile app（`mobile/app/`）。
+
+昨天上線的採用名選單，第三個選項渲染成 `用「{{typed}}」，並認定它就是「Digitaria heterantha」`。misapplied 版本的字串寫 `{{typed}}`，呼叫端傳的卻是 `{ name, accepted }`（非 misapplied 版本用 `{{name}}` 所以正常，選單說明文字用 `{{typed}}` 且確實有傳，也正常）。i18next 遇到沒有對應參數的 placeholder 就原樣輸出，不報錯也不走 fallback。字串改成 `{{name}}`，與同組其他四個選項一致。
+
+### check:i18n 看不到這種錯，已擴充
+
+它原本只驗「key 在兩份 locale 都存在」——而這個 bug 兩份都有 key、值也是合法字串，完全隱形。新增一個 pass **比對每個 `t()` 呼叫傳的參數與字串裡的 placeholder**，把 bug 放回去會直接指名 `src/lib/adoptName.ts:83` 與缺的那個 `{{typed}}`。只在「字串要的參數沒傳」時失敗；多傳不用的參數不報（好幾處呼叫端本來就一個物件餵兩個相鄰 key），`{...opts}` 這種無法靜態判斷的則列進 advisory 而非誤判。
+
+擴充時發現**第二個洞**：原本兩條 line-based regex 都不匹配 `t(cond ? 'a.b' : 'c.d')`——第一個引數不是引號開頭，KEY_RE 不中；後面接 `?` 而不是 `,` 或 `)`，DYNAMIC_RE 也不中。也就是說前一天新增的那組三元鍵**從頭到尾沒被驗證過存不存在**，只是剛好兩個都有寫進 locale。新的 pass 改用括號配對取出整串引數（會跳過字串與樣板字面內的括號），三元的兩個 key 都會檢查。全庫掃完沒有其他遺漏，990 個 key 全數到齊。
+
+---
+
+## 2026-09-01：Mobile — 使用者可採用自己的分類見解（synonym / misapplied）
+
+> mobile app（`mobile/app/`）。
+
+TaiCOL 說某個名字是 synonym 或 misapplied，不代表使用者同意——分類見解本來就會分歧。以前 app 默默替他決定了：搜尋異名直接解析到接受名，記錄只存接受名的 `taxon_id`，使用者輸入的名字在搜尋列閃過一行就消失，匯出也看不出這筆鑑定原本用的是哪個名字。
+
+### 關鍵事實
+
+實測 bundle DB：269,824 列、**269,824 個相異 `name_id`**、96,677 個相異 `taxon_id`——`taxon_id` 是分類概念、`name_id` 是名字，**27.7% 的分類群有異名**。所以採用一個本地異名根本不需要 GBIF，那個名字在本地就有 id；而 `name_id` 是 `INTEGER PRIMARY KEY`（rowid），查它是最快的查法，不必加索引也不必重建 bundle DB。
+
+### 做法（migration v28）
+
+三張記錄表加 `used_name_id` + `used_scientific_name`（皆可 NULL＝沿用接受名，既有資料零回填），`taxon_id` 不變所以統計與匯出分群不分裂。搜尋結果的 `≡ 你輸入：X` 那行變成可點，開選單：用接受名／用 X 但仍歸同一分類群／用 X 作為獨立分類群（查 GBIF 取完整階層）／改歸到本地另一個分類群（misapplied 跨兩個概念的 451 列）。
+
+**存兩欄而不是一欄**：拿兩個真實 TaiCOL 版本逐列比對後知道，242,282 個共同 name_id 裡有 13 個改了學名、3 個消失、277 個換了 taxon_id、283 個換了 usage_status。id 穩定但不完美，字串是自我描述的。**狀態刻意不存**——TaiCOL 會改變主意，使用者的選擇才是要持久化的東西。
+
+匯出新增四個此前全 repo 沒用過的 DwC term：`scientificNameID`、`taxonomicStatus`、`acceptedNameUsage`、`acceptedNameUsageID`（用 taxon_id，DwC 要求與 `taxonID` 同一識別碼空間），並同步到 `backend/utils/mapper.py`。沒有採用名的記錄一個欄位都不會多。
+
+### 一併修掉的既有缺陷
+
+- **`sciMatch` 的 `usage_status LIKE '%accepted%'` 會命中 `'not-accepted'`**（子字串）——批次匯入與學名比對一直可能把異名當接受名用。
+- **`externalToSearchResult` 寫死 `usage_status: 'accepted'`**，每筆外部物種都自稱接受名。
+- **GBIF 查名連做兩次靜默的名稱替換**（GBIF 異名→接受名→本地分類群）並跳過確認畫面，`sciMatch` 算出的「本地把它視為什麼」當場丟掉。現在會把「你選的」與「本地有的」並排顯示再讓使用者決定。
+- **markdown 以 taxon_id 去重**會把同一分類群下的兩個採用名折成一列。
+- 三條會靜默吞掉採用名的路徑（匯入、複製記錄、批次匯入）都補上了。
+
+### check:roundtrip 原本抓不到這類遺漏
+
+它的欄位涵蓋斷言**從來沒跑過記錄層**——加一個記錄欄位卻忘了改匯出照樣綠燈。已補上，並把 `resolveTaxa` join 上來的衍生欄位排除，否則雜訊會淹掉真訊號。
+
+另外資料檢查新增一項：TaiCOL 改版後採用名與現行名錄對不上的筆數（半年內有 527 個非接受名換了所屬概念）——**只報不改**，記錄仍顯示使用者當初選的名字。
+
+---
+
+## 2026-08-31：Mobile — 記錄匯入還原、複製記錄、GBIF 查名
+
+> 以下皆為 mobile app（`mobile/app/`）。詳細的架構決策與待辦見 `mobile/Plan.md`。
+
+### 名錄／樣區 yml 完整還原匯入
+
+- **名錄（session）原本完全沒有匯入路徑**：唯一會讀 session yml 的 `BatchImportModal` 只抽 taxonID 加物種到既有名錄，`event:` 區塊、時間、調查者、豐度、GPS、屬性、備註全部丟掉。新增 `importSession` + `sessionImport.ts`，`sessions` 與 `checklist_records` 全欄位還原。
+- **樣區匯入補齊**：site 綁定、照片、`env_photos_json`、`track_finalized`；`project` 查無即建立（原本靜默落到未分類）。
+- **yml schema 兩邊一起長**：樣區加 `site:`／`env_photo_files`／`track_finalized`／`species[].photo_files`；名錄 `event:` 加 `eventUUID`／`eventType`／`eventRemarks`／`decimalLatitude,Longitude`／`gpsMode`／`trackGeoJSON`，checklist 加 `associatedMedia`。
+- **yml 為權威來源**，zip 內的 `track.*` / `site.*`（gpx/kml/geojson）只在 yml 缺該幾何時作為 fallback。
+- **照片還原到 Photos.app**（與拍照同一條 `createAssetAsync` 路徑）。覆蓋既有記錄且該記錄已有照片時詢問「沿用既有／重新匯入」——Photos.app 的資產無法被覆寫，這是能誠實提供的選項。
+- 修掉**照片檔名撞名互相覆蓋**：`{taxonID}_{label}_{n}` 的序號原本是單筆記錄內索引，同一次匯出中同物種兩列會產生同名 entry 而被靜默覆蓋（匯出當下就在掉照片）。
+- 修掉**覆蓋匯入的資料遺失**：原本先刪舊記錄再逐列 insert，中途遇到 legacy `E0`（違反 CHECK）就炸，舊的沒了、新的半套。改為 `withTransaction`（op-sqlite 的 `db.transaction()` 是 async，包不了 `executeSync`，故用顯式 BEGIN/COMMIT）＋ layer 值 clamp。
+- 多筆打包 zip 原本會靜默匯入其中一筆 → 明確拒絕；第一次有功能從 zip 寫檔，加上 zip-slip 防護。
+- **schema v27**：`sessions.uuid`（加欄 → 回填 → unique index，三步皆可重跑），讓名錄有 round-trip 的 upsert key。
+
+### 批次匯入選 .zip 會失敗
+
+「從檔案讀入」用純文字讀檔，拿到 zip 直接丟出 iOS 原文 `the text encoding of its contents can't be determined`。改為 `readRecordYamlText()`（`.yml` 直接讀、`.zip` 解出裡面的 record yml），錯誤訊息統一走 `importErrorMessage()`。
+
+### 記錄列表：複製記錄、存進常用名錄
+
+- 滑動列新增**複製**（複製／匯出／刪除）。可選是否帶入環境（調查設定＋環境數值）與物種（只帶清單與分層／小區位置），可自訂新名稱，並可選「複製後直接開始調查」。
+- **名稱自動遞增**：`JP-EH-12` → `JP-EH-13`，補零保留（`PLOT_009` → `PLOT_010`），沒有數字就加日期，並跳過已存在的名稱。重名採警告不擋——固定樣區隔年複查本來就沿用同一個 plotid。
+- 多選模式新增**存進常用名錄**（可一次多筆），沿用既有的 `importFromRecord`。
+- **採集不複製標本**：採集號取自全域生涯序號且由已存在的列推導、刪不回來，預先配發等於憑空燒掉真實編號。
+
+### 常用名錄畫完範圍後跳到別的畫面
+
+`router.back()` 的假設不成立——`/favorites` 疊在 `(tabs)` 上面，進地圖後 favorites 已不在後方。改為顯式 `router.navigate('/favorites?folder=N')`，並讓常用名錄頁接收 `folder` param 回到原本那份名錄。
+
+### 本地查無物種 → GBIF 查名，可加入本機名錄
+
+- 搜尋框查無結果時顯示「到 GBIF 查詢」按鈕（**點才查**，野外沒訊號不白等，也不會每個按鍵打一次 API）。候選列顯示學名／作者／rank／階層／GBIF 俗名／異名標記。
+- 選定後**先用 GBIF 給的接受名回頭比對本地名錄**，命中就回本地 id——臺灣的物種不可以拿到 GBIF id，否則同種兩個身分。本地真的沒有才鑄造 `g{usageKey}` 外部物種，中文俗名預填 GBIF 的 vernacularName（中文優先），沒有就讓使用者自行輸入。
+- 批次匯入的「找不到」清單每列可點，走同一個視窗。
+- **前置修正**：`searchByTaxonId` 原本不認得 `g…`（會被送去查 TaiCOL 表然後回 null），導致常用名錄裡的外部物種點不開、加不進記錄、被 `importFromRecord` 當 unresolved 丟棄——一次解掉七個既有壞點。`external_taxa` 原本也不在搜尋路徑上（在 user.db，名錄在 twnamelist.db，全 app 沒有 ATTACH），加入後再搜同一個名字仍查無結果。
+- 一併修掉：`findExternalTaxonIdByName` 只比名字不看界（bundle DB 有 72 個屬名跨界同名，會讓兩個不同生物 collapse 成同一個 `taxon_id`）；`upsertExternalTaxon` 更新 `source` 卻不更新 `source_key`（會讓列宣稱自己是某個無關的 GBIF taxon，而索引還把這個謊言建進去）。
+
+### 新增的自動檢查
+
+- `npm run check:roundtrip`：DB 形狀 fixture → yml → parser 逐欄比對，外加欄位涵蓋檢查（新增欄位卻忘了改匯出會失敗）。當場抓到 js-yaml 會把未加引號的 `startedAt` 解析成 `Date`。
+- `npm run check:names`：命名遞增規則。當場抓到預設名錄名 `YYYY-MM-DD HH:MM` 會被「遞增」成 `14:60`。
+- `npm run check:gbif`：GBIF 回應解析（俗名語言優先序、rank 過濾、異名接受名、畸形回應），不打真的 API。
+
+---
+
+## 2026-08-30：Mobile — 技術債清理、接 iNaturalist / GBIF、常用名錄管理、標本館標籤
+
+### 技術債清理（以使用者真實 `user.db` 917 列／16 表驗證，逐表零變動）
+
+- **`clearAllUserData()` 會讓 app 永久磚化**（最嚴重）：它只 DROP 16 張表中的 8 張，接著從 v1 重跑 migration，而 `ADD COLUMN` 沒有存在性檢查 → v6 拋 `duplicate column name` → `schema_version` 卡在 5、程式碼是 v22 → 下次開機被紅色「初始化失敗」畫面取代，**而該畫面沒有路徑走到備份還原**，只能重裝。改成刪檔重建（比照已驗證的 `restoreBackup`），30 處 `ADD COLUMN` 全部改走 `addColumnIfMissing()`。
+- **刪除計畫會讓樣點與採集記錄「消失」**：`deleteProject` 漏了 4 張 FK 表中的 2 張，而那兩者的列表查詢是 INNER JOIN → 資料還在 DB 卻從清單消失。三處一起修（補齊 + 改 LEFT JOIN + 孤兒修復）。
+- **開啟 `PRAGMA foreign_keys = ON`**：在此之前 schema 裡每一個 `ON DELETE CASCADE` 都是失效的。順序有講究：migration 期間 OFF（否則 v3 的 `ALTER TABLE sites RENAME` 會觸發 cascade 清掉所有 plot 的 `site_id`）、cleanup 期間 OFF（否則待修的懸空參照會拋錯而非被治好）、之後才 ON。
+- **UUID 收斂到 SQLite CSPRNG**：兩份位元組相同的 `Math.random` 實作被用來產 DwC `occurrenceID`；Hermes 的 `Math.random()` 是非密碼學 PRNG 且 seeding 未定義。改用 `randomblob`，runtime 與 migration 終於一致。20,000 次抽樣零重複。
+- **自動安全備份**：會改寫既有列的修復執行前自動 `VACUUM INTO` 留快照，並在備份頁補上還原入口——快照在 app 私有目錄，沒有入口等於備份存在卻無法還原。
+- 新增 `npm run check:i18n`（833 key 與兩份 locale 對比）。lint error 1 → 0。
+
+### 接 iNaturalist / GBIF：地圖範圍 → 物種名錄
+
+App 的**第一個網路功能**（在此之前整棵 mobile 零 HTTP）。分四階段，前兩階段刻意不碰網路先拆架構風險。
+
+- **身分規則三段式，優先序不可顛倒**：TaiCOL `t…` → 日本 `y…` → 都沒有才鑄外部 `g…`／`gi…`。同一物種永遠優先綁本地 id，否則同種兩個身分，記錄、匯出、統計全部分裂。
+- migration **v23**（兩層常用名錄）、**v24**（`external_taxa`，放 user.db 而非 bundle DB——後者 hash 一變就整個重 copy）、**v25**（名錄記住來源範圍）。
+- 實測比對率：陽明山 97%、墾丁 98%、Kinabalu 17%。
+- **`/species/match` 的實際價值與規劃不同**：規劃假設它能把異名解析回本地名錄，實測 211 個未比對名稱**救回 0 個**（Phase 2 已先走過 TaiCOL 自己的異名列）；它真正的價值是取得識別碼，211/211 全取得。UI 文案據此改寫，不宣稱一件量出來是 0 的事。
+- **連線偵測不加原生模組**：改用兩個服務互相 HEAD 探測，兩邊都不通才說離線。
+- 踩過的坑：RN 的 `URLSearchParams` 沒有 copy constructor（bbox 被靜默丟掉變成全球查詢）；`LOWER(simple_name) = ?` 吃不到索引（67ms/名 → 改 `IN (?,?,?)` 後 0.09ms，**774 倍**）；GBIF 幾何 400（改成永遠退回外接矩形並明說）；GBIF **HTTP 429** 實測踩到（併發下修、加退避重試）。
+- 新增 `npm run check:kav`：`KeyboardAvoidingView` 呼叫端沒給 sizing className 會解析成 0 高度，畫面變暗、吞掉所有觸控、沒有可按的取消。
+
+### 常用名錄管理 + 標本館標籤（.docx）
+
+- 常用名錄清單層加左滑刪除／多選刪除／匯出（docx / csv）。預設名錄不可刪——它是快速加入的落點。
+- 匯出是**重用**而非另寫：從 `recordToMarkdownItem` 抽出「不含觀察資訊的那半邊」，走完全相同的 `generateMarkdown` → `markdownToDocx` 管線。
+- **所有 docx 改成 A4**（原本吐空的 `sectPr`，等於繼承 Word 的 US Letter 預設）。驗證方式是把改動前後各自編出來餵同一份 Markdown，比對解壓後的 `document.xml`——`sectPr` 以外**每個位元都相同**。
+- 標本館標籤：A4 2 欄 × 5 列共 10 張、虛線裁切線，**沒有引入新相依**（`docx.ts` 本來就是手寫的 OOXML writer）。migration **v26** 加 `identified_by`（DwC `identifiedBy`）；舊標本保持 NULL 不回填採集者——那等於替某人主張一個他沒做過的鑑定。
+- **一頁只排到 4 列**（實機回報）：行高原本 `lineRule="auto"` 由字型決定，而那台機器沒有標楷體，替代字型的行高比例不同就把列撐開。修法不是再猜一個數字，而是讓行高不再取決於字型（每個字級各釘一個 `atLeast` 明確值）。
+- 採集號**不能字串比較**（`DAO0010` 會排在 `DAO0009` 前面），改用既有的數字尾碼欄位。
+
+---
+
+## 2026-08-29：Mobile — 標本採集記錄、照片 EXIF 修復、名錄更新、搜尋排序
+
+### 標本採集（Collection）第三種記錄
+
+名錄／樣區之外的第三種記錄，含採集號序列、採集者／鑑定者、明細頁可編輯（日期時間拆兩欄、座標誤差、改名、複製、更換物種）。**採集刻意不在 app 層 single-active 之內**——開始採集不該結束進行中的名錄或樣區。
+
+- **採集號重複檢查**（原本完全沒有）：所有自動路徑結構上不可能撞號，手打是唯一途徑，而那條路會警告並提供下一個可用號。**不加 UNIQUE 約束**——複份標本共用號碼、匯入舊資料含重複都是合理情境。
+- **複製標本只承接物種與採集者**：地點、座標、物候、備註、照片刻意留空——那些描述的是某一次實體採集，靜默繼承會把上一份的描述貼到不同植株上。
+
+### 照片 EXIF 修復（iOS-only，影響名錄 + 樣區既有照片）
+
+使用者報「照片 metadata 和用相機拍的有差異，鏡頭資訊、焦距都變空白」。讀 `expo-image-picker` 的 iOS 原始碼確認：`quality < 1` 會讓它走 `UIImage.jpegData()`，**產出的 JPEG 完全不帶 EXIF**——Make／Model／LensModel／FocalLength／ISO／DateTimeOriginal 在我們的 piexif 看到檔案之前就沒了。Android 不受影響（該平台有 `copyExifData`）。
+
+修法是把 picker 本來就回傳、但整個 codebase 從未讀過的 `asset.exif` 注回 piexif dict。**只補不覆蓋**，所以在 Android 自動變 no-op，不需要 `Platform.OS` 分支。順帶修好樣區環境照（原本完全沒過 piexif，先前被記為「已知限制」，實為同一個 bug）。
+
+### 日本名錄改用 JBIF 和名チェックリスト（合併，非取代）
+
+`ylist_names` 20,103 → **`jp_names` 25,839** 列；同義和名 0 → **6,711 個分類群**。
+
+使用者原話是「用 wamei 取代 YList」，但 wamei 只收維管束植物、不帶保育／來源屬性；純取代會靜默損失苔蘚 1,909 筆、特有 786、IUCN 1,719、外來註記 8,780。改成 wamei 當和名層、YList 補苔蘚與屬性欄。換來的好處是 wamei 為 **CC BY 4.0**（YList 那份授權不明）。
+
+**硬性要求：19,851 個舊 taxon_id 一個都不能掉**——記錄都持久化 taxon_id，而解析失敗時是靜默顯示空白，使用者不會知道自己的舊記錄壞了。第一次試跑就以 `sci_norm` 去重吃掉 252 個 id，改用 taxon_id 判斷後全數保留。**這條只有逐一比對匯入前的 id 清單才驗得出來**——總列數是增加的，看總數完全看不出有東西掉了。
+
+### TaiCOL 更新至 2026-08-26 版（251,540 → 269,824 列）
+
+匯入程式**先 DROP 表並 commit，才第一次開啟 CSV**，所以事前把三種**靜默**失效全部排除（BOM 會讓匯入 0 列不報錯、欄位改名會讓該欄 25 萬列變 NULL、值域改變會讓 20+ 處寫死的查詢全部回 0 列）。
+
+過程中發現 **`LIKE 't00%'` 盲區**：檢索表 taxon_id 的自動修復寫在 id 還都是 `t00xxxxx` 的年代，而現在最大 id 已是 `t0124636`——5,800 個引用中有 161 個**會被警告但永遠不會被修好**。改用 `GLOB 't[0-9]*'`。
+
+### 精確俗名優先 + 分類樹定位
+
+- **主搜尋的 `LIMIT 100` 沒有 `ORDER BY`**：精確列進不進得來取決於 SQLite 的掃描順序，也就是 rowid——而 rowid 每次重建 bundle DB 就會變。這正是「之前搜得到、現在搜不到」的機制。實測 47 個單字俗名有 7 個被截在 100 列外。**沒有用 `ORDER BY` 解**（量過代價：單一拉丁字母命中 20 萬列，0ms → 89ms），改成另發一道走索引的等值查詢補抓，0.1ms 以內。
+- **`getItemLayout` 不是純函式**：它累加一個會被每列 `onLayout` 改動的 Map，而 RN 要求它對 `(data, index)` 純粹。行高又刻意估低，誤差是每列系統性偏差乘上目標 index——所以展開得越多偏得越離譜，「修好了又壞」。改成前綴和 + `useMemo`，順帶把 O(n²) 變 O(1)。
+- **但真正的症狀是定位目標本身就錯**：`RANK_ORDER` 只到 genus，所以捲動目標是**屬節點**；而 `Carex` 有 550 種、`カンスゲ` 排第 300，停在屬節點當然只看得到前面幾種。**教訓：捲動類 bug 要分開確認「數學正確」與「目標正確」。**
+
+### 置底搜尋框被鍵盤遮住 —— 第三次，所以改用程式擋
+
+`KeyboardStickyView` 的 offset 是用來抵銷 dock 下方既有的 chrome。抄了別的畫面的 `insets.bottom` 卻沒抄它的 `SafeAreaView` 根容器，於是那個值直接把搜尋框**往下推進鍵盤裡**（比不設更糟）。memory 早就逐字寫過這個錯法，**文件寫對了但擋不住**——新增 `npm run check:dock` 檢查 offset 與 chrome 是否配對，並把兩次歷史錯誤植回程式碼確認都抓得到。
+
+---
+
+## 2026-06-12：Mobile — UI 多語系（en / zh-TW）、記錄詳情 inline 可編輯小地圖
+
+- **i18n 全面遷移**（~55 檔）：`i18next` + `react-i18next`，803 key 兩語系完全對等。資料標籤從 `const` 改成回傳 `i18n.t()` 的函式，才能在切換語言時更新。日期一律 ISO 8601（語言中性），取代寫死 `'zh-TW'` 的 `toLocaleString`。
+- **匯出內容刻意不隨 UI 語言變**：靜態確認 `markdown.ts` / `bundleExport.ts` 有 0 個 i18n 引用。
+- 踩過的坑：`expo-localization` 啟動崩潰 → 改用 RN 核心模組偵測 device locale（**不要用** Hermes 的 `Intl.resolvedOptions().locale`，某些 build 固定回 `en-US`）；分類樹的「界」切語言後仍是英文，因為 `i18n.t()` 被烤進常駐快取 → 資料層只存語言中性 key，render 時才翻。
+- **inline 可編輯小地圖**：記錄詳情與樣區物種輸入頁直接編修座標，不必跳主地圖頁；含 zoom／定位／底圖切換／全螢幕。
+- 踩過的坑：**`SafeAreaView` 在 `Modal` 內取不到 inset**（Modal 是獨立原生 view 階層，拿不到 provider context），header 貼 y=0 被瀏海蓋住。**通則：Modal 內要安全區一律用 `useSafeAreaInsets` 手動套。**
+
+---
+
+## 2026-06-07：Mobile — 小區(subplot)、樣區匯入 round-trip、匯出設定與 docx、常用名錄與備份
+
+- **小區 subplot**（migration **v18**）：分層定義在 plot 層共用，小區只填 cover/height 與物種。subplot 是 plot 內部維度，**不搶 single-active**。匯出加 `eventID`／`parentEventID` 與 `subplots.csv`。
+- **樣區 round-trip 匯入**：plot yml 從三個欄位擴成完整 schema（uuid + 全 metadata + 座標/地形/覆蓋/軌跡 + layers + subplots + species），依 uuid 覆蓋或另存新副本，匯入的樣區一律 `status='done'` 不搶 active。
+- **匯出設定**：分類階層與保育狀態欄位可選（同桌面版）；docx 中文標楷體 + 英文 Times New Roman、各階層縮排、高階層俗名（「鴿形目 (Columbiformes)」）。
+- **匯出進度 UI**：全螢幕 overlay 取代單行 toast，壓縮前先讓它畫出來再凍結。踩到的坑：overlay 是 Modal，**share sheet 無法在 Modal dismiss 中 present**（iOS 靜默不跳）→ 等 450ms 再 share。
+- **常用名錄 + 備份還原**（v14）：常用物種清單、DB 備份與回復（`VACUUM INTO` + `reloadAppAsync`）。
+- **常用調查者**（v15）：偏好設定建清單，建立記錄時自動帶入 `recordedBy`。
+- **每筆物種記錄加 `occurrenceID`**（v16，uuid）；層高 per-layer cm/m 切換（v17，canonical 仍存 cm）。
+
+---
+
+## 2026-06-06：Mobile — 定點計數法(v13)、語音批次匯入、搜尋與導覽修正
+
+- **第三種調查法 point_count**（migration **v13**，全 additive）：靜態 GPS + 半徑，物種用「個體數」，沿用 `'T'` 桶。抽出 `isStratified` / `usesTrack` / `requiresStaticGps` 三個 helper 統一約 15 處 plot_type 分支。
+- **per-record 座標與偵測方式**（看到／聽到／飛過）；匯出補齊——使用者填的都能匯出（yml 補 notes 與 4 個 DwC 屬性、sp.csv 加 detectionType 與座標、plot `points.geojson` 實作）。
+- **語音快速輸入名錄** + 拼音諧音層（`pinyin-pro`），語音辨識常把不常見的名字聽成同音字，phonetic 旗標只給語音批次用。
+- **「加入當前記錄」的 smart-route bug**：物種卡片按「加入當前記錄」只會加進快速名錄；有 active 樣區時反而**被 single-active 結束、另開名錄**。抽共用 hook `useAddToActiveRecord`（active plot 優先），三個入口改用之。
+- **分類樹跳轉永遠定位失敗**：jump 在 taxonomy 還在背景時就被消費（FlatList 未 layout，scroll 失敗後就清掉不再重試）。改成 `useIsFocused()` 之後才消費。跳轉前先 `Keyboard.dismiss()`，避免 `KeyboardStickyView` latch 在鍵盤高度。
+
+---
+
+## 2026-05-22：Mobile — 樣區分層通用化（1–6 層）、環境照片、DwC 屬性匯出
+
+- **migration v12**：新表 `plot_survey_layers`（每層 cover/height/method）、`layer_count` 1–6 stepper、`env_photos_json`。`plot_species_records.layer` 的 CHECK 從 `E0–E3` 改為 `E1–E6`，整表重建並把舊值整體 +1（E0 苔蘚 → E1，生態語意不變）。
+- Label 寫死 E1 苔蘚／E2 草本／E3 灌木／E4 亞喬木／E5 主林冠／E6 突出層。
+- 樣區頁 tab 從三個（環境／物種／分層）收成兩個，分層併入環境。
+- **環境照片**：拍照／相簿／全螢幕檢視，匯出時 rename 為 `${plotid}_YYYYMMDD_env-${N}`。
+- **P0：DwC 屬性補進所有匯出格式**（sex / lifeStage / reproductiveCondition / leafPhenology）。
+- 舊的 `e0_*..e3_*` 欄位刻意留著當 rollback 視窗（v13 才 drop）。
+
+---
+
+## 2026-05-11 – 05-21：Mobile — v0.1 初版（MVP → 植群樣區調查）
+
+Mobile 是與桌面版**獨立的 codebase**（Expo SDK 54 + React Native 0.81 + TypeScript strict + Expo Router + NativeWind + Zustand + op-sqlite），架構、UI 慣例、build pipeline 都不同。以下為初版一路到 Phase 3 的重點；逐 sprint 細節見 `mobile/Plan.md`，踩過的坑見 `mobile/Update_log.md`。
+
+### 資料層與搜尋
+
+TaiCOL 名錄以 bundle DB 隨 app 出貨（首次啟動從 asset copy 到 documentDirectory，依 Metro 的 `asset.hash` 判斷是否重 copy），搜尋／模糊比對／同物異名全部 port 自桌面版並離線可用。台/臺自動互換、精確俗名優先、`≡` 同物異名與 `~` 模糊比對標記。
+
+### 記錄
+
+- **名錄（session）**：輕量物種記錄，含備註、照片、排序、多選刪除、隔日提示、結束後可重新啟用。
+- **樣區（plot survey）**：固定樣區（分層 cover/height/method）與穿越線（GPS 軌跡，module-level watch 讓切 tab 不中斷）。**豐度通用化**為 DwC `organismQuantity` / `organismQuantityType`（BB／% cover／個體數／DBH／自訂），**DwC 物種屬性**依 kingdom / class 動態顯示。
+- **single-active 不變式**：全 app 任何時刻最多一筆進行中的記錄，UI 有 gate、DB 層有 safety net、啟動時還有一次 cleanup。
+
+### 地圖與地理樣區
+
+滿版地圖（iOS Apple Maps / Android Google Maps）、多底圖、中研院 WMTS 85 圖層、地址搜尋、繪製點／線／面存成「地理樣區」（v2/v3，含 Multi\* 幾何）、GeoJSON／KML／GPX／WKT 匯入匯出、名錄可綁定地理樣區。
+
+### 照片
+
+拍照時把物種資訊嵌進 EXIF/IPTC（ImageDescription + UserComment JSON），存進 Photos.app，URI 存 `photo_paths`。UTF-8→Latin1 byte trick 解決中文變 `????`。
+
+### 分類樹與檢索表
+
+界→門→綱→目→科→屬→種 lazy load、展開狀態持久化、搜尋後自動展開並捲到該列；離線二歧式檢索表 runner（breadcrumb + 逐步 couplet + 終端物種卡）。
+
+### 跨平台鐵則（此時期定案）
+
+`Alert.prompt` 與 `ActionSheetIOS` 都是 iOS-only，統一走 `promptText()` / `showActionSheet()` 兩個 imperative API + 掛在 root 的 host 元件；**禁止用 `Platform.OS === 'ios'` if/else 寫多平台分支**（先前的 `Alert.alert` fallback 多次被發現在 Android 上選項數或功能退化）。
+
+### 兩次值得記的事故
+
+- **iOS 巢狀 Modal**：三層 Modal 會 hang；present 與 dismiss 撞在同一個 tick 會直接崩潰。定案為 dismiss → 等動畫 → present。
+- **中文輸入搜尋讓 Hermes GC 崩潰**（`EXC_BAD_ACCESS`）：根因是 bundle DB 更新時漏 build `cname_fuzzy_index`，每次查詢都 throw `no such table`，未捕獲例外在 debounce 的 `setTimeout` 內反覆觸發直到 GC 崩。修法是補 index、`fuzzy.ts` 加缺表偵測優雅退場，並把「更新 bundle DB 必須一併重 build fuzzy index」寫進 `make mobile-db` 與 `CLAUDE.md`。
+
+---
+
 ## 2026-04-11：名錄管理介面、資料品質檢核、物種欄位擴充、檢索表
 
 ### 名錄管理介面（`/admin` → 名錄管理 Tab）

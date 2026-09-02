@@ -1,5 +1,255 @@
 # Update Log
 
+## 2026-09-02: Mobile — Literal `{{typed}}` in the Name Chooser; Two Holes Closed in check:i18n
+
+> Mobile app (`mobile/app/`).
+
+The name chooser shipped yesterday rendered its third option as `用「{{typed}}」，並認定它就是「Digitaria heterantha」`. The misapplied variant of the string was authored with `{{typed}}` while its caller passed `{ name, accepted }` (the non-misapplied variant uses `{{name}}` and was fine; so was the chooser's body text, which uses `{{typed}}` and is actually given it). i18next emits an unsatisfied placeholder verbatim — no error, no fallback. The string now uses `{{name}}`, matching its four sibling options.
+
+### check:i18n could not see this, so it was extended
+
+It only verified that a key exists in both locales — and here both locales had the key, holding a perfectly valid string. A new pass **compares the params each `t()` call passes against the placeholders in the string**; reintroducing the bug names `src/lib/adoptName.ts:83` and the missing `{{typed}}` outright. Only unsatisfied placeholders fail: an extra unused param is not reported (several call sites legitimately feed one object to two sibling keys), and `{...opts}` spreads, which cannot be resolved statically, go to an advisory list rather than a false positive.
+
+Writing it surfaced **a second hole**: neither line regex matched `t(cond ? 'a.b' : 'c.d')` — the first argument does not open with a quote (so KEY_RE misses) and is followed by `?` rather than `,` or `)` (so DYNAMIC_RE misses too). The ternary keys added the day before had therefore **never been checked for existence at all**; both happened to be present. The new pass brace-matches the whole argument list instead (skipping parens inside string and template literals), so both branches of a ternary are checked. Sweeping the repo turned up no other gap: all 990 referenced keys are present.
+
+---
+
+## 2026-09-01: Mobile — Recording Under Your Own Taxonomic Opinion
+
+> Mobile app (`mobile/app/`).
+
+TaiCOL calling a name a synonym or misapplied does not mean the recorder agrees — taxonomic opinion legitimately differs. The app used to decide for them: searching a synonym resolved straight to the accepted name, the record stored only the accepted `taxon_id`, the name they typed flashed past in one search-row line and was gone, and the export gave no sign of which name the determination had actually used.
+
+### The fact the design turns on
+
+Measured on the bundled DB: 269,824 rows, **269,824 distinct `name_id`**, 96,677 distinct `taxon_id` — `taxon_id` is the taxon *concept* and `name_id` is the *name*, and **27.7% of concepts carry a synonym**. So adopting a local synonym needs no GBIF at all: the name already has an id locally. And `name_id` is `INTEGER PRIMARY KEY` (the rowid), so looking it up is the cheapest query SQLite has — no index to add, no bundle rebuild.
+
+### What shipped (migration v28)
+
+The three record tables gain `used_name_id` + `used_scientific_name` (both NULL = the accepted name, so no backfill and no change to existing rows), while `taxon_id` stays put so statistics and export grouping never split. The `≡ you typed: X` line in search results is now tappable, opening a chooser: use the accepted name / use X but keep the same taxon / use X as its own taxon (fetching the full hierarchy from GBIF) / file under the other local taxon (the 451 rows where a misapplied name spans two concepts).
+
+**Two columns rather than one**: comparing two real TaiCOL releases row by row, of 242,282 shared name_ids, 13 changed scientific name, 3 disappeared, 277 moved to a different taxon and 283 changed status. The id is stable but not perfect; the string is self-describing. **The status is deliberately not stored** — TaiCOL changes its mind, and the recorder's choice is the part worth persisting.
+
+Export adds four DwC terms previously unused anywhere in the repo: `scientificNameID`, `taxonomicStatus`, `acceptedNameUsage` and `acceptedNameUsageID` (the taxon_id — DwC requires it to share an identifier space with `taxonID`), mirrored into `backend/utils/mapper.py`. Records without an adopted name gain no fields at all.
+
+### Existing defects fixed along the way
+
+- **`sciMatch`'s `usage_status LIKE '%accepted%'` also matches `'not-accepted'`** (substring) — batch import and scientific-name matching could already treat a synonym as accepted.
+- **`externalToSearchResult` hardcoded `usage_status: 'accepted'`**, so every externally sourced name claimed a status nobody had checked.
+- **The GBIF lookup performed two silent name substitutions** (GBIF synonym → accepted → local taxon) and skipped its own confirmation step, discarding what `sciMatch` had computed about the local checklist's view. It now shows what you picked next to what the checklist has, and lets you decide.
+- **Markdown deduped by taxon_id**, collapsing two deliberately different names under one concept into a single line.
+- Three paths that silently swallowed an adopted name — import, duplicate-record, batch import — were all closed.
+
+### check:roundtrip could not have caught this class of loss
+
+Its field-coverage assertion had **never been run against record-level rows**: adding a record column and forgetting the exporter passed the check. It now covers them, with the fields `resolveTaxa` joins on excluded so the real signal is not drowned out.
+
+The data-check screen also gains one line: how many adopted names no longer match the current checklist (527 non-accepted names changed concept within six months) — **reported, never rewritten**; the record still shows the name its recorder chose.
+
+---
+
+## 2026-08-31: Mobile — Record Import/Restore, Duplicate Record, GBIF Name Lookup
+
+> All of the below is the mobile app (`mobile/app/`). Architecture notes and TODOs live in `mobile/Plan.md`.
+
+### Full round-trip import for checklist / plot `.yml`
+
+- **Checklist (session) had no import path at all**: the only reader of a session yml, `BatchImportModal`, pulled taxonIDs into an *existing* checklist and dropped the `event:` block, times, surveyor, quantities, GPS, attributes and remarks. Added `importSession` + `sessionImport.ts`, restoring every column of `sessions` and `checklist_records`.
+- **Plot import completed**: bound site, photos, `env_photos_json`, `track_finalized`; an unknown `project` is now created instead of silently collapsing into 未分類.
+- **The yml schema grew on both sides**: plot gains `site:` / `env_photo_files` / `track_finalized` / `species[].photo_files`; session `event:` gains `eventUUID` / `eventType` / `eventRemarks` / `decimalLatitude,Longitude` / `gpsMode` / `trackGeoJSON`, and checklist items gain `associatedMedia`.
+- **The yml is authoritative**; the zip's `track.*` / `site.*` (gpx/kml/geojson) are consulted only when the yml lacks that geometry.
+- **Photos restore into Photos.app** (the same `createAssetAsync` path a capture takes). When overwriting a record that already has photos, the user is asked to keep the existing ones or import again — Photos.app assets cannot be overwritten, so those are the only honest options.
+- Fixed **photo filename collisions**: the `{taxonID}_{label}_{n}` counter was per-record, so two rows of the same taxon in one export produced identical entries and one was silently overwritten — photos were being lost at export time.
+- Fixed **data loss on overwrite import**: the old copy was deleted before the species loop, which could then throw on a legacy `E0` layer (CHECK violation), leaving neither record. Now wrapped in `withTransaction` (op-sqlite's `db.transaction()` is async and cannot wrap the synchronous `executeSync` layer, hence explicit BEGIN/COMMIT) with layer coercion.
+- A multi-record bundle zip used to import an arbitrary one of its records — now refused; zip-slip guard added for the first feature that writes files out of a zip.
+- **Schema v27**: `sessions.uuid` (add column → backfill → unique index, each step re-runnable), giving checklists the upsert key a round trip needs.
+
+### Batch import failed on a `.zip`
+
+"Read from file" read the picked file as text, so a zip produced iOS's raw `the text encoding of its contents can't be determined`. Now goes through `readRecordYamlText()` (reads a `.yml`, or extracts the record yml from a `.zip`), with errors mapped through `importErrorMessage()`.
+
+### Records list: duplicate a record, save species to favourites
+
+- New **Duplicate** swipe action (duplicate / export / delete). Choose whether to carry the setup (survey settings + environmental values) and the species (list plus layer/subplot slot only), name the copy, and optionally start recording in it immediately.
+- **Names auto-advance**: `JP-EH-12` → `JP-EH-13`, zero padding preserved (`PLOT_009` → `PLOT_010`), a date appended when there is no number, and taken names skipped. A collision warns rather than blocks — re-surveying a permanent plot next season keeps the same plotid on purpose.
+- Multi-select mode gains **save to favourites** (several records at once), reusing the existing `importFromRecord`.
+- **Collection trips do not copy specimens**: collection numbers come from the collector's global career series, derived from stored rows and unreclaimable, so pre-issuing them would burn real numbers on gatherings nobody made.
+
+### Drawing a favourites-list area landed on the wrong screen
+
+`router.back()`'s assumption did not hold — `/favorites` sits *above* `(tabs)` in the root stack, so once the map is open the favourites route is no longer behind us. Now navigates explicitly to `/favorites?folder=N`, and the favourites screen reopens that folder.
+
+### Species not in the local checklists → look it up on GBIF
+
+- When a search finds nothing locally, a **"Look up on GBIF" button** appears (on demand — no per-keystroke API traffic, and nothing to wait on in the field with no signal). Candidates show scientific name, author, rank, hierarchy, GBIF vernacular name and synonym status.
+- On pick, **the accepted name GBIF returns is matched against the local checklists first**; a hit keeps the local id, because a Taiwanese species must never carry a GBIF id or the same organism ends up with two identities. Only a genuine miss mints a `g{usageKey}` external taxon, with the Chinese common name prefilled from GBIF's vernacular names (Chinese preferred) and editable when GBIF has none.
+- The batch importer's "not found" list is tappable into the same flow.
+- **Prerequisite fixes**: `searchByTaxonId` did not understand `g…` ids (they were queried against the TaiCOL table and returned null), so an external taxon in a favourites list could not be opened or added to a record and `importFromRecord` discarded it as unresolved — seven existing breakages fixed at once. `external_taxa` was also absent from the search path (it lives in user.db while the checklists live in twnamelist.db, and the app never ATTACHes), so a species the user had just added still could not be found.
+- Also fixed: `findExternalTaxonIdByName` matched on name alone (the bundled DB holds 72 cross-kingdom genus homonyms, so two different organisms could collapse onto one `taxon_id`); `upsertExternalTaxon` updated `source` without `source_key`, leaving rows claiming to be an unrelated GBIF taxon — with the index built over that claim.
+
+### New automated checks
+
+- `npm run check:roundtrip` — DB-shaped fixture → yml → parser, compared field by field, plus a coverage assertion (adding a column and forgetting the exporter fails it). It immediately caught js-yaml parsing an unquoted `startedAt` into a `Date`.
+- `npm run check:names` — the name-increment rule. It immediately caught the default checklist name `YYYY-MM-DD HH:MM` being "incremented" to `14:60`.
+- `npm run check:gbif` — GBIF response parsing (vernacular language priority, rank filtering, synonym accepted names, malformed bodies), with no network.
+
+---
+
+## 2026-08-30: Mobile — Tech Debt, iNaturalist/GBIF, Favourites Management, Herbarium Labels
+
+### Tech debt (verified against the user's real `user.db` — 917 rows / 16 tables, zero drift per table)
+
+- **`clearAllUserData()` bricked the app permanently** (worst of the batch): it DROPped 8 of 16 tables, then replayed migrations from v1 — and no `ADD COLUMN` had an existence check, so v6 threw `duplicate column name`, `schema_version` stuck at 5 against v22 code, and the next launch showed a red "initialisation failed" screen **with no path to backup restore**. Reinstall was the only way out. Replaced with delete-the-file-and-rebuild (the already-proven `restoreBackup` route); all 30 `ADD COLUMN` statements now go through `addColumnIfMissing()`.
+- **Deleting a project made sites and collection trips "disappear"**: `deleteProject` covered 2 of the 4 tables with an FK to projects, and those two list queries use an INNER JOIN — so the data was still in the DB but gone from the lists. Fixed in three places (complete the reassignment, LEFT JOIN, orphan repair).
+- **Turned `PRAGMA foreign_keys = ON`**: until now every `ON DELETE CASCADE` in the schema was inert. Ordering matters: OFF during migrations (v3's `ALTER TABLE sites RENAME` would otherwise cascade away every plot's `site_id`), OFF during cleanup (dangling references would throw instead of being repaired), ON afterwards.
+- **UUIDs moved to SQLite's CSPRNG**: two byte-identical `Math.random` implementations were minting DwC `occurrenceID`s, and Hermes' `Math.random()` is a non-cryptographic PRNG with unspecified seeding. Runtime and migration now use the same `randomblob` source. 20,000 samples, zero collisions.
+- **Automatic safety backup** before any repair that rewrites existing rows (`VACUUM INTO`), plus a restore entry in the backup screen — the snapshot lives in the app's private directory, so without that entry the backup exists but cannot be restored.
+- Added `npm run check:i18n` (833 keys against both locales). Lint errors 1 → 0.
+
+### iNaturalist / GBIF: draw an area → species list
+
+The app's **first network feature** (zero HTTP anywhere in mobile before this). Four phases; the first two deliberately touch no network, to retire the architectural risk first.
+
+- **Identity rule, three tiers, order not negotiable**: TaiCOL `t…` → Japan `y…` → only then mint an external `g…`/`gi…`. The same species always keeps the local id, or one organism ends up with two identities and records, exports and statistics split.
+- Migrations **v23** (two-level favourites), **v24** (`external_taxa`, in user.db rather than the bundle DB — the latter is re-copied wholesale whenever its hash changes), **v25** (a list remembers the area it came from).
+- Measured match rates: Yangmingshan 97%, Kenting 98%, Kinabalu 17%.
+- **`/species/match` turned out to be worth something other than planned**: the plan assumed it would resolve synonyms back into the local checklist; measured over 211 unmatched names it rescued **zero** (phase 2 already walks TaiCOL's own synonym rows). Its real value is supplying identifiers — 211/211. The UI copy was rewritten rather than claim something measured at zero.
+- **Connectivity detection without a native module**: the two services HEAD-probe each other; only if both fail do we say "offline".
+- Potholes: RN's `URLSearchParams` has no copy constructor (the bbox was silently dropped, turning it into a global query); `LOWER(simple_name) = ?` cannot use an index (67 ms/name → `IN (?,?,?)` at 0.09 ms, **774×**); GBIF geometry 400s (now always falls back to the bounding box and says so); GBIF **HTTP 429** actually hit (concurrency lowered, backoff added).
+- Added `npm run check:kav`: a `KeyboardAvoidingView` call site without a sizing className resolves to zero height — the screen dims, swallows every touch, and offers no cancel.
+
+### Favourites management + herbarium labels (.docx)
+
+- Swipe-delete, multi-select delete and export (docx / csv) at the list level. The default list cannot be deleted — it is where quick-add lands.
+- Export **reuses** rather than reimplements: the half of `recordToMarkdownItem` that carries no observation data was extracted, so favourites run the identical `generateMarkdown` → `markdownToDocx` pipeline.
+- **All docx output switched to A4** (an empty `sectPr` had been inheriting Word's US Letter default). Verified by compiling before and after, feeding both the same Markdown, and diffing the unzipped `document.xml` — **every byte outside `sectPr` identical**.
+- Herbarium labels: A4, 2 columns × 5 rows, dashed cut lines, and **no new dependency** (`docx.ts` was already a hand-written OOXML writer). Migration **v26** adds `identified_by` (DwC `identifiedBy`); existing specimens stay NULL rather than inheriting the collector — that would assert a determination somebody never made.
+- **Only 4 labels per page on device**: row height was `lineRule="auto"`, i.e. font-determined, and that machine has no 標楷體; the substitute font's line ratio pushed each row past its budget. The fix was not another guessed number but making height independent of the font (an explicit `atLeast` value per size).
+- Collection numbers **cannot be compared as strings** (`DAO0010` sorts before `DAO0009`) — sorting now uses the existing numeric-tail column.
+
+---
+
+## 2026-08-29: Mobile — Specimen Collection, EXIF Repair, Checklist Updates, Search Ranking
+
+### Specimen collection — a third kind of record
+
+Alongside checklists and plot surveys: collection-number series, collector / determiner, and an editable detail sheet (date and time split into two fields, coordinate accuracy, rename, duplicate, re-identify). **Collection deliberately sits outside the app-wide single-active invariant** — starting one must never end a checklist or plot survey in progress.
+
+- **Duplicate collection-number detection** (there was none): every automatic path is now collision-free by construction, so typing one by hand is the only way in — and that path warns and offers the next free number. **No UNIQUE constraint**: duplicate sheets sharing a number, and imports of legacy data, are both legitimate.
+- **Duplicating a specimen carries only the taxon and the collector**: locality, coordinates, phenology, remarks and photos are deliberately blank — they describe one physical gathering, and inheriting them silently would attach the previous specimen's description to a different plant.
+
+### Photo EXIF repair (iOS-only; affected existing checklist and plot photos too)
+
+Reported as "photo metadata differs from the camera's — lens and focal length are blank". Confirmed by reading `expo-image-picker`'s iOS source: `quality < 1` routes through `UIImage.jpegData()`, **which produces a JPEG with no EXIF at all** — Make / Model / LensModel / FocalLength / ISO / DateTimeOriginal were gone before our piexif ever saw the file. Android was unaffected (it has `copyExifData`).
+
+The fix feeds back `asset.exif`, which the picker had been returning all along and the codebase had never read. It **only fills gaps, never overwrites**, which makes it a no-op on Android with no `Platform.OS` branch. Plot environment photos were fixed at the same time (they had never gone through piexif at all — previously logged as a "known limitation", actually the same bug).
+
+### Japan checklist switched to the JBIF wamei checklist (merged, not replaced)
+
+`ylist_names` 20,103 → **`jp_names` 25,839** rows; synonymous Japanese names 0 → **6,711 taxa**.
+
+The request was "replace YList with wamei", but wamei covers vascular plants only and carries no conservation or origin attributes; a straight replacement would have silently lost 1,909 bryophytes, 786 endemics, 1,719 IUCN and 8,780 naturalisation notes. So wamei became the Japanese-name layer with YList filling in bryophytes and the attribute columns. The payoff: wamei is **CC BY 4.0** (the YList copy's licence was unclear).
+
+**Hard requirement: not one of the 19,851 existing taxon_ids may be lost** — records persist taxon_id, and a failed lookup renders blank rather than erroring, so the user would never know their old records had broken. The first dry run deduplicated by `sci_norm` and ate 252 ids; switching the second pass to compare by taxon_id preserved all of them. **Only a row-by-row comparison against the pre-import id list catches this** — the total row count went *up*.
+
+### TaiCOL updated to the 2026-08-26 release (251,540 → 269,824 rows)
+
+The importer **DROPs the table and commits before it opens the CSV for the first time**, so three *silent* failure modes were ruled out beforehand: a BOM would import 0 rows without an error; a renamed column would turn 250k rows of that field into NULL; a changed value domain would make 20+ hard-coded queries return nothing.
+
+Along the way: a **`LIKE 't00%'` blind spot**. The auto-repair for identification-key taxon_ids was written when every TaiCOL id was `t00xxxxx`; the largest is now `t0124636`, so 161 of 5,800 references **were warned about but could never be repaired**. Changed to `GLOB 't[0-9]*'`.
+
+### Exact vernacular matches first + taxonomy-tree scrolling
+
+- **The main search's `LIMIT 100` had no `ORDER BY`**: whether the exact row made the cut depended on SQLite's scan order, i.e. rowid — which changes every time the bundle DB is rebuilt. That is the mechanism behind "it used to find this and now it doesn't". 7 of 47 single-character vernacular names were being truncated away. **Not fixed with `ORDER BY`** (measured: a single Latin letter matches 200k rows, 0 ms → 89 ms); a second index-served equality query fetches the exact rows in under 0.1 ms.
+- **`getItemLayout` was not pure**: it summed a Map that every row's `onLayout` mutated, while RN requires it to be pure in `(data, index)`. Row heights were also deliberately underestimated, so the error was a per-row bias multiplied by the target index — the more the tree was expanded, the further off it landed, which is what made this "fixed, then broken again". Replaced with a memoised prefix-sum table (also turning O(n²) into O(1)).
+- **But the real symptom was that the scroll target itself was wrong**: `RANK_ORDER` stopped at genus, so the target was the *genus* node — and with 550 species under `Carex`, a name sitting at #300 was never going to be visible. **Lesson: scroll bugs need "the maths is right" and "the target is right" verified separately.**
+
+### The bottom search box under the keyboard — third time, so it is now enforced in code
+
+`KeyboardStickyView`'s offset exists to cancel out the chrome *below* the dock. Copying another screen's `insets.bottom` without also copying its `SafeAreaView` root meant that value pushed the search box **down into the keyboard** — worse than not setting it. The memory file already described this exact mistake verbatim: **the documentation was right and did not prevent it.** Added `npm run check:dock`, which checks that each offset is paired with the chrome that justifies it, and both historical mistakes were replanted to confirm the check catches them.
+
+---
+
+## 2026-06-12: Mobile — UI i18n (en / zh-TW), Inline Editable Location Map
+
+- **Full i18n migration** (~55 files): `i18next` + `react-i18next`, 803 keys at parity across both locales. Data labels changed from `const` to functions returning `i18n.t()` so they update when the language switches. Dates are ISO 8601 throughout (language-neutral), replacing `toLocaleString` hard-coded to `'zh-TW'`.
+- **Export content deliberately does not follow the UI language**: statically confirmed that `markdown.ts` and `bundleExport.ts` contain zero i18n references.
+- Potholes: `expo-localization` crashed at startup → device locale now read from RN core modules (**do not** use Hermes' `Intl.resolvedOptions().locale`; some builds always return `en-US`). The taxonomy tree's "Kingdom" stayed English after switching, because `i18n.t()` had been baked into a long-lived cache → the data layer now stores language-neutral keys and translates at render.
+- **Inline editable map** in the record detail and plot species screens, so a coordinate can be corrected without a trip to the map tab; zoom / locate / basemap / fullscreen.
+- Pothole: **`SafeAreaView` reports zero inset inside a `Modal`** (a Modal is its own native view hierarchy and cannot see the provider), so the header sat under the notch. **Rule: inside a Modal, always apply insets manually via `useSafeAreaInsets`.**
+
+---
+
+## 2026-06-07: Mobile — Subplots, Plot Round-trip Import, Export Settings & docx, Favourites & Backup
+
+- **Subplots** (migration **v18**): the layer definition stays shared at plot level; a subplot only carries cover/height and species. A subplot is an internal dimension of a plot and **does not compete for the single-active slot**. Export gains `eventID` / `parentEventID` and a `subplots.csv`.
+- **Plot round-trip import**: the plot yml grew from three fields to a full schema (uuid + all metadata + coordinates/terrain/cover/track + layers + subplots + species), with overwrite-by-uuid or save-as-new; an imported plot always lands `status='done'` so it cannot hijack the active record.
+- **Export settings**: selectable classification levels and conservation columns (matching desktop); docx uses 標楷體 for Chinese and Times New Roman for English, indents per level, and prints higher-rank vernacular names ("鴿形目 (Columbiformes)").
+- **Export progress UI**: a full-screen overlay replaces a one-line toast, drawn before the synchronous zip freezes the thread. Pothole: the overlay is a Modal, and **a share sheet cannot be presented while a Modal is dismissing** (silently no-ops on iOS) → wait 450 ms.
+- **Favourites + backup/restore** (v14): a favourite-species list, plus DB backup and restore (`VACUUM INTO` + `reloadAppAsync`).
+- **Default surveyors** (v15): maintained in preferences and filled into `recordedBy` at record creation.
+- **`occurrenceID` per species record** (v16, uuid); per-layer cm/m height unit (v17, canonical storage stays cm).
+
+---
+
+## 2026-06-06: Mobile — Point-count Surveys (v13), Voice Batch Import, Search & Navigation Fixes
+
+- **A third survey method, point_count** (migration **v13**, fully additive): static GPS + radius, individual counts, reusing the `'T'` bucket. Three helpers (`isStratified` / `usesTrack` / `requiresStaticGps`) replaced roughly 15 scattered `plot_type` branches.
+- **Per-record coordinates and detection type** (seen / heard / flying), plus export completion — everything the user can enter is now exported (notes and the four DwC attributes in yml, detectionType and coordinates in sp.csv, plot `points.geojson` implemented).
+- **Voice batch entry** with a toneless-pinyin homophone layer (`pinyin-pro`) — dictation mangles uncommon names into homophones, and the phonetic flag is enabled only for the voice path.
+- **"Add to current record" routed wrongly**: the species card's add button always landed in a quick checklist, and with an active plot survey it **ended that survey via single-active and opened a checklist instead**. Extracted a shared `useAddToActiveRecord` hook (active plot wins) and moved all three entry points onto it.
+- **Taxonomy jumps never landed**: the jump was consumed while the taxonomy screen was still in the background (the FlatList had not laid out, and the failed scroll cleared the request without retrying). Now consumed only after `useIsFocused()`, and the keyboard is dismissed before navigating so `KeyboardStickyView` does not latch at keyboard height.
+
+---
+
+## 2026-05-22: Mobile — Plot Layers Generalised (1–6), Environment Photos, DwC Attribute Export
+
+- **Migration v12**: a new `plot_survey_layers` table (per-layer cover/height/method), a 1–6 `layer_count` stepper, and `env_photos_json`. `plot_species_records.layer`'s CHECK moved from `E0–E3` to `E1–E6`, rebuilding the table and shifting existing values up by one (E0 moss → E1); the ecological meaning is unchanged.
+- Labels fixed as E1 moss / E2 herb / E3 shrub / E4 understory tree / E5 main canopy / E6 emergent.
+- The plot screen's three tabs (environment / species / layers) collapsed to two, with layers folded into environment.
+- **Environment photos**: camera, library and a fullscreen viewer; renamed to `${plotid}_YYYYMMDD_env-${N}` on export.
+- **DwC attributes added to every export format** (sex / lifeStage / reproductiveCondition / leafPhenology).
+- The legacy `e0_*..e3_*` columns were kept deliberately as a rollback window (dropped in v13).
+
+---
+
+## 2026-05-11 – 05-21: Mobile — v0.1 (MVP → vegetation plot surveys)
+
+Mobile is a **separate codebase** from the desktop app (Expo SDK 54 + React Native 0.81 + TypeScript strict + Expo Router + NativeWind + Zustand + op-sqlite) with its own architecture, UI conventions and build pipeline. What follows is the initial build through phase 3; per-sprint detail is in `mobile/Plan.md`, and the potholes in `mobile/Update_log.md`.
+
+### Data layer and search
+
+The TaiCOL checklist ships as a bundled DB (copied from the asset into documentDirectory on first launch, re-copied when Metro's `asset.hash` changes), with search, fuzzy matching and synonym resolution ported from desktop and working entirely offline. Includes the 台/臺 swap, exact-vernacular-first ranking, and the `≡` (synonym) / `~` (fuzzy) markers.
+
+### Records
+
+- **Checklist (session)**: lightweight species records with remarks, photos, sorting, multi-select delete, a stale-session prompt the next day, and reopening after ending.
+- **Plot survey**: fixed plots (per-layer cover/height/method) and transects (GPS track, with the watch at module level so switching tabs never interrupts it). **Abundance was generalised** to DwC `organismQuantity` / `organismQuantityType` (Braun-Blanquet / % cover / individuals / DBH / custom), and **DwC species attributes** are shown per kingdom and class.
+- **Single-active invariant**: at most one record in progress app-wide, with a UI gate, a DB-layer safety net, and a cleanup pass at startup.
+
+### Map and geographic sites
+
+Full-bleed map (Apple Maps on iOS, Google Maps on Android), multiple basemaps, 85 Academia Sinica WMTS overlays, address search, drawing points/lines/polygons as "geographic sites" (v2/v3, including Multi\* geometry), GeoJSON / KML / GPX / WKT import and export, and binding a checklist to a site.
+
+### Photos
+
+Species metadata is embedded into EXIF/IPTC at capture (ImageDescription + a UserComment JSON blob), saved to Photos.app, with the URI stored in `photo_paths`. A UTF-8→Latin1 byte trick fixes Chinese turning into `????`.
+
+### Taxonomy tree and identification keys
+
+Kingdom → phylum → class → order → family → genus → species with lazy loading, persisted expansion state, and auto-expand-and-scroll after a search; plus an offline dichotomous-key runner (breadcrumb, step-by-step couplets, terminal taxon card).
+
+### The cross-platform rule, settled here
+
+`Alert.prompt` and `ActionSheetIOS` are both iOS-only, so everything goes through two imperative APIs (`promptText()` / `showActionSheet()`) backed by host components mounted at the root. **Writing platform branches with `Platform.OS === 'ios'` is forbidden** — the earlier `Alert.alert` fallbacks were repeatedly found to have fewer options or degraded behaviour on Android.
+
+### Two incidents worth recording
+
+- **Nested Modals on iOS**: three levels hang, and colliding a present with a dismiss in the same tick crashes outright. Settled on dismiss → await the animation → present.
+- **Chinese input crashed Hermes' GC** (`EXC_BAD_ACCESS`): the root cause was a bundle DB update that skipped rebuilding `cname_fuzzy_index`, so every query threw `no such table` and the uncaught exception fired repeatedly inside the debounce `setTimeout` until GC fell over. Fixed by rebuilding the index, having `fuzzy.ts` detect the missing table and degrade gracefully, and writing "updating the bundle DB means rebuilding the fuzzy index" into `make mobile-db` and `CLAUDE.md`.
+
+---
+
 ## 2026-04-12b: User Profile DB, Project Management, Table Filters
 
 ### User Profile + Checklist DB

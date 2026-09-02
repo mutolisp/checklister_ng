@@ -197,6 +197,14 @@ function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
   const leaf = multiToPipe(sp.leaf_phenology);
   if (leaf) item.leaf_phenology = leaf;
   if (sp.notes) item.notes = sp.notes;
+  // A specimen determined under a name the checklist calls non-accepted says so
+  // on the label and in the export — the determination is the datum.
+  if (sp.used_name_id != null || sp.used_scientific_name) {
+    if (sp.used_name_id != null) item.used_name_id = sp.used_name_id;
+    if (sp.used_status) item.used_status = sp.used_status;
+    if (sp.used_accepted_name) item.accepted_name = sp.used_accepted_name;
+    item.accepted_taxon_id = sp.taxon_id;
+  }
   return item;
 }
 
@@ -450,6 +458,12 @@ function buildPlotSpeciesCsv(
       ? [{ h: 'leafPhenology', v: (r: PlotSpeciesRecordWithTaxon) => multiToPipe(r.leaf_phenology) }]
       : []),
     { h: 'detectionType', v: (r) => r.detection_type ?? '' },
+    // Name usage — blank for every record filed under the accepted name, so
+    // existing exports keep their shape.
+    { h: 'scientificNameID', v: (r) => (r.used_name_id != null ? String(r.used_name_id) : '') },
+    { h: 'taxonomicStatus', v: (r) => r.used_status ?? '' },
+    { h: 'acceptedNameUsage', v: (r) => r.used_accepted_name ?? '' },
+    { h: 'acceptedNameUsageID', v: (r) => (r.used_status ? r.taxon_id : '') },
     { h: 'decimalLatitude', v: (r) => r.lat ?? '' },
     { h: 'decimalLongitude', v: (r) => r.lng ?? '' },
     { h: 'coordinateUncertaintyInMeters', v: (r) => r.accuracy ?? '' },
@@ -753,7 +767,14 @@ async function buildPlotEntries(
 
   // ${plotid}_checklist.md — deduped (one row per taxon) human-readable 名錄,
   // mirrors the session .md. Same dedup feeds the optional .docx below.
-  const uniqueSpecies = [...new Map(species.map((s) => [s.taxon_id, s])).values()];
+  // Keyed by taxon AND the name it was filed under: a taxon deliberately
+  // recorded under two different names is two checklist entries, and collapsing
+  // them would silently drop one of the recorder's determinations.
+  const uniqueSpecies = [
+    ...new Map(
+      species.map((s) => [`${s.taxon_id}|${s.used_scientific_name ?? ''}`, s]),
+    ).values(),
+  ];
   const checklistMd = generateMarkdown(
     uniqueSpecies.map(plotSpeciesToMarkdownItem),
     { project: project && project.id !== 0 ? project.name : '', site: plot.plotid },

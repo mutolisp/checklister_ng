@@ -1853,6 +1853,14 @@ initialization`,一進名錄就炸。TS 不會擋(參考寫在函式體內)。�
 
 Node 用內建 type stripping 跑 `.ts`，但不會自己補副檔名，所以有 `scripts/ts-resolve-register.mjs` + `ts-resolve-hooks.mjs` 兩個小 hook；也因此 parser 必須維持「純」：不 import `~/i18n`（錯誤改用 `ImportError` code，UI 端才翻譯）、多值 helper 抽到 `src/lib/dwcMultiValue.ts`。`ImportError` 不能用 parameter property（strip-only 模式不支援）。
 
+### 修掉的第一個實機回報：`{{typed}}` 字面顯示在選單上
+
+第三個選項渲染成 `用「{{typed}}」，並認定它就是「Digitaria heterantha」`。misapplied 版本的字串寫 `{{typed}}`，呼叫端 `labelFor` 傳的卻是 `{ name, accepted }`（非 misapplied 版本用 `{{name}}` 所以正常）——i18next 遇到沒對應參數的 placeholder 就原樣輸出。字串改成 `{{name}}` 與同組其他選項一致。
+
+`check:i18n` 看不到這種錯：兩份 locale 都有這個 key、值也是合法字串。已擴充成**比對每個 `t()` 呼叫傳的參數與字串裡的 placeholder**，並回歸測試（把 bug 放回去會指名 `src/lib/adoptName.ts:83`）。
+
+擴充時順帶補掉第二個洞：原本兩條 line-based regex **都不匹配 `t(cond ? 'a.b' : 'c.d')`**（第一個引數不是引號開頭 → KEY_RE 不中；後面接 `?` 而非 `,)` → DYNAMIC_RE 也不中），所以這次新增的 `useMineSameTaxonMisapplied` / `useMineSameTaxon` 這組三元鍵**從頭到尾沒被驗證過存不存在**。新的 pass 改用括號配對取出整串引數，三元鍵的兩個 key 都會檢查。
+
 ### 待驗證（實機）
 
 尚未在實機跑過。要測：完整 round-trip（固定樣區含分層/小區/GPS/屬性/照片/軌跡/site/環境照 → 匯出 → 匯入另存 → 再匯出 diff）、覆蓋時兩條照片分支、只有 `track.gpx` 沒有 yml 軌跡的 fallback、採集 zip 與多筆打包 zip 的拒絕訊息、Android `content://`（無副檔名）走 magic byte 判斷。
@@ -1971,3 +1979,65 @@ Node 用內建 type stripping 跑 `.ts`，但不會自己補副檔名，所以�
 ### 待驗證（實機）
 
 尚未上機。要測：查一個 TaiCOL 沒有的學名 → 加入 → **再搜一次要在本地就找到**；挑一個 GBIF 有、本地也收錄的異名 → 必須回本地 id 不得新增外部物種；打屬名要標 genus；飛航模式要在 ~8 秒內說沒網路；加入後到常用名錄點該物種要能開詳細、能加入記錄；匯出確認 `taxonID` 是 `g…`。
+
+## Sprint：使用者可採用自己的分類見解（synonym / misapplied）（2026-09-01）
+
+TaiCOL 說某個名字是 synonym 或 misapplied，不代表使用者同意。以前 app 默默替他決定了：搜尋異名會直接解析到接受名，記錄只存接受名的 `taxon_id`，使用者輸入的名字在搜尋列閃過一行就消失，匯出完全看不出這筆鑑定原本用的是哪個名字。
+
+### 關鍵事實：taxon_id 是概念、name_id 是名字
+
+實測 bundle DB：269,824 列、**269,824 個相異 `name_id`**、96,677 個相異 `taxon_id`。accepted 嚴格 1:1；not-accepted 106,725 列對 26,817 個 taxon（**27.7% 的分類群有異名**）；misapplied 1,156 列對 911 個 taxon。
+
+所以**採用本地異名根本不需要 GBIF**——那個名字在本地就有 id。`name_id` 又是 `INTEGER PRIMARY KEY`（＝rowid），查它是 SQLite 最快的查法，不必加索引也不必重建 bundle DB。
+
+### migration v28
+
+三張記錄表各加 `used_name_id` + `used_scientific_name`（皆可 NULL＝沿用接受名，既有資料零回填）。`taxon_id` 不變，統計與匯出分群不分裂。
+
+**存兩欄而不是一欄**，是因為拿兩個真實 TaiCOL 版本（2026-02-24 → 04-24）逐列比對後知道：242,282 個共同 name_id 裡有 **13 個改了學名、3 個消失、277 個換了 taxon_id、283 個換了 usage_status**。id 穩定但不完美，字串是自我描述的——查不到或對不上就退回字串顯示，不會靜默變成別的名字。
+
+**狀態刻意不存**：TaiCOL 會改變主意（`Microlepia taiwaniana` 這版 accepted、下版 not-accepted），使用者的選擇才是要持久化的東西，`taxonomicStatus` 一律在顯示／匯出當下即時查。
+
+`resolveTaxa` 的 `usage_status = 'accepted'` 過濾是「每筆記錄都顯示 TaiCOL 意見」的唯一咽喉點，改在那裡覆蓋（`applyAdoptedName`），清單／詳細頁／Markdown／CSV／YAML 一次到位。
+
+### UI
+
+搜尋結果那行 `≡ 你輸入：X（synonym）` 變成可點（右側 chevron），開選單：
+
+1. 用接受名 Y（預設）
+2. 用 X 記錄，仍歸到 Y —— 記錄存 `used_name_id`，`taxonID` 不變
+3. 用 X 作為獨立分類群 —— 查 GBIF 取階層鑄 `g…`，並明說統計會分成兩群
+4. （misapplied 且 `taxon_id_all` 有第二個概念時）改歸到本地的另一個分類群
+
+`taxon_id_all` 有 451 列是逗號串（例：`Cirsium brevicaule` 跨 `t0053017` 與 `t0124339`），那正是「不同分類見解」最純粹的形態，而且完全不必離開本地名錄。記錄列上加 `SynonymStatusBadge`——沒有標示的話，採用名看起來像資料錯誤而不是使用者的決定。
+
+### 匯出／匯入
+
+新增四個 DwC term（此前全 repo 一個都沒用）：`scientificNameID`（= name_id）、`taxonomicStatus`、`acceptedNameUsage`、`acceptedNameUsageID`。**`acceptedNameUsageID` 用的是 taxon_id 不是 name_id**——DwC 要求它與 `taxonID` 同一個識別碼空間。`backend/utils/mapper.py` 同步加上（那兩份 mapper 宣稱互為鏡像但已漂了 32 個 entry）。
+
+沒有採用名的記錄**一個欄位都不會多**，既有匯出形狀不變。
+
+### 修掉的既有缺陷
+
+- **`sciMatch` 的 `usage_status LIKE '%accepted%'` 會命中 `'not-accepted'`**（子字串）。批次匯入與學名比對一直可能把異名當接受名用。
+- **`externalToSearchResult` 寫死 `usage_status: 'accepted'`**：每一筆外部物種都自稱接受名。改讀新的 `taxonomic_status` 欄位。
+- **`GbifLookupHost.handlePick` 連做兩次靜默替換**（GBIF 異名→接受名→本地分類群）並跳過確認畫面，`sciMatch` 算出的 `via` 當場丟掉。改成新增一個確認步驟，把「你選的」與「本地名錄有的」並排顯示，附狀態標示，再讓使用者決定。
+- **`matched_as` 沒帶 `name_id`** → 加上，但**只在 TaiCOL 列**：`jp_names` 的 name_id 是本地以 offset 產生的，每次 wamei 重匯就重新編號，不可持久化。
+- **markdown 以 taxon_id 去重**會把同一分類群下兩個不同採用名折成一列 → 改成 `taxon_id|採用名`。
+- **`upsertExternalTaxon` 以 (名字, 界) 重用列**：採用列必須排除在外，否則之後任何一次快取填充都會繼承或洗掉使用者的決定。更新時新欄位一律 `COALESCE` / `MAX` 保留。
+
+### 三條會靜默吞掉採用名的路徑，都補了
+
+`importSession` / `importPlotSurvey`（固定欄位清單）、`duplicateSession` / `duplicatePlotSurvey`（去重鍵加上採用名——同一分類群兩個名字是兩筆，不是重複）、批次匯入（原本以 taxonID 直接解析到接受名，等於匯出再匯入就把採用還原掉）。
+
+### check:roundtrip 原本抓不到這類遺漏
+
+`checkCoverage` 只跑過 `plotRow` 與 `sessionRow`，**從來沒跑過記錄層的 fixture**——加一個記錄欄位卻忘了改匯出，這支檢查照樣綠燈。已補上記錄層的涵蓋斷言（並用 `DERIVED_FROM_TAXON` 把 `resolveTaxa` join 上來的欄位排除，否則雜訊淹掉真訊號），session 端比對的是轉 DwC 前的 item，否則等於拿兩套詞彙互比。
+
+### 資料檢查新增一項
+
+TaiCOL 改版後 `(taxon_id, used_name_id)` 可能不再一致（半年內 527 個非接受名換了所屬概念）。設定頁的「資料檢查」回報筆數，**只報不改**——記錄仍顯示使用者當初選的名字，要不要跟著改由他決定。
+
+### 待驗證（實機）
+
+尚未上機。要測：搜 `Lycopodium tamariscinum` → 提示列可點 → 四個選項各走一次；選 2 後記錄列顯示的是採用名且帶狀態標示、匯出 `taxonID` 不變而 `scientificName` 是採用名；選 3 後綁 `g…` 且階層完整；**既有記錄（兩欄皆 NULL）顯示與匯出完全不變**（回歸重點）；離線時選項 2 要能用（不需網路）。

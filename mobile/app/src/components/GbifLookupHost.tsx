@@ -36,12 +36,19 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { ScientificName } from './ScientificName';
+import { SynonymStatusBadge } from './CollapsibleSection';
 import {
   searchByTaxonId,
   upsertExternalTaxon,
   type SearchResult,
 } from '~/db';
-import { searchNames, splitScientificName, type GbifNameCandidate } from '~/lib/gbif';
+import {
+  fetchTaxonDetail,
+  searchNames,
+  splitScientificName,
+  type GbifNameCandidate,
+  type GbifTaxonDetail,
+} from '~/lib/gbif';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { matchScientificName } from '~/lib/sciMatch';
 
@@ -78,7 +85,15 @@ export function lookupGbifName(q: string): Promise<GbifLookupOutcome | null> {
   });
 }
 
-type Step = 'searching' | 'list' | 'confirm';
+type Step = 'searching' | 'list' | 'confirm' | 'local';
+
+/** A GBIF pick that the local checklist already covers — shown for
+ *  confirmation rather than applied silently. */
+type LocalHit = {
+  result: SearchResult;
+  via: { name: string; status: string } | null;
+  picked: GbifNameCandidate;
+};
 
 export function GbifLookupHost() {
   const pending = useLookupStore((s) => s.pending);
@@ -94,6 +109,7 @@ export function GbifLookupHost() {
   const [candidates, setCandidates] = useState<GbifNameCandidate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<GbifNameCandidate | null>(null);
+  const [localHit, setLocalHit] = useState<LocalHit | null>(null);
   const [cname, setCname] = useState('');
   const abortRef = useRef<AbortController | null>(null);
 
@@ -105,6 +121,7 @@ export function GbifLookupHost() {
     setError(null);
     setCandidates([]);
     setPicked(null);
+    setLocalHit(null);
     (async () => {
       try {
         const rows = await searchNames(query, ctrl.signal);
@@ -139,8 +156,12 @@ export function GbifLookupHost() {
     if (local.kind === 'matched') {
       const hit = searchByTaxonId(local.taxon_id);
       if (hit) {
-        onResolved(hit, true);
-        onClose();
+        // The checklist knows this name — but possibly under a different name
+        // than the one just picked, and `via` says what it calls it. Carrying
+        // that through means the toast can name the substitution instead of
+        // performing it silently.
+        setLocalHit({ result: hit, via: local.via ?? null, picked: c });
+        setStep('local');
         return;
       }
     }
@@ -149,8 +170,16 @@ export function GbifLookupHost() {
     setStep('confirm');
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!picked) return;
+    // The full parent chain is enrichment: fetch it, but never let it block or
+    // fail the adoption — the user may be standing in a forest.
+    let detail: GbifTaxonDetail | null = null;
+    try {
+      detail = await fetchTaxonDetail(picked.usageKey);
+    } catch {
+      detail = null;
+    }
     const taxonId = upsertExternalTaxon({
       source: 'gbif',
       source_key: String(picked.usageKey),
@@ -164,6 +193,14 @@ export function GbifLookupHost() {
       family: picked.family,
       genus: picked.genus,
       common_name_c: cname.trim(),
+      taxonomic_status: detail?.taxonomicStatus || picked.status || null,
+      accepted_name: detail?.acceptedName || picked.acceptedName || null,
+      higher_classification: detail?.higherClassification || null,
+      // Set only when the user chose this OVER a local name the checklist
+      // offered — that is what makes it an adoption rather than a cache fill.
+      local_taxon_id: localHit?.result.taxon_id ?? null,
+      local_status: localHit?.via?.status ?? null,
+      adopted: localHit ? 1 : 0,
     });
     const created = searchByTaxonId(taxonId);
     if (created) onResolved(created, false);
@@ -259,6 +296,64 @@ export function GbifLookupHost() {
             />
             <Text className="border-t border-gray-100 dark:border-gray-800 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400">
               {t('areaSpecies.attributionGbif')}
+            </Text>
+          </View>
+        ) : null}
+
+        {step === 'local' && localHit ? (
+          <View className="flex-1 px-6 pt-10">
+            <Text className="text-sm text-gray-700 dark:text-gray-300">
+              {t('gbifLookup.localHitTitle')}
+            </Text>
+            <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3">
+              <Text className="text-xs text-gray-500 dark:text-gray-400">
+                {t('gbifLookup.youPicked')}
+              </Text>
+              <ScientificName
+                name={localHit.picked.canonicalName}
+                author={localHit.picked.author}
+                kingdom={localHit.picked.kingdom}
+                className="mt-0.5 text-sm text-gray-900 dark:text-gray-100"
+              />
+              <Text className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                {t('gbifLookup.localHas')}
+              </Text>
+              <View className="mt-0.5 flex-row items-center">
+                <ScientificName
+                  name={localHit.result.name}
+                  author={localHit.result.fullname.replace(localHit.result.name, '').trim()}
+                  kingdom={localHit.result.kingdom}
+                  className="text-sm text-gray-900 dark:text-gray-100"
+                />
+                {localHit.via ? <SynonymStatusBadge status={localHit.via.status} /> : null}
+              </View>
+            </View>
+
+            <Pressable
+              onPress={() => {
+                onResolved(localHit.result, true);
+                onClose();
+              }}
+              className="mt-6 rounded-lg bg-blue-600 px-4 py-3 active:bg-blue-700"
+            >
+              <Text className="text-center text-sm font-semibold text-white">
+                {t('gbifLookup.useLocal')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setPicked(localHit.picked);
+                setCname(localHit.picked.vernacularName);
+                setStep('confirm');
+              }}
+              className="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+            >
+              <Text className="text-center text-sm font-medium text-gray-800 dark:text-gray-200">
+                {t('gbifLookup.useMineAnyway')}
+              </Text>
+            </Pressable>
+            <Text className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+              {t('gbifLookup.useMineAnywayHint')}
             </Text>
           </View>
         ) : null}

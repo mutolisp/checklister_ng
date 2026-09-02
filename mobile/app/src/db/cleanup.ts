@@ -7,7 +7,7 @@
  * Both idempotent — running on a clean DB is a no-op.
  */
 import { File, Paths } from 'expo-file-system';
-import { getUserDb } from './init';
+import { getTaicolDb, getUserDb } from './init';
 
 /**
  * Enforce the single-active invariant at app start.
@@ -219,6 +219,12 @@ export type IntegrityReport = {
   orphanRows: { table: string; n: number }[];
   danglingProjectIds: { table: string; n: number }[];
   fkViolations: number;
+  /** Records whose deliberately adopted name no longer checks out against the
+   *  bundled checklist. Between the 2026-02 and 2026-04 TaiCOL releases 527
+   *  non-accepted names moved to a different taxon and 3 name_ids disappeared,
+   *  so this drifts on its own — and it is the user's call, not ours, whether
+   *  a record should follow. Reported, never rewritten. */
+  staleAdoptedNames: { table: string; n: number }[];
 };
 
 /**
@@ -228,6 +234,57 @@ export type IntegrityReport = {
  * are published DwC identifiers, so re-minting them would break any export
  * already handed over. The user needs the actual numbers to decide.
  */
+const ADOPTION_TABLES = ['checklist_records', 'plot_species_records', 'collection_specimens'];
+
+/**
+ * Rows whose stored adopted name the checklist no longer confirms — the id is
+ * gone, now spells something else, or has moved to another taxon.
+ *
+ * The record still displays the name the recorder chose (the stored string is
+ * authoritative for display); this only surfaces that the checklist has since
+ * disagreed, so the user can revisit those determinations if they want to.
+ */
+function countStaleAdoptions(table: string): number {
+  const userDb = getUserDb();
+  const res = userDb.executeSync(
+    `SELECT taxon_id, used_name_id, used_scientific_name FROM ${table}
+      WHERE used_name_id IS NOT NULL`,
+  );
+  const rows = (res.rows ?? []) as Array<{
+    taxon_id?: string;
+    used_name_id?: number;
+    used_scientific_name?: string;
+  }>;
+  if (rows.length === 0) return 0;
+
+  const ids = rows.map((r) => r.used_name_id).filter((v): v is number => typeof v === 'number');
+  const ph = ids.map(() => '?').join(',');
+  const namesRes = getTaicolDb().executeSync(
+    `SELECT name_id, simple_name, taxon_id FROM taicol_names WHERE name_id IN (${ph})`,
+    ids,
+  );
+  const live = new Map<number, { simple_name: string; taxon_id: string }>();
+  for (const r of (namesRes.rows ?? []) as Array<Record<string, unknown>>) {
+    live.set(Number(r.name_id), {
+      simple_name: (r.simple_name as string) ?? '',
+      taxon_id: (r.taxon_id as string) ?? '',
+    });
+  }
+
+  let stale = 0;
+  for (const r of rows) {
+    const hit = r.used_name_id != null ? live.get(r.used_name_id) : undefined;
+    if (!hit) {
+      stale += 1; // the name_id is gone from this checklist release
+      continue;
+    }
+    const stored = (r.used_scientific_name ?? '').trim();
+    if (stored && hit.simple_name !== stored) stale += 1; // renamed under us
+    else if (hit.taxon_id && r.taxon_id && hit.taxon_id !== r.taxon_id) stale += 1; // moved taxon
+  }
+  return stale;
+}
+
 export function checkIntegrity(): IntegrityReport {
   const db = getUserDb();
   const num = (sql: string): number => {
@@ -246,6 +303,13 @@ export function checkIntegrity(): IntegrityReport {
       rows: num(`SELECT COALESCE(SUM(c), 0) AS n FROM (${dup})`),
     };
   }).filter((d) => d.groups > 0);
+
+  // The adopted name is checked against the checklist, which lives in the OTHER
+  // database handle — so this is counted per table in JS rather than joined.
+  const staleAdoptedNames = ADOPTION_TABLES.map((table) => ({
+    table,
+    n: countStaleAdoptions(table),
+  })).filter((a) => a.n > 0);
 
   const orphanRows = [
     ['collection_specimens', 'trip_id NOT IN (SELECT id FROM collection_trips)'],
@@ -270,6 +334,7 @@ export function checkIntegrity(): IntegrityReport {
     duplicateOccurrenceIds,
     orphanRows,
     danglingProjectIds,
+    staleAdoptedNames,
     fkViolations: db.executeSync('PRAGMA foreign_key_check;').rows?.length ?? 0,
   };
 }
