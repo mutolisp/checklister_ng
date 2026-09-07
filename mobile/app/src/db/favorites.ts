@@ -1,4 +1,5 @@
 import { getUserDb } from './init';
+import { ensureExternalCopy } from './regionpacks';
 import { resolveTaxa } from './taxonLookup';
 import type { SearchResult } from './types';
 
@@ -142,6 +143,7 @@ export function addFavoriteRow(
   folderId: number = DEFAULT_FOLDER_ID,
 ): void {
   if (!row.taxon_id) return;
+  ensureExternalCopy(row.taxon_id);
   getUserDb().executeSync(
     `INSERT OR IGNORE INTO favorite_taxa
        (folder_id, taxon_id, simple_name, common_name_c, family, family_c, rank, kingdom, added_at)

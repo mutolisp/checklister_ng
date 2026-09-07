@@ -2079,3 +2079,38 @@ TaiCOL 改版後 `(taxon_id, used_name_id)` 可能不再一致（半年內 527 �
 - [ ] JUICE：spreadsheet 匯入（Semicolon、第 2 欄層次）+ header data 匯入；混合 fixed+transect 的空層次格行為
 - [ ] GBIF data validator 檢 `dwca/*_dwca.zip`
 - [ ] Android 實機 share sheet
+
+---
+
+## Sprint 2026-09-08 — 全球化 scope：國家名錄 pack（GBIF SPECIES_LIST）
+
+完整決策、查證來源與檔案清單見 `Update_log.md` 2026-09-08 entry。要點：使用者選國家＋類群 → 用自己的 GBIF 帳號 in-app 發 SPECIES_LIST 下載 → 匯入獨立 `regionpacks.db` → `searchWithFuzzyFallback` 尾端合併（bundled 優先、taxon_id＋normalizeSci 去重、國碼 badge）。`ensureExternalCopy()` 掛在四個 DB insert helper 保「刪 pack 不斷名」。TW 擋下、JP+僅植物導向內建 YList。備份 opt-in。
+
+### 驗證狀態
+- [x] `npx tsc --noEmit` / `check:gbiflist`（新，parser fixture）/ `check:roundtrip` / `check:i18n` / `check:dock`；跨平台 audit 無違規
+- [ ] 實機：真 GBIF 帳號下載小國（LI/MC）全類群 + 中型國單類群（JP+鳥）；欄位對照 describe 端點
+- [ ] 飛航模式：搜 pack 物種、加入名錄/樣區/採集、刪 pack 後既有記錄名稱仍解析
+- [ ] 備份勾/不勾 pack 各一輪 backup→restore
+- [ ] GBIF queue 壅塞：離頁→重開 app→「繼續」續輪詢
+
+
+---
+
+## Sprint 2026-09-09 — 全球通用化（P1 區域整併 / P2 多國分類樹 / P3 手動輸入）
+
+詳見 Update_log.md 2026-09-09。要點：TW/JP/pack 統一區域頁（≥1 enforce）、TW 可關（搜尋 source-driven、檢索表 7 入口 gating）、分類樹 N-source JS 合併（bundledScope + pack helpers、stats 相加近似、葉層去重、scope-sig reset）、手動建立物種（gm+uuid、GBIF 補高階層、事後可編輯）。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:gbiflist / check:roundtrip / check:dock / audit greps
+- [ ] 實機：TW-only 回歸、JP-only 新路徑、TW off 檢索表巡檢、冰島 pack 樹（badge/去重/跳轉/效能）、手動輸入全流程（離線＋GBIF 補階層＋編輯）
+
+
+---
+
+## Sprint 2026-09-10 — 樣區即時多樣性統計卡
+
+詳見 Update_log.md 2026-09-10。`src/lib/diversity.ts`（純）＋`PlotDiversityCard`＋`check:diversity`；公式對 vegan 文件與 Chao et al. 2014 查核；數值化沿用 vegMatrix.aggregateCell。
+
+### 驗證狀態
+- [x] check:diversity / tsc / check:i18n / check:vegmatrix / check:roundtrip
+- [ ] 實機：point_count（個體數）看 Chao1＋C%；≥2 小區 fixed 看 Chao2；BB 樣區 Chao 顯示不適用而 H′/D 正常；混合單位警示；收合列即時更新；專案頁跨樣區 Chao2 多選勾選與 <2 提示

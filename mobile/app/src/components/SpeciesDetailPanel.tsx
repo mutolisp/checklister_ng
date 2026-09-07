@@ -12,6 +12,7 @@ import i18n from '~/i18n';
 import { useEffect, useRef, useState } from 'react';
 import { Linking, Pressable, ScrollView, Text, View } from 'react-native';
 import {
+  getExternalTaxon,
   endemicTagLabel,
   getInfraspeciesOf,
   getSynonyms,
@@ -30,6 +31,7 @@ import { showActionSheet } from './ActionSheet';
 import { CollapsibleSection, SynonymStatusBadge } from './CollapsibleSection';
 import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
+import { editManualTaxon } from './GbifLookupHost';
 
 type Props = {
   result: SearchResult;
@@ -51,7 +53,9 @@ type Props = {
 
 function externalLinks(result: SearchResult): Array<{ label: string; url: string }> {
   const links: Array<{ label: string; url: string }> = [];
-  if (result.taxon_id) {
+  // TaiCOL deep links only exist for TaiCOL ids — a 'y…'/'g…' id produced a
+  // dead URL here before regions/packs made those common.
+  if (result.taxon_id && result.taxon_id.charAt(0) === 't') {
     links.push({ label: 'TaiCOL', url: `https://taicol.tw/zh-hant/taxon/${result.taxon_id}` });
   }
   const sciEnc = encodeURIComponent(result.name);
@@ -62,19 +66,27 @@ function externalLinks(result: SearchResult): Array<{ label: string; url: string
   if (result.kingdom === 'Plantae') {
     links.push({ label: 'POWO', url: `https://powo.science.kew.org/results?q=${sciEnc}` });
     links.push({ label: 'IPNI', url: `https://www.ipni.org/?q=${sciEnc}` });
-    links.push({ label: i18n.t('species.taiLink'), url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}` });
+    // 台灣植物資訊整合查詢 covers Taiwanese plants — meaningless for a
+    // pack/external/YList taxon that is not in TaiCOL.
+    if (result.taxon_id.charAt(0) === 't') {
+      links.push({ label: i18n.t('species.taiLink'), url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}` });
+    }
   }
   return links;
 }
 
 export function SpeciesDetailPanel({
-  result,
+  result: resultProp,
   onAddToSession,
   onClose,
   addButtonLabel,
   onAddLongPress,
   onPickSubordinate,
 }: Props) {
+  // Local copy so the manual-edit flow can refresh the displayed taxon
+  // in place — the prop only changes when the parent re-opens the panel.
+  const [result, setResult] = useState(resultProp);
+  useEffect(() => setResult(resultProp), [resultProp]);
   const { t } = useTranslation();
   const [synonyms, setSynonyms] = useState<Synonym[]>([]);
   const [infraspecies, setInfraspecies] = useState<TaxonSpecies[]>([]);
@@ -132,17 +144,41 @@ export function SpeciesDetailPanel({
     <View className="flex-1">
       <View className="flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3">
         <View className="flex-1">
-          <Text selectable className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            {result.cname || t('species.noChineseName')}
-          </Text>
+          {result.cname ? (
+            <Text selectable className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              {result.cname}
+            </Text>
+          ) : null}
           <ScientificName
             name={result.name}
             author={result.fullname.replace(result.name, '').trim()}
             kingdom={result.kingdom}
             nomenclature={result.nomenclature_name}
-            className="text-sm text-gray-700 dark:text-gray-300"
+            // Without a vernacular the scientific name IS the title.
+            className={
+              result.cname
+                ? 'text-sm text-gray-700 dark:text-gray-300'
+                : 'text-lg font-semibold text-gray-900 dark:text-gray-100'
+            }
             selectable
           />
+          {result.taxon_id.startsWith('gm') ? (
+            <Pressable
+              onPress={async () => {
+                const ext = getExternalTaxon(result.taxon_id);
+                if (!ext) return;
+                const out = await editManualTaxon(ext);
+                if (out) setResult(out.result);
+              }}
+              hitSlop={6}
+              className="mt-2 flex-row items-center self-start rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+            >
+              <Ionicons name="create-outline" size={14} color="#b45309" />
+              <Text className="ml-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {t('manualTaxon.editSelf')}
+              </Text>
+            </Pressable>
+          ) : null}
           {result.taxon_id ? (
             <Pressable
               onPress={() => (favorited ? removeFav(result.taxon_id) : addFav(result))}
@@ -228,12 +264,14 @@ export function SpeciesDetailPanel({
           </View>
         </Section>
 
-        <Section title={t('species.conservation')}>
-          <ConservationBadgeRow label={t('species.redlist')} value={result.redlist} />
-          <ConservationBadgeRow label="IUCN" value={result.iucn_category} />
-          <ConservationRow label="CITES" value={result.cites} />
-          <ConservationRow label={t('species.protected')} value={result.protected} />
-        </Section>
+        {result.redlist || result.iucn_category || result.cites || result.protected ? (
+          <Section title={t('species.conservation')}>
+            <ConservationBadgeRow label={t('species.redlist')} value={result.redlist} />
+            <ConservationBadgeRow label="IUCN" value={result.iucn_category} />
+            <ConservationRow label="CITES" value={result.cites} />
+            <ConservationRow label={t('species.protected')} value={result.protected} />
+          </Section>
+        ) : null}
 
         {result.alien_status_note ? (
           <Section title={t('species.sourceLit')}>
@@ -536,23 +574,23 @@ function Tag({ color, label }: { color: 'emerald' | 'blue' | 'purple' | 'rose'; 
   );
 }
 
+/** A conservation line with no data renders nothing — "CITES：–" rows only
+ *  added noise (pack/external taxa carry almost none of these fields). */
 function ConservationRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
   return (
     <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
-      {label}：<Text className="font-medium">{value || '–'}</Text>
+      {label}：<Text className="font-medium">{value}</Text>
     </Text>
   );
 }
 
 function ConservationBadgeRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
   return (
     <View className="flex-row items-center">
       <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{label}：</Text>
-      {value ? (
-        <ConservationBadge code={value} />
-      ) : (
-        <Text className="text-sm text-gray-700 dark:text-gray-300">–</Text>
-      )}
+      <ConservationBadge code={value} />
     </View>
   );
 }

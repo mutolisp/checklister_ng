@@ -6,6 +6,7 @@ import {
   resolveTaxa,
 } from './taxonLookup';
 import { getUserDb } from './init';
+import { ensureExternalCopy } from './regionpacks';
 import { generateUuid } from './plots';
 
 export type ChecklistRecord = {
@@ -82,6 +83,9 @@ export type CreateRecordInput = {
 };
 
 export function addRecord(input: CreateRecordInput): number {
+  // A pack ('g…') taxon must survive its pack being deleted — copy it into
+  // user.db before the record starts referencing it.
+  ensureExternalCopy(input.taxon_id);
   const db = getUserDb();
   const res = db.executeSync(
     `INSERT INTO checklist_records

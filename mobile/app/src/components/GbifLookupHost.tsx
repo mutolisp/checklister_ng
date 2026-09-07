@@ -38,12 +38,16 @@ import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { ScientificName } from './ScientificName';
 import { SynonymStatusBadge } from './CollapsibleSection';
 import {
+  generateUuid,
   searchByTaxonId,
+  updateExternalTaxon,
   upsertExternalTaxon,
+  type ExternalTaxon,
   type SearchResult,
 } from '~/db';
 import {
   fetchTaxonDetail,
+  matchName,
   searchNames,
   splitScientificName,
   type GbifNameCandidate,
@@ -58,6 +62,12 @@ export type GbifLookupOutcome = { result: SearchResult; viaLocal: boolean };
 
 type LookupRequest = {
   query: string;
+  /** 'lookup' = the classic GBIF name search; 'manual' = straight to the
+   *  user-created-taxon form (also reachable from lookup's empty state). */
+  mode: 'lookup' | 'manual';
+  /** Set when editing an existing manual taxon — save then UPDATEs by id
+   *  instead of minting. */
+  edit?: ExternalTaxon;
   resolve: (outcome: GbifLookupOutcome | null) => void;
 };
 
@@ -81,11 +91,93 @@ const useLookupStore = create<LookupStore>((set, get) => ({
  *  user settled on, or `null` if they backed out. */
 export function lookupGbifName(q: string): Promise<GbifLookupOutcome | null> {
   return new Promise((resolve) => {
-    useLookupStore.getState().open({ query: q, resolve });
+    useLookupStore.getState().open({ query: q, mode: 'lookup', resolve });
   });
 }
 
-type Step = 'searching' | 'list' | 'confirm' | 'local';
+/** Straight to the manual "create your own taxon" form (GBIF had nothing, or
+ *  the user knows the name is unpublished/local). */
+export function manualTaxonEntry(q: string): Promise<GbifLookupOutcome | null> {
+  return new Promise((resolve) => {
+    useLookupStore.getState().open({ query: q, mode: 'manual', resolve });
+  });
+}
+
+/** Re-open the manual form pre-filled from an existing manual taxon; saving
+ *  updates the same taxon_id (records keep pointing at it). */
+export function editManualTaxon(taxon: ExternalTaxon): Promise<GbifLookupOutcome | null> {
+  return new Promise((resolve) => {
+    useLookupStore.getState().open({ query: taxon.simple_name, mode: 'manual', edit: taxon, resolve });
+  });
+}
+
+type Step = 'searching' | 'list' | 'confirm' | 'local' | 'manual';
+
+export const MANUAL_KINGDOMS = [
+  'Plantae',
+  'Animalia',
+  'Fungi',
+  'Chromista',
+  'Protozoa',
+  'Bacteria',
+  'Archaea',
+  'Viruses',
+] as const;
+
+const MANUAL_RANKS = ['species', 'genus', 'subspecies', 'variety', 'form'] as const;
+
+type ManualForm = {
+  sci: string;
+  cname: string;
+  kingdom: string;
+  phylum: string;
+  class: string;
+  order: string;
+  family: string;
+  genus: string;
+  rank: string;
+};
+
+/** Rank guessed from the epithet count; the chips let the user override. */
+function deriveRank(sci: string): string {
+  const toks = sci.trim().split(/\s+/).filter(Boolean);
+  if (toks.length <= 1) return 'genus';
+  if (toks.length === 2) return 'species';
+  const j = sci.toLowerCase();
+  if (j.includes(' var.')) return 'variety';
+  if (j.includes(' f.')) return 'form';
+  return 'subspecies';
+}
+
+function emptyManualForm(q: string, edit?: ExternalTaxon): ManualForm {
+  if (edit) {
+    return {
+      sci: edit.name_author ? `${edit.simple_name} ${edit.name_author}` : edit.simple_name,
+      cname: edit.common_name_c ?? '',
+      kingdom: edit.kingdom ?? '',
+      phylum: edit.phylum ?? '',
+      class: edit.class ?? '',
+      order: edit.order ?? '',
+      family: edit.family ?? '',
+      genus: edit.genus ?? '',
+      rank: edit.rank || deriveRank(edit.simple_name),
+    };
+  }
+  const sci = q.trim();
+  const first = sci.split(/\s+/)[0] ?? '';
+  const genus = /^[A-Z][a-z-]+$/.test(first) ? first : '';
+  return {
+    sci,
+    cname: '',
+    kingdom: '',
+    phylum: '',
+    class: '',
+    order: '',
+    family: '',
+    genus,
+    rank: deriveRank(sci),
+  };
+}
 
 /** A GBIF pick that the local checklist already covers — shown for
  *  confirmation rather than applied silently. */
@@ -111,17 +203,27 @@ export function GbifLookupHost() {
   const [picked, setPicked] = useState<GbifNameCandidate | null>(null);
   const [localHit, setLocalHit] = useState<LocalHit | null>(null);
   const [cname, setCname] = useState('');
+  const [manual, setManual] = useState<ManualForm>(emptyManualForm(''));
+  const [autoFilling, setAutoFilling] = useState(false);
+  const [manualError, setManualError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    if (query === null) return;
+    if (query === null || pending == null) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    setStep('searching');
     setError(null);
     setCandidates([]);
     setPicked(null);
     setLocalHit(null);
+    setManualError(null);
+    setAutoFilling(false);
+    if (pending.mode === 'manual') {
+      setManual(emptyManualForm(pending.query, pending.edit));
+      setStep('manual');
+      return () => ctrl.abort();
+    }
+    setStep('searching');
     (async () => {
       try {
         const rows = await searchNames(query, ctrl.signal);
@@ -135,7 +237,69 @@ export function GbifLookupHost() {
       }
     })();
     return () => ctrl.abort();
-  }, [query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending]);
+
+  /** GBIF 補高階層: match the genus (or the name itself) against the backbone
+   *  and fill the hierarchy fields. Explicit user action, so returned values
+   *  overwrite; offline / no-match degrades to a message, never a block. */
+  const handleAutoFill = async () => {
+    const probe = manual.genus.trim() || manual.sci.trim().split(/\s+/)[0] || '';
+    if (!probe) return;
+    setAutoFilling(true);
+    setManualError(null);
+    try {
+      const m = await matchName(probe);
+      if (!m) {
+        setManualError(t('manualTaxon.autoFillNoMatch', { q: probe }));
+      } else {
+        setManual((prev) => ({
+          ...prev,
+          kingdom: m.kingdom || prev.kingdom,
+          phylum: m.phylum || prev.phylum,
+          class: m.class || prev.class,
+          order: m.order || prev.order,
+          family: m.family || prev.family,
+          genus: m.genus || prev.genus,
+        }));
+      }
+    } catch (e) {
+      setManualError(await apiErrorMessage(e));
+    } finally {
+      setAutoFilling(false);
+    }
+  };
+
+  const handleManualSave = () => {
+    const { name, author } = splitScientificName(manual.sci.trim());
+    if (!name || !manual.kingdom) return;
+    const fields = {
+      simple_name: name,
+      name_author: author,
+      rank: manual.rank,
+      kingdom: manual.kingdom,
+      phylum: manual.phylum.trim(),
+      class: manual.class.trim(),
+      order: manual.order.trim(),
+      family: manual.family.trim(),
+      genus: manual.genus.trim(),
+      common_name_c: manual.cname.trim(),
+    };
+    let taxonId: string;
+    if (pending?.edit) {
+      taxonId = pending.edit.taxon_id;
+      updateExternalTaxon(taxonId, fields);
+    } else {
+      taxonId = upsertExternalTaxon({
+        source: 'manual',
+        source_key: generateUuid().replace(/-/g, '').slice(0, 12),
+        ...fields,
+      });
+    }
+    const created = searchByTaxonId(taxonId);
+    if (created) onResolved(created, false);
+    else onClose();
+  };
 
   const handlePick = (c: GbifNameCandidate) => {
     // A synonym's accepted name is the one to test locally — that is the whole
@@ -226,6 +390,22 @@ export function GbifLookupHost() {
                 {t('gbifLookup.add')}
               </Text>
             </Pressable>
+          ) : step === 'manual' ? (
+            <Pressable
+              onPress={handleManualSave}
+              hitSlop={8}
+              disabled={!splitScientificName(manual.sci.trim()).name || !manual.kingdom}
+            >
+              <Text
+                className={`text-base font-semibold ${
+                  !splitScientificName(manual.sci.trim()).name || !manual.kingdom
+                    ? 'text-gray-300 dark:text-gray-600'
+                    : 'text-blue-600 dark:text-blue-400'
+                }`}
+              >
+                {pending?.edit ? t('common.save') : t('gbifLookup.add')}
+              </Text>
+            </Pressable>
           ) : (
             <View style={{ width: 44 }} />
           )}
@@ -253,6 +433,18 @@ export function GbifLookupHost() {
                 <Text className="mt-3 text-center text-sm text-gray-500 dark:text-gray-400">
                   {t('gbifLookup.noResults', { q: query ?? '' })}
                 </Text>
+                <Pressable
+                  onPress={() => {
+                    setManual(emptyManualForm(query ?? ''));
+                    setManualError(null);
+                    setStep('manual');
+                  }}
+                  className="mt-4 rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600"
+                >
+                  <Text className="text-sm font-medium text-white">
+                    {t('manualTaxon.createOwn')}
+                  </Text>
+                </Pressable>
               </View>
             ) : null}
             <FlatList
@@ -400,6 +592,150 @@ export function GbifLookupHost() {
                   {t('gbifLookup.externalNote')}
                 </Text>
               </View>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        ) : null}
+
+        {step === 'manual' ? (
+          <KeyboardAvoidingView className="flex-1">
+            <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
+              <Text className="text-xs text-gray-500 dark:text-gray-400">
+                {t('manualTaxon.intro')}
+              </Text>
+
+              <Text className="mt-4 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                {t('manualTaxon.sciName')} *
+              </Text>
+              <TextInput
+                value={manual.sci}
+                onChangeText={(v) =>
+                  setManual((prev) => ({ ...prev, sci: v, rank: deriveRank(v) }))
+                }
+                placeholder="Laurus nobilis L."
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="none"
+                autoCorrect={false}
+                className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+              />
+
+              <Text className="mt-3 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                {t('manualTaxon.cname')}
+              </Text>
+              <TextInput
+                value={manual.cname}
+                onChangeText={(v) => setManual((prev) => ({ ...prev, cname: v }))}
+                placeholder={t('manualTaxon.cnamePlaceholder')}
+                placeholderTextColor="#9ca3af"
+                className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+              />
+
+              <Text className="mt-3 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                {t('manualTaxon.kingdom')} *
+              </Text>
+              <View className="mt-1 flex-row flex-wrap gap-2">
+                {MANUAL_KINGDOMS.map((k) => {
+                  const on = manual.kingdom === k;
+                  return (
+                    <Pressable
+                      key={k}
+                      onPress={() => setManual((prev) => ({ ...prev, kingdom: k }))}
+                      className={`rounded-full border px-3 py-1.5 ${
+                        on
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800'
+                      }`}
+                    >
+                      <Text className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                        {t(`manualTaxon.kingdoms.${k}`)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View className="mt-3 flex-row items-end gap-2">
+                <View className="flex-1">
+                  <Text className="text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                    {t('manualTaxon.genus')}
+                  </Text>
+                  <TextInput
+                    value={manual.genus}
+                    onChangeText={(v) => setManual((prev) => ({ ...prev, genus: v }))}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                  />
+                </View>
+                <Pressable
+                  onPress={() => void handleAutoFill()}
+                  disabled={autoFilling}
+                  className="rounded-lg bg-emerald-600 px-3 py-3 active:bg-emerald-700"
+                >
+                  {autoFilling ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text className="text-sm font-medium text-white">
+                      {t('manualTaxon.autoFill')}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+              <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {t('manualTaxon.autoFillHint')}
+              </Text>
+              {manualError ? (
+                <Text className="mt-1 text-xs text-amber-700 dark:text-amber-400">{manualError}</Text>
+              ) : null}
+
+              {(
+                [
+                  ['family', t('manualTaxon.family')],
+                  ['order', t('manualTaxon.order')],
+                  ['class', t('manualTaxon.class')],
+                  ['phylum', t('manualTaxon.phylum')],
+                ] as const
+              ).map(([field, label]) => (
+                <View key={field}>
+                  <Text className="mt-3 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                    {label}
+                  </Text>
+                  <TextInput
+                    value={manual[field]}
+                    onChangeText={(v) => setManual((prev) => ({ ...prev, [field]: v }))}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                  />
+                </View>
+              ))}
+
+              <Text className="mt-3 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+                {t('manualTaxon.rank')}
+              </Text>
+              <View className="mt-1 flex-row flex-wrap gap-2">
+                {MANUAL_RANKS.map((r) => {
+                  const on = manual.rank === r;
+                  return (
+                    <Pressable
+                      key={r}
+                      onPress={() => setManual((prev) => ({ ...prev, rank: r }))}
+                      className={`rounded-full border px-3 py-1.5 ${
+                        on
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800'
+                      }`}
+                    >
+                      <Text className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                        {t(`rank.${r}`)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text className="mb-8 mt-4 text-xs text-amber-700 dark:text-amber-400">
+                {t('manualTaxon.note')}
+              </Text>
             </ScrollView>
           </KeyboardAvoidingView>
         ) : null}

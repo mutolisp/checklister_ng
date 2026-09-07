@@ -16,6 +16,8 @@ import {
 import { KeyboardController } from 'react-native-keyboard-controller';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import {
+  taxonomyScopeSig,
+  endemicTagLabel,
   addSearchHistory,
   getKeysForScope,
   getSpeciesUnder,
@@ -128,6 +130,62 @@ export default function TaxonomyScreen() {
   const persistedExpanded = useSettings((s) => s.taxonomy_expanded);
   const setSetting = useSettings((s) => s.set);
   const settingsLoaded = useSettings((s) => s.loaded);
+  // 檢索表 content is Taiwan-only (identification keys live in the TaiCOL
+  // bundle) — with the Taiwan region off, the whole segment goes away.
+  const twOn = useSettings((s) => s.enabled_regions.includes('TW'));
+  useEffect(() => {
+    if (!twOn && segment === 'key') setSegment('tree');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [twOn]);
+
+  // Dataset scope (enabled regions + enabled ready packs) changed while this
+  // eager-mounted tab stayed alive → the in-memory tree is stale. Checked on
+  // focus because every scope toggle happens on another screen; a full reset
+  // + re-hydration is the only correct recovery (node keys, counts and the
+  // persisted expansion all belong to the previous dataset).
+  // Sig the CURRENT in-memory tree was built under. Set by the hydration
+  // effect itself — NOT on first focus. This tab is eager-mounted at app
+  // start, so hydration runs under the startup scope; recording the baseline
+  // any later (e.g. on first focus) would silently accept a tree built for a
+  // scope the user has already changed — the "numbers never update" bug.
+  const scopeSigRef = useRef<string | null>(null);
+  // Bumped on scope change to re-run the one-shot hydration effect below
+  // (its hydratedRef latch alone would keep it dormant forever).
+  const [scopeEpoch, setScopeEpoch] = useState(0);
+  const resetForScope = useCallback(
+    (sig: string) => {
+      scopeSigRef.current = sig;
+      setRoots([]);
+      setExpanded(new Set());
+      setChildrenMap(new Map());
+      setSpeciesMap(new Map());
+      setNodeMap(new Map());
+      setSetting('taxonomy_expanded', []);
+      hydratedRef.current = false;
+      setLoading(true);
+      setScopeEpoch((e) => e + 1);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const checkScope = useCallback(() => {
+    if (scopeSigRef.current === null) return; // tree not hydrated yet
+    let sig = '';
+    try {
+      sig = taxonomyScopeSig();
+    } catch {
+      return;
+    }
+    if (sig !== scopeSigRef.current) resetForScope(sig);
+  }, [resetForScope]);
+  // Pack toggles / finished downloads have no store signal — caught on focus.
+  useFocusEffect(checkScope);
+  // Built-in region toggles DO have one; react immediately even without a
+  // focus cycle.
+  const regionsSig = useSettings((st) => st.enabled_regions.join(','));
+  useEffect(() => {
+    checkScope();
+  }, [regionsSig, checkScope]);
   // KeyboardStickyView translates by -keyboard_height from its natural laid-out
   // position. Inside a Tabs screen the natural bottom = top of tab bar, NOT
   // screen bottom, so without compensating offset the search box ends up
@@ -242,6 +300,13 @@ export default function TaxonomyScreen() {
   useEffect(() => {
     if (!settingsLoaded || hydratedRef.current) return;
     hydratedRef.current = true;
+    // Baseline for the scope-change detector: the tree about to be built
+    // belongs to THIS signature.
+    try {
+      scopeSigRef.current = taxonomyScopeSig();
+    } catch {
+      scopeSigRef.current = '';
+    }
     let cancelled = false;
 
     setLoading(true);
@@ -308,7 +373,7 @@ export default function TaxonomyScreen() {
     };
     // Deliberately depends only on settingsLoaded — we hydrate once per mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settingsLoaded]);
+  }, [settingsLoaded, scopeEpoch]);
 
   // First-paint marker: fires after the first non-loading render commits.
   // This is "when the user actually sees the tree", which is the number that
@@ -714,9 +779,9 @@ export default function TaxonomyScreen() {
           {(
             [
               { value: 'tree', label: t('taxonomy.tree') },
-              { value: 'key', label: t('nav.key') },
+              ...(twOn ? [{ value: 'key', label: t('nav.key') } as const] : []),
               { value: 'search', label: t('taxonomy.search') },
-            ] as const
+            ] as { value: 'tree' | 'key' | 'search'; label: string }[]
           ).map((opt) => {
             const on = segment === opt.value;
             return (
@@ -971,7 +1036,10 @@ function TaxonRow({
     .join(' · ');
 
   // 0/1/2 matching keys per scope; rank_key is 'kingdom'/'phylum'/.../'genus'.
-  const keys: IdentificationKey[] = getKeysForScope(node.rank_key, node.name);
+  // Keys are TaiCOL content — hidden entirely when the Taiwan region is off
+  // (a JP/pack genus sharing a Latin name must not surface a Taiwan key).
+  const rowTwOn = useSettings((s) => s.enabled_regions.includes('TW'));
+  const keys: IdentificationKey[] = rowTwOn ? getKeysForScope(node.rank_key, node.name) : [];
 
   return (
     <Pressable
@@ -1077,7 +1145,14 @@ function SpeciesRow({
       </View>
       <View className="ml-2 flex-row items-center" style={{ marginTop: 2 }}>
         {species.is_endemic === 'true' ? (
-          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('species.endemicShort')}</Text>
+          // YList is_endemic means Japan-endemic — the label must follow the id.
+          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{endemicTagLabel(species.taxon_id)}</Text>
+        ) : null}
+        {species.pack_country ? (
+          // GBIF-derived country-pack row — same badge treatment as SearchBox.
+          <Text className="ml-1.5 rounded bg-sky-100 px-1 text-xs font-medium text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+            {species.pack_country}
+          </Text>
         ) : null}
         {(() => {
           const ab = alienBadge(species.alien_type, species.kingdom);

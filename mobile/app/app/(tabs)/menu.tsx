@@ -20,7 +20,6 @@ export default function MenuScreen() {
     { icon: 'pin-outline', label: t('menu.sites'), description: t('menu.sitesDesc'), href: '/sites' },
     { icon: 'archive-outline', label: t('nav.backup'), description: t('menu.backupDesc'), href: '/backup' },
     { icon: 'settings-outline', label: t('nav.settings'), href: '/settings' },
-    { icon: 'cloud-download-outline', label: t('menu.dataUpdate'), description: 'Phase 2', disabled: true },
     { icon: 'information-circle-outline', label: t('nav.about'), href: '/about' },
   ];
 

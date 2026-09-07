@@ -293,6 +293,10 @@ export default function KeyRunnerScreen() {
   // `hydratedRef` gates this so the next state-persist effect doesn't fire
   // before hydration and overwrite stored progress with the empty initial.
   const settingsLoaded = useSettings((s) => s.loaded);
+  // Guard against deep links / restored runner state while Taiwan is off:
+  // every key resolves taxa against taicol_names, so running one without the
+  // TW region would show half-broken leads. Rendered below, before !loaded.
+  const guardTwOn = useSettings((s) => s.enabled_regions.includes('TW'));
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (hydratedRef.current) return;
@@ -481,6 +485,16 @@ export default function KeyRunnerScreen() {
   }, [state.terminal]);
 
   // ── Render ───────────────────────────────────────────────────────────
+  if (!guardTwOn) {
+    return (
+      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900 px-8">
+        <Stack.Screen options={{ title: tr('nav.key'), headerLeft: BackHeaderLeft }} />
+        <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
+          {tr('keys.needTaiwanRegion')}
+        </Text>
+      </SafeAreaView>
+    );
+  }
   if (!loaded) {
     return (
       <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">

@@ -6,28 +6,76 @@
 import { getTaicolDb } from './init';
 import { searchWithFuzzyFallback } from './fuzzy';
 import {
-  jpEnabled,
   getEnabledRegions,
-  isJpTaxonId,
   regionOfTaxonId,
   normalizeSci,
   crossRegionVernacular,
   composeVernacular,
 } from './regions';
+import {
+  packInfraspeciesOf,
+  packScopeSig,
+  packSpeciesUnder,
+  packTreeChildren,
+  searchPackLineages,
+  type PackSpeciesRow,
+  type PackTreeNodeRow,
+} from './regionpacks';
 import type { SearchResult } from './types';
 
 /**
- * Region scope for tree queries. With Japan enabled we query the `all_names`
- * view (taicol_names ∪ jp_names) and let YList rows through the Taiwan gate
- * via `region='JP'` (they have no is_in_taiwan flag). YList hierarchy columns
- * are aligned to TaiCOL conventions (see ylist_import.py), so shared genera /
- * families merge under the same nodes. Taiwan-only stays on the original
- * taicol_names path — byte-identical to before.
+ * Scope for the BUNDLED half of tree queries (twnamelist.db). Three states:
+ * TW+JP → the `all_names` view (single query, DISTINCT counts stay exact —
+ * splitting into two queries would double-count shared genera); TW only →
+ * the original taicol_names path, byte-identical to pre-region behavior;
+ * JP only → jp_names directly. `null` when neither bundled region is on
+ * (packs-only mode) — callers then skip the bundled query entirely.
+ * Region packs live in a different DB file and are ALWAYS a separate query
+ * merged in JS (this app never ATTACHes).
  */
-function regionScope(): { table: string; taiwanClause: string } {
-  return jpEnabled()
-    ? { table: 'all_names', taiwanClause: "(is_in_taiwan LIKE '%true%' OR region='JP')" }
-    : { table: 'taicol_names', taiwanClause: "is_in_taiwan LIKE '%true%'" };
+function bundledScope(): { table: string; taiwanClause: string } | null {
+  const regions = getEnabledRegions();
+  const tw = regions.includes('TW');
+  const jp = regions.includes('JP');
+  if (tw && jp)
+    return { table: 'all_names', taiwanClause: "(is_in_taiwan LIKE '%true%' OR region='JP')" };
+  if (tw) return { table: 'taicol_names', taiwanClause: "is_in_taiwan LIKE '%true%'" };
+  if (jp) return { table: 'jp_names', taiwanClause: "region='JP'" };
+  return null;
+}
+
+/** Merge pack tree rows into bundled nodes: same-name nodes combine (stats
+ *  added — an approximation, since a species present in two sources counts
+ *  once per source at this level; leaf species lists DO dedupe), pack-only
+ *  nodes are appended. Sorted by name to match the SQL ORDER BY. */
+function mergePackNodes(
+  bundled: TaxonNode[],
+  packRows: PackTreeNodeRow[],
+  rank: string,
+  childRank: ChildRank,
+  ancestors: Ancestors,
+): TaxonNode[] {
+  if (packRows.length === 0) return bundled;
+  const byName = new Map(bundled.map((n) => [n.name, n]));
+  for (const pr of packRows) {
+    const existing = byName.get(pr.name);
+    if (existing) {
+      for (const [k, v] of Object.entries(pr.stats)) {
+        existing.stats[k] = (existing.stats[k] ?? 0) + v;
+      }
+    } else {
+      byName.set(pr.name, {
+        name: pr.name,
+        name_c: '',
+        rank,
+        rank_key: rank,
+        child_rank: childRank,
+        stats: pr.stats,
+        ancestors,
+      });
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export const RANK_ORDER = ['kingdom', 'phylum', 'class', 'order', 'family', 'genus'] as const;
@@ -149,7 +197,13 @@ let CACHED_KINGDOMS: TaxonNode[] | null = null;
 let CACHED_KINGDOMS_SCOPE: string | null = null;
 
 function scopeSig(): string {
-  return getEnabledRegions().join(',');
+  return `${getEnabledRegions().join(',')}|${packScopeSig()}`;
+}
+
+/** Exposed for the taxonomy screen: it must reset its in-memory tree when the
+ *  dataset scope changed while it stayed mounted (the tab never remounts). */
+export function taxonomyScopeSig(): string {
+  return scopeSig();
 }
 
 function getTopLevel(): TaxonNode[] {
@@ -180,35 +234,41 @@ export function clearTaxonomyCache(): void {
  * (Virus realm handling deferred from MVP.)
  */
 function computeTopLevel(): TaxonNode[] {
-  const db = getTaicolDb();
-  const virusList = [...VIRUS_KINGDOMS].map((k) => `'${k.replace(/'/g, "''")}'`).join(', ');
-  const statsCols = buildStatsCols(0);
-  const cCol = RANK_C_COL.kingdom;
-  const { table, taiwanClause } = regionScope();
-
-  const sql = `
-    SELECT kingdom AS name, ${statsCols}, MAX(${cCol}) AS name_c
-    FROM ${table}
-    WHERE usage_status='accepted'
-      AND ${taiwanClause}
-      AND rank IN ('Species','Subspecies','Variety','Form')
-      AND kingdom NOT IN (${virusList})
-    GROUP BY kingdom
-    HAVING name IS NOT NULL AND name != ''
-    ORDER BY name
-  `;
-
-  const res = db.executeSync(sql);
-  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    name: row.name as string,
-    name_c: (row.name_c as string) ?? '',
-    rank: 'kingdom',
-    rank_key: 'kingdom',
-    child_rank: 'phylum',
-    stats: buildStatsDict(row, 0),
-    ancestors: {},
-  }));
+  const scope = bundledScope();
+  let nodes: TaxonNode[] = [];
+  if (scope) {
+    const db = getTaicolDb();
+    const virusList = [...VIRUS_KINGDOMS].map((k) => `'${k.replace(/'/g, "''")}'`).join(', ');
+    const statsCols = buildStatsCols(0);
+    const cCol = RANK_C_COL.kingdom;
+    const sql = `
+      SELECT kingdom AS name, ${statsCols}, MAX(${cCol}) AS name_c
+      FROM ${scope.table}
+      WHERE usage_status='accepted'
+        AND ${scope.taiwanClause}
+        AND rank IN ('Species','Subspecies','Variety','Form')
+        AND kingdom NOT IN (${virusList})
+      GROUP BY kingdom
+      HAVING name IS NOT NULL AND name != ''
+      ORDER BY name
+    `;
+    const res = db.executeSync(sql);
+    nodes = ((res.rows ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      name: row.name as string,
+      name_c: (row.name_c as string) ?? '',
+      rank: 'kingdom',
+      rank_key: 'kingdom',
+      child_rank: 'phylum',
+      stats: buildStatsDict(row, 0),
+      ancestors: {},
+    }));
+  }
+  // Virus handling is deferred app-wide; GBIF-derived packs use the plain
+  // kingdom name 'Viruses', which the bundled exclusion list doesn't carry.
+  const packRows = packTreeChildren('kingdom', {}).filter(
+    (r) => !VIRUS_KINGDOMS.has(r.name) && r.name !== 'Viruses',
+  );
+  return mergePackNodes(nodes, packRows, 'kingdom', 'phylum', {});
 }
 
 export type ChildrenOptions = {
@@ -231,39 +291,41 @@ export function getTaxonChildren(opts: ChildrenOptions): TaxonNode[] {
   const rankIdx = RANK_ORDER.indexOf(opts.rank);
   if (rankIdx === -1) return [];
 
-  const db = getTaicolDb();
-  const statsCols = buildStatsCols(rankIdx);
-  const cCol = RANK_C_COL[opts.rank];
-  const extraCols = cCol ? `, MAX(${cCol}) AS name_c` : '';
-  const dbCol = quoteCol(opts.rank);
-  const { table, taiwanClause } = regionScope();
-
-  let where = `usage_status='accepted' AND ${taiwanClause} AND rank IN ('Species','Subspecies','Variety','Form')`;
-  const params: string[] = [];
-  where += buildAncestorWhere(opts.ancestors, params);
-
-  const sql = `
-    SELECT ${dbCol} AS name, ${statsCols} ${extraCols}
-    FROM ${table}
-    WHERE ${where}
-    GROUP BY ${dbCol}
-    HAVING name IS NOT NULL AND name != ''
-    ORDER BY name
-  `;
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
   const childRank: ChildRank = rankIdx + 1 < RANK_ORDER.length ? RANK_ORDER[rankIdx + 1] : 'species';
   const ancestors: Ancestors = opts.ancestors ?? {};
+  const scope = bundledScope();
+  let nodes: TaxonNode[] = [];
+  if (scope) {
+    const db = getTaicolDb();
+    const statsCols = buildStatsCols(rankIdx);
+    const cCol = RANK_C_COL[opts.rank];
+    const extraCols = cCol ? `, MAX(${cCol}) AS name_c` : '';
+    const dbCol = quoteCol(opts.rank);
 
-  return rows.map((row) => ({
-    name: row.name as string,
-    name_c: (row.name_c as string) ?? '',
-    rank: opts.rank,
-    rank_key: opts.rank,
-    child_rank: childRank,
-    stats: buildStatsDict(row, rankIdx),
-    ancestors,
-  }));
+    let where = `usage_status='accepted' AND ${scope.taiwanClause} AND rank IN ('Species','Subspecies','Variety','Form')`;
+    const params: string[] = [];
+    where += buildAncestorWhere(opts.ancestors, params);
+
+    const sql = `
+      SELECT ${dbCol} AS name, ${statsCols} ${extraCols}
+      FROM ${scope.table}
+      WHERE ${where}
+      GROUP BY ${dbCol}
+      HAVING name IS NOT NULL AND name != ''
+      ORDER BY name
+    `;
+    const res = db.executeSync(sql, params);
+    nodes = ((res.rows ?? []) as Array<Record<string, unknown>>).map((row) => ({
+      name: row.name as string,
+      name_c: (row.name_c as string) ?? '',
+      rank: opts.rank,
+      rank_key: opts.rank,
+      child_rank: childRank,
+      stats: buildStatsDict(row, rankIdx),
+      ancestors,
+    }));
+  }
+  return mergePackNodes(nodes, packTreeChildren(opts.rank, opts.ancestors), opts.rank, childRank, ancestors);
 }
 
 export type TaxonSpecies = {
@@ -295,7 +357,54 @@ export type TaxonSpecies = {
   nomenclature_name: string;
   alien_status_note: string;
   is_autonym: boolean;
+  /** ISO country code of the region pack this row came from (GBIF-derived,
+   *  not checklist-verified) — drives the provenance badge. */
+  pack_country?: string;
 };
+
+/** Merge preference when the same scientific name appears in several sources:
+ *  TaiCOL ('t…') carries the richest data, then YList ('y…'), then packs. */
+function idPreference(taxonId: string): number {
+  const c = taxonId.charAt(0);
+  return c === 't' ? 0 : c === 'y' ? 1 : 2;
+}
+
+function packRowToTaxonSpecies(r: PackSpeciesRow): TaxonSpecies {
+  // Pack ranks are lowercase; the tree's autonym check and rank chips expect
+  // TaiCOL-style capitalized values.
+  const rank = r.rank ? r.rank.charAt(0).toUpperCase() + r.rank.slice(1) : '';
+  return {
+    taxon_id: r.taxon_id,
+    simple_name: r.simple_name,
+    name_author: r.name_author,
+    common_name_c: '',
+    family: r.family,
+    family_c: '',
+    rank,
+    is_endemic: '',
+    alien_type: '',
+    redlist: '',
+    iucn: r.iucn,
+    cites: '',
+    protected: '',
+    is_hybrid: '',
+    kingdom: r.kingdom,
+    kingdom_c: '',
+    phylum: r.phylum,
+    phylum_c: '',
+    class: r.class,
+    class_c: '',
+    order: r.order,
+    order_c: '',
+    genus: r.genus,
+    genus_c: '',
+    alternative_name_c: '',
+    nomenclature_name: '',
+    alien_status_note: '',
+    is_autonym: isAutonym(r.simple_name, rank),
+    pack_country: r.country_code,
+  };
+}
 
 function isAutonym(simpleName: string, rank: string): boolean {
   if (!['Subspecies', 'Variety', 'Form'].includes(rank)) return false;
@@ -344,31 +453,40 @@ function taxonRowToSpecies(row: Record<string, unknown>): TaxonSpecies {
 }
 
 export function getSpeciesUnder(ancestors?: Ancestors): TaxonSpecies[] {
-  const db = getTaicolDb();
-  const { table, taiwanClause } = regionScope();
-  let where = `usage_status='accepted' AND ${taiwanClause} AND rank IN ('Species','Subspecies','Variety','Form')`;
-  const params: string[] = [];
-  where += buildAncestorWhere(ancestors, params);
-  const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM ${table} WHERE ${where} ORDER BY simple_name`;
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
-  let species = rows.map(taxonRowToSpecies);
+  const regions = getEnabledRegions();
+  const scope = bundledScope();
+  let species: TaxonSpecies[] = [];
+  if (scope) {
+    const db = getTaicolDb();
+    let where = `usage_status='accepted' AND ${scope.taiwanClause} AND rank IN ('Species','Subspecies','Variety','Form')`;
+    const params: string[] = [];
+    where += buildAncestorWhere(ancestors, params);
+    const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM ${scope.table} WHERE ${where} ORDER BY simple_name`;
+    const res = db.executeSync(sql, params);
+    species = ((res.rows ?? []) as Array<Record<string, unknown>>).map(taxonRowToSpecies);
+  }
+  const packRows = packSpeciesUnder(ancestors).map(packRowToTaxonSpecies);
+  const multiSource = packRows.length > 0 || (regions.includes('TW') && regions.includes('JP'));
+  if (packRows.length > 0) species = species.concat(packRows);
 
-  if (jpEnabled()) {
-    // Collapse shared species (same scientific name across TW + JP) to one row,
-    // preferring the TaiCOL ('t…') row for hierarchy/conservation; then merge
-    // the cross-region vernacular into common_name_c.
+  if (multiSource) {
+    // Collapse shared species (same scientific name across sources) to one
+    // row, preferring TaiCOL > YList > pack for hierarchy/conservation.
     const byKey = new Map<string, TaxonSpecies>();
     for (const sp of species) {
       const key = normalizeSci(sp.simple_name);
       const existing = byKey.get(key);
-      if (!existing) byKey.set(key, sp);
-      else if (isJpTaxonId(existing.taxon_id) && !isJpTaxonId(sp.taxon_id)) byKey.set(key, sp);
+      if (!existing || idPreference(sp.taxon_id) < idPreference(existing.taxon_id)) {
+        byKey.set(key, sp);
+      }
     }
-    species = [...byKey.values()];
-    const regions = getEnabledRegions();
+    species = [...byKey.values()].sort((a, b) => a.simple_name.localeCompare(b.simple_name));
+  }
+  if (regions.includes('TW') && regions.includes('JP')) {
+    // Cross-region vernacular ("臺灣俗名 / 和名") only means something with
+    // both bundled regions on.
     const cross = crossRegionVernacular(
-      species.map((s) => s.taxon_id),
+      species.map((sp) => sp.taxon_id),
       regions,
     );
     species = species.map((sp) => ({
@@ -398,19 +516,35 @@ export function getInfraspeciesOf(
   ancestors?: Ancestors,
 ): TaxonSpecies[] {
   if (!speciesName || speciesName.split(/\s+/).length !== 2) return [];
-  const db = getTaicolDb();
-  const pattern = `${speciesName.replace(/%/g, '\\%').replace(/_/g, '\\_')} %`;
-  const params: string[] = [pattern, speciesName];
-  let where = `simple_name LIKE ? ESCAPE '\\'
-      AND simple_name != ?
-      AND rank IN ('Subspecies','Variety','Form')
-      AND usage_status='accepted'
-      AND is_in_taiwan LIKE '%true%'`;
-  where += buildAncestorWhere(ancestors, params);
-  const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM taicol_names WHERE ${where} ORDER BY simple_name`;
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
-  return rows.map(taxonRowToSpecies);
+  const scope = bundledScope();
+  let out: TaxonSpecies[] = [];
+  if (scope) {
+    const db = getTaicolDb();
+    const pattern = `${speciesName.replace(/%/g, '\\%').replace(/_/g, '\\_')} %`;
+    const params: string[] = [pattern, speciesName];
+    let where = `simple_name LIKE ? ESCAPE '\\'
+        AND simple_name != ?
+        AND rank IN ('Subspecies','Variety','Form')
+        AND usage_status='accepted'
+        AND ${scope.taiwanClause}`;
+    where += buildAncestorWhere(ancestors, params);
+    const sql = `SELECT ${TAXON_SPECIES_COLUMNS} FROM ${scope.table} WHERE ${where} ORDER BY simple_name`;
+    const res = db.executeSync(sql, params);
+    out = ((res.rows ?? []) as Array<Record<string, unknown>>).map(taxonRowToSpecies);
+  }
+  const packRows = packInfraspeciesOf(speciesName, ancestors).map(packRowToTaxonSpecies);
+  if (packRows.length > 0) {
+    const byKey = new Map<string, TaxonSpecies>();
+    for (const sp of [...out, ...packRows]) {
+      const key = normalizeSci(sp.simple_name);
+      const existing = byKey.get(key);
+      if (!existing || idPreference(sp.taxon_id) < idPreference(existing.taxon_id)) {
+        byKey.set(key, sp);
+      }
+    }
+    out = [...byKey.values()].sort((a, b) => a.simple_name.localeCompare(b.simple_name));
+  }
+  return out;
 }
 
 /**
@@ -505,23 +639,25 @@ export function searchTaxonomy(q: string): TaxonSearchHit[] {
     }
   }
 
-  const { table, taiwanClause } = regionScope();
-  const sql = `
-    SELECT DISTINCT simple_name, common_name_c, rank,
-           kingdom, kingdom_c, phylum, phylum_c,
-           class, class_c, "order", order_c,
-           family, family_c, genus, genus_c,
-           name_author
-    FROM ${table}
-    WHERE (${conditions.join(' OR ')})
-      AND usage_status = 'accepted'
-      AND ${taiwanClause}
-      AND rank IN ('Species', 'Subspecies', 'Variety', 'Form', 'Genus', 'Family', 'Order', 'Class', 'Phylum')
-    LIMIT 50
-  `;
-
-  const res = db.executeSync(sql, params);
-  const rows = (res.rows ?? []) as Array<Record<string, unknown>>;
+  const scope = bundledScope();
+  let rows: Array<Record<string, unknown>> = [];
+  if (scope) {
+    const sql = `
+      SELECT DISTINCT simple_name, common_name_c, rank,
+             kingdom, kingdom_c, phylum, phylum_c,
+             class, class_c, "order", order_c,
+             family, family_c, genus, genus_c,
+             name_author
+      FROM ${scope.table}
+      WHERE (${conditions.join(' OR ')})
+        AND usage_status = 'accepted'
+        AND ${scope.taiwanClause}
+        AND rank IN ('Species', 'Subspecies', 'Variety', 'Form', 'Genus', 'Family', 'Order', 'Class', 'Phylum')
+      LIMIT 50
+    `;
+    const res = db.executeSync(sql, params);
+    rows = (res.rows ?? []) as Array<Record<string, unknown>>;
+  }
 
   const hits: TaxonSearchHit[] = rows.map((r) => {
     const cname = (r.common_name_c as string) ?? '';
@@ -544,6 +680,38 @@ export function searchTaxonomy(q: string): TaxonSearchHit[] {
       path,
     };
   });
+
+  // Pack higher-taxon hits, 照臺灣模式: TaiCOL's sweep above returns
+  // family/genus-rank rows with rank badge + lineage; packs store only
+  // genus-and-below, so equivalent hits are synthesized from distinct
+  // lineages of matching pack rows. Species-level pack hits arrive via the
+  // fuzzy augment below.
+  const packSeen = new Set(hits.map((h) => `${h.rank}:${h.name}`));
+  for (const rankName of ['family', 'genus'] as const) {
+    for (const lin of searchPackLineages(rankName, variants)) {
+      const name = rankName === 'genus' ? lin.genus : lin.family;
+      if (!name) continue;
+      // A TW/JP row of the same taxon already produced this hit (with its
+      // Chinese name) — the synthesized pack hit would be a bare duplicate.
+      const key = `${rankName === 'genus' ? 'Genus' : 'Family'}:${name}`;
+      if (packSeen.has(key)) continue;
+      packSeen.add(key);
+      const path: Array<{ rank: Rank; value: string }> = [];
+      for (const level of RANK_ORDER) {
+        if (level === 'genus' && rankName === 'family') break;
+        const val = lin[level];
+        if (val) path.push({ rank: level, value: val });
+      }
+      hits.push({
+        display: name,
+        name,
+        cname: '',
+        rank: rankName === 'genus' ? 'Genus' : 'Family',
+        author: '',
+        path,
+      });
+    }
+  }
 
   // Augment with synonym + fuzzy species matches by reusing the main search
   // pipeline (searchWithFuzzyFallback already resolves synonyms to accepted

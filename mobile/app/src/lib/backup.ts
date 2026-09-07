@@ -34,6 +34,8 @@ import {
   type ExportFile,
 } from './bundleExport';
 
+import { closePacksDb, getPacksDb, listPacks, PACKS_DB_NAME } from '~/db/regionpacks';
+
 const USER_DB_NAME = 'user.db';
 
 /** SQLite VACUUM INTO needs a plain filesystem path, not a file:// URI. */
@@ -50,10 +52,18 @@ type BackupManifest = {
   schemaVersion: number;
   appVersion: string;
   createdAt: number;
+  /** Present (true) when the zip also carries regionpacks.db. Older backups
+   *  simply lack the field. */
+  hasRegionPacks?: boolean;
 };
 
-/** Snapshot user.db into a zip ready to share. */
-export async function createBackup(): Promise<ExportFile> {
+/**
+ * Snapshot user.db into a zip ready to share.
+ *
+ * Region packs are opt-in (`includePacks`): they are re-downloadable GBIF
+ * data that can add tens of MB, so the default backup stays lean.
+ */
+export async function createBackup(opts?: { includePacks?: boolean }): Promise<ExportFile> {
   const ts = timestamp();
 
   // VACUUM INTO produces a consistent, compacted copy with no -wal/-shm
@@ -66,18 +76,40 @@ export async function createBackup(): Promise<ExportFile> {
   const dbBytes = base64ToBytes(b64);
   snapshot.delete();
 
+  let packsBytes: Uint8Array | null = null;
+  if (opts?.includePacks) {
+    const packsSnapshot = new File(Paths.cache, `backup-packs-${ts}.db`);
+    if (packsSnapshot.exists) packsSnapshot.delete();
+    getPacksDb().executeSync(`VACUUM INTO ?;`, [uriToPath(packsSnapshot.uri)]);
+    packsBytes = base64ToBytes(
+      await readAsStringAsync(packsSnapshot.uri, { encoding: 'base64' }),
+    );
+    packsSnapshot.delete();
+  }
+
   const manifest: BackupManifest = {
     kind: 'checklister-user-backup',
     schemaVersion: LATEST_SCHEMA_VERSION,
     appVersion: Constants.expoConfig?.version ?? 'unknown',
     createdAt: Date.now(),
+    hasRegionPacks: packsBytes != null,
   };
 
   const entries: BuiltZipEntry[] = [
     { name: USER_DB_NAME, bytes: dbBytes },
     { name: 'manifest.json', bytes: strToU8(JSON.stringify(manifest, null, 2)) },
   ];
+  if (packsBytes) entries.push({ name: PACKS_DB_NAME, bytes: packsBytes });
   return finalizeZip(entries, `checklister-backup-${ts}`);
+}
+
+/** Whether any region pack exists — drives the opt-in switch on the screen. */
+export function hasRegionPacks(): boolean {
+  try {
+    return listPacks().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -108,6 +140,22 @@ export async function restoreBackup(zipUri: string): Promise<void> {
     throw new Error(
       i18n.t('backup.tooNew', { version: manifest.schemaVersion }),
     );
+  }
+
+  // Packs restore first: replaceUserDb() ends in an app reload, so anything
+  // after it never runs. A packs file in the zip replaces the current one;
+  // absence leaves the current packs untouched (they are not user data).
+  const packsBytes = files[PACKS_DB_NAME];
+  if (packsBytes) {
+    closePacksDb();
+    const dest = new File(Paths.document, PACKS_DB_NAME);
+    if (dest.exists) dest.delete();
+    for (const sidecar of [`${PACKS_DB_NAME}-wal`, `${PACKS_DB_NAME}-shm`]) {
+      const f = new File(Paths.document, sidecar);
+      if (f.exists) f.delete();
+    }
+    dest.create();
+    dest.write(packsBytes);
   }
 
   await replaceUserDb((dest) => {

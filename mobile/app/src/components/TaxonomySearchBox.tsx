@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { memo, useEffect, useRef, useState } from 'react';
+import i18next from '~/i18n';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 import { searchTaxonomy, type TaxonSearchHit } from '~/db';
@@ -109,7 +110,11 @@ const HitRow = memo(function HitRow({ hit, onPress }: { hit: TaxonSearchHit; onP
           <ScientificName name={hit.name} rank={hit.rank} />
         </Text>
         <View className={`ml-2 rounded px-1.5 py-0.5 ${c.bg}`}>
-          <Text className={`text-[10px] font-medium ${c.text}`}>{hit.rank}</Text>
+          <Text className={`text-[10px] font-medium ${c.text}`}>
+            {i18next.exists(`rank.${hit.rank.toLowerCase()}`)
+              ? t(`rank.${hit.rank.toLowerCase()}`)
+              : hit.rank}
+          </Text>
         </View>
       </View>
       {hit.matched_as ? (

@@ -4,6 +4,7 @@ import { getTaicolDb } from './init';
 import { SEARCH_COLUMNS, searchSpecies, searchSpeciesJp, groupFilterClause, markJpAlias } from './search';
 import { getEnabledRegions, crossRegionVernacular, normalizeSci } from './regions';
 import { searchExternalTaxa } from './externalTaxa';
+import { searchPackTaxa } from './regionpacks';
 import type { SearchResult, TaxonGroup } from './types';
 
 type FuzzyOptions = {
@@ -390,11 +391,31 @@ export function searchWithFuzzyFallback(opts: {
     // eslint-disable-next-line no-console
     console.warn('[search] external taxa search failed:', e);
   }
-  if (external.length === 0) return local;
+  // Country region packs come last: also bulk data, but GBIF-derived rather
+  // than checklist-verified, and duplicating a bundled species under a second
+  // identity would split its records.
+  let pack: SearchResult[] = [];
+  try {
+    pack = searchPackTaxa(opts.q, opts.groups);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[search] pack taxa search failed:', e);
+  }
+  if (external.length === 0 && pack.length === 0) return local;
   // Bundled results first: a species that IS in the checklist must keep its
   // local identity, and the external row is at best a duplicate of it.
   const seen = new Set(local.map((r) => r.taxon_id));
-  return [...local, ...external.filter((r) => !seen.has(r.taxon_id))];
+  const merged = [...local, ...external.filter((r) => !seen.has(r.taxon_id))];
+  if (pack.length === 0) return merged;
+  // Pack rows dedupe by identity AND by scientific name: the same organism
+  // in TaiCOL/YList/external_taxa carries a different taxon_id than the pack's
+  // 'g' + backbone key, and only the name reveals the duplicate.
+  const seenIds = new Set(merged.map((r) => r.taxon_id));
+  const seenSci = new Set(merged.map((r) => normalizeSci(r.name)));
+  return [
+    ...merged,
+    ...pack.filter((r) => !seenIds.has(r.taxon_id) && !seenSci.has(normalizeSci(r.name))),
+  ];
 }
 
 function searchBundledChecklists(opts: {
@@ -404,20 +425,23 @@ function searchBundledChecklists(opts: {
    *  (voice / batch import). Off for the live SearchBox path. */
   phonetic?: boolean;
 }): SearchResult[] {
-  let exact: SearchResult[] = [];
-  try {
-    exact = searchSpecies({ q: opts.q, groups: opts.groups, limit: 30 });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[search] exact search failed:', e);
-    return [];
-  }
-
   const regions = getEnabledRegions();
+  const tw = regions.includes('TW');
   const jp = regions.includes('JP');
 
-  // ── Taiwan-only path (default): unchanged ──
-  if (!jp) {
+  let exact: SearchResult[] = [];
+  if (tw) {
+    try {
+      exact = searchSpecies({ q: opts.q, groups: opts.groups, limit: 30 });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[search] exact search failed:', e);
+      return [];
+    }
+  }
+
+  // ── Taiwan-only path (default): byte-identical to the pre-region behavior ──
+  if (tw && !jp) {
     if (exact.length >= 5) return exact;
     try {
       const excludeIds = new Set(exact.map((r) => r.id));
@@ -430,26 +454,38 @@ function searchBundledChecklists(opts: {
     }
   }
 
-  // ── Regional path: TaiCOL + YList, merged by scientific name ──
+  // ── Neither bundled region enabled (packs-only mode): the pack/external
+  //    merge in searchWithFuzzyFallback is the whole result set. ──
+  if (!tw && !jp) return [];
+
+  // ── Regional path: whichever of TaiCOL / YList is enabled, merged by
+  //    scientific name. With TW off this is the JP-only path — new since TW
+  //    became toggleable, so it deliberately reuses the exact same legs. ──
   let jpExact: SearchResult[] = [];
-  try {
-    jpExact = searchSpeciesJp({ q: opts.q, groups: opts.groups, limit: 30 });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[search] JP exact search failed:', e);
+  if (jp) {
+    try {
+      jpExact = searchSpeciesJp({ q: opts.q, groups: opts.groups, limit: 30 });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[search] JP exact search failed:', e);
+    }
   }
   let combined = mergeBySciNorm(exact, jpExact);
 
   if (combined.length < 5) {
     try {
       const excludeIds = new Set(combined.map((r) => r.id));
-      const twFuzzy = fuzzySearch({ q: opts.q, groups: opts.groups, excludeIds, phonetic: opts.phonetic });
+      const twFuzzy = tw
+        ? fuzzySearch({ q: opts.q, groups: opts.groups, excludeIds, phonetic: opts.phonetic })
+        : [];
       let jpFuzzy: SearchResult[] = [];
-      try {
-        jpFuzzy = fuzzySearchJp({ q: opts.q, groups: opts.groups, excludeIds });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn('[search] JP fuzzy failed:', e);
+      if (jp) {
+        try {
+          jpFuzzy = fuzzySearchJp({ q: opts.q, groups: opts.groups, excludeIds });
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[search] JP fuzzy failed:', e);
+        }
       }
       combined = mergeBySciNorm(combined, [...twFuzzy, ...jpFuzzy]);
     } catch (e) {
@@ -458,7 +494,8 @@ function searchBundledChecklists(opts: {
     }
   }
 
-  enrichSharedVernacular(combined, regions);
+  // Cross-region "中文名 / 和名" enrichment only means something with both on.
+  if (tw && jp) enrichSharedVernacular(combined, regions);
   return combined;
 }
 

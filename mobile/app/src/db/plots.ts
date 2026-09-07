@@ -9,6 +9,7 @@ import {
 import { buildTrackGeoJSON, parseTrackSegments, type TrackSegment } from '~/lib/track';
 import { generateUuid } from './uuid';
 import { getUserDb, withTransaction } from './init';
+import { ensureExternalCopy } from './regionpacks';
 import { existingProjectId, resolveProjectIdByName } from './projects';
 import { createSite, deleteSiteIfUnreferenced, type ImportedSite } from './sites';
 import type { DuplicateRecordOptions } from './duplicate';
@@ -759,11 +760,11 @@ export function plotCanAcceptSpecies(plot: PlotSurvey): boolean {
   if (!requiresStaticGps(plot)) {
     return plot.start_ts != null;
   }
-  return (
-    plot.decimal_latitude !== null &&
-    plot.decimal_longitude !== null &&
-    plot.coord_uncertainty_m !== null
-  );
+  // A coordinate is required; a measured accuracy is NOT. A point placed by
+  // hand on the map (GPS unavailable/wrong) deliberately carries
+  // coord_uncertainty_m = null — demanding it here locked every
+  // manually-located plot out of species entry.
+  return plot.decimal_latitude !== null && plot.decimal_longitude !== null;
 }
 
 /** Look up the abundance method configured for a given layer of this plot.
@@ -803,6 +804,7 @@ export type AddPlotSpeciesInput = {
 };
 
 export function addPlotSpecies(input: AddPlotSpeciesInput): number {
+  ensureExternalCopy(input.taxon_id);
   const db = getUserDb();
   const now = Date.now();
   const res = db.executeSync(

@@ -81,6 +81,14 @@ export type SearchResult = {
   /** Source dataset. 'TW' (TaiCOL, default) or 'JP' (YList). Set when the
    *  Japan regional database is enabled; absent ⇒ treat as 'TW'. */
   region?: 'TW' | 'JP';
+  /** ISO country code of the region pack this row came from. Only set by
+   *  `searchPackTaxa` — the search UI badges these so a GBIF-derived name is
+   *  never mistaken for a checklist-verified one. */
+  pack_country?: string;
+  /** Which external cache minted this row ('gbif' | 'inat' | 'manual') —
+   *  only set by `externalToSearchResult`; 'manual' drives the 自建 badge and
+   *  the edit affordance. */
+  external_source?: string;
   matched_as?: {
     name: string;
     fullname: string;

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { PlotDiversityCard } from './PlotDiversityCard';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
@@ -544,6 +545,15 @@ export function PlotSpeciesTab({
 
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
+      <PlotDiversityCard
+        allRecords={allRecords}
+        subplotRecords={records}
+        subplotMode={subplotMode}
+        subplotIds={subplots.map((sp) => sp.id)}
+        activeSubplotLabel={
+          subplotMode ? (subplots.find((sp) => sp.id === activeSubplotId)?.label ?? null) : null
+        }
+      />
       {/* Subplot switcher (小區) — scopes the whole species tab to one subplot. */}
       {subplotMode ? (
         <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2">
@@ -603,14 +613,14 @@ export function PlotSpeciesTab({
           </Text>
         ) : (
           <>
-            <Text className="mb-1.5 text-xs font-medium text-gray-600 dark:text-gray-400">{tr('plotSpecies.inputLayer')}</Text>
-            {/* Horizontal scrollable chips — supports up to 6 layers (E1-E6)
-                without cramping on narrow phones. Each chip is fixed-width so
-                ≤4 layers fill the row, 5-6 layers gain horizontal scroll. */}
+            {/* Compact layer picker: the chips are self-explanatory (E1-E6), so
+                no title row; smaller chips; the selected layer's name + count
+                share one trailing line. ~40% shorter than the old 3-row block —
+                this sits above the species list and was eating survey space. */}
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: 8, paddingRight: 4 }}
+              contentContainerStyle={{ gap: 6, paddingRight: 4 }}
             >
               {activeLayers.map((l) => {
                 const on = layer === l;
@@ -618,17 +628,17 @@ export function PlotSpeciesTab({
                   <Pressable
                     key={l}
                     onPress={() => setLayer(l)}
-                    className={`items-center justify-center rounded-lg px-4 py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
-                    style={{ minWidth: 56 }}
+                    className={`items-center justify-center rounded-md px-2.5 py-1 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
+                    style={{ minWidth: 38 }}
                   >
-                    <Text className={`text-sm font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <Text className={`text-xs font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
                       {l}
                     </Text>
                   </Pressable>
                 );
               })}
             </ScrollView>
-            <Text className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+            <Text className="mt-1 text-[11px] text-gray-500 dark:text-gray-400" numberOfLines={1}>
               {layerLabel(layer)}
               {grouped[layer].length > 0 ? tr('plotSpecies.recordedCount', { count: grouped[layer].length }) : ''}
             </Text>

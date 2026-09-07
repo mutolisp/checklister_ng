@@ -53,5 +53,8 @@ export function taxonSpeciesToSearchResult(sp: TaxonSpecies): SearchResult {
     rank: sp.rank,
     is_autonym: sp.is_autonym,
     is_sensu_lato: false,
+    // Provenance survives the lift so the detail sheet / search rows keep the
+    // country badge for pack-sourced tree rows.
+    pack_country: sp.pack_country,
   };
 }

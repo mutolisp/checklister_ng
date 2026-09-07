@@ -94,6 +94,12 @@ type SettingsValues = {
   /** Pre-filled into a new specimen's `identified_by`, the way a trip's
    *  collector is inherited. Empty means leave it unset. */
   default_identified_by: string;
+  /** GBIF username, remembered so a pack download only re-asks the password. */
+  gbif_username: string;
+  /** Email GBIF notifies when a pack download is ready ('' = no email). */
+  gbif_notify_email: string;
+  /** 樣區物種頁的多樣性統計卡展開狀態。 */
+  plot_stats_expanded: boolean;
   /** Heading printed at the top of every herbarium label, e.g. "Flora of
    *  Taiwan". Remembered between exports. */
   collection_label_title: string;
@@ -168,6 +174,9 @@ const DEFAULTS: SettingsValues = {
   // Preserves the order the list had before sorting existed.
   collection_sort: 'collected',
   default_identified_by: '',
+  gbif_username: '',
+  gbif_notify_email: '',
+  plot_stats_expanded: false,
   collection_label_title: '',
   collection_label_family: false,
   last_record_sort_dir: 'desc',
@@ -257,6 +266,9 @@ function readAll(): SettingsValues {
     collection_sort: (map.get('collection_sort') as CollectionSort) ?? DEFAULTS.collection_sort,
     default_identified_by:
       map.get('default_identified_by') ?? DEFAULTS.default_identified_by,
+    gbif_username: map.get('gbif_username') ?? DEFAULTS.gbif_username,
+    gbif_notify_email: map.get('gbif_notify_email') ?? DEFAULTS.gbif_notify_email,
+    plot_stats_expanded: map.get('plot_stats_expanded') === 'true',
     collection_label_title:
       map.get('collection_label_title') ?? DEFAULTS.collection_label_title,
     collection_label_family:
@@ -323,12 +335,12 @@ function parseRegions(raw: string | undefined): RegionCode[] {
   try {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      const filtered = parsed.filter(
+      // TW is a default, not a constant: [] (packs-only) and ['JP'] are valid
+      // states since the unified region page. Must stay in sync with
+      // regions.ts getEnabledRegions(), which reads the same setting from SQL.
+      return parsed.filter(
         (v): v is RegionCode => typeof v === 'string' && REGION_KEYS.has(v as RegionCode),
       );
-      // 'TW' is the base and must always be present.
-      if (!filtered.includes('TW')) filtered.unshift('TW');
-      return filtered;
     }
   } catch {
     // ignore corrupt setting

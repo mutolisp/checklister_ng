@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, LayoutAnimation, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { isoDateTime } from '~/lib/datetime';
 import { ExportPreferenceSheet } from '~/components/ExportPreferenceSheet';
@@ -11,7 +11,9 @@ import {
   deleteCollectionTrip,
   deletePlotSurvey,
   deleteSession,
+  listPlotSpecies,
   listRecordsSummary,
+  listSessionRecords,
   takenRecordNames,
   taxonIdsOfRecord,
   type ProjectGroup,
@@ -37,6 +39,9 @@ import { pickFavoriteFolder } from '~/lib/pickFavoriteFolder';
 import { useFavorites } from '~/stores/favorites';
 import { estimateBundleSize } from '~/lib/exportSize';
 import { bundleProject } from '~/lib/projectExport';
+import { betaSimilarity, chao2, computeDiversity, type Chao2Result, type DiversityRecord } from '~/lib/diversity';
+import { BetaSimilarityBlock, Chao2ResultBlock } from '~/components/CrossPlotChao2Card';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useExportShare } from '~/lib/useExportShare';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -98,7 +103,10 @@ function RecordRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 ${compact ? 'py-2' : 'py-3'} active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
+      // Compact must be VISIBLY compact — an 8px padding delta alone reads as
+      // "the setting does nothing". Tighter padding + smaller title + no
+      // third line ≈ one-third shorter rows.
+      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 ${compact ? 'py-1.5' : 'py-3'} active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
     >
       {selectMode ? <SelectCheckbox checked={selected} /> : <KindIcon kind={item.kind} active={item.active} />}
       <View className="flex-1">
@@ -106,7 +114,7 @@ function RecordRow({
           <View
             className={`mr-2 h-2 w-2 rounded-full ${item.active ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
           />
-          <Text className="flex-shrink text-base font-medium text-gray-900 dark:text-gray-100" numberOfLines={1}>
+          <Text className={`flex-shrink font-medium text-gray-900 dark:text-gray-100 ${compact ? 'text-sm' : 'text-base'}`} numberOfLines={1}>
             {showTimestamp ? formatTime(item.session!.started_at) : item.title}
           </Text>
           {item.active ? (
@@ -122,9 +130,10 @@ function RecordRow({
             </View>
           ) : null}
         </View>
-        <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
+        <Text className={`text-xs text-gray-500 dark:text-gray-400 ${compact ? '' : 'mt-0.5'}`} numberOfLines={1}>
           {showProject ? item.subtitlePlain : item.subtitle}
         </Text>
+        <RowDiversityLine kind={item.kind} id={item.id} />
         {/* Third line dropped when the title IS the timestamp (auto-named
             sessions printed the same time twice) and in compact density. */}
         {item.startedAt > 0 && !showTimestamp && !compact ? (
@@ -133,6 +142,129 @@ function RecordRow({
       </View>
       {selectMode ? null : <Ionicons name="chevron-forward" size={18} color="#9ca3af" />}
     </Pressable>
+  );
+}
+
+/** Cross-plot Chao2 with the given plots as incidence units — the shared
+ *  computation for the header chip and the multi-select sheet. */
+function loadPlotUnitRecords(plotId: number): DiversityRecord[] {
+  try {
+    return listPlotSpecies(plotId).map((r) => ({
+      taxon_id: r.taxon_id,
+      used_scientific_name: r.used_scientific_name,
+      organism_quantity: r.organism_quantity,
+      organism_quantity_type: r.organism_quantity_type,
+      subplot_id: plotId,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+function crossPlotChao2(plotIds: number[]): Chao2Result {
+  return chao2(plotIds.flatMap(loadPlotUnitRecords), plotIds);
+}
+
+/** Header-chip completeness cache. Computation is deferred off the reload
+ *  critical path (records-tab reload is perf-tuned); reload() clears this so
+ *  new records show on the next pass. null = computed, not applicable. */
+const chao2ChipCache = new Map<string, number | null>();
+export function clearChao2ChipCache(): void {
+  chao2ChipCache.clear();
+}
+
+function ProjectChao2Chip({ projectId, plotIds }: { projectId: number; plotIds: number[] }) {
+  const router = useRouter();
+  const { t } = useTranslation();
+  const key = `${projectId}:${plotIds.join('.')}`;
+  const [completeness, setCompleteness] = useState<number | null>(() =>
+    chao2ChipCache.get(key) ?? null,
+  );
+  useEffect(() => {
+    if (plotIds.length < 2) {
+      setCompleteness(null);
+      return;
+    }
+    if (chao2ChipCache.has(key)) {
+      setCompleteness(chao2ChipCache.get(key) ?? null);
+      return;
+    }
+    // Deliberately off the mount frame: N plots × listPlotSpecies must not
+    // slow the list's first paint.
+    const timer = setTimeout(() => {
+      const res = crossPlotChao2(plotIds);
+      const v = res.applicable ? res.completeness : null;
+      chao2ChipCache.set(key, v);
+      setCompleteness(v);
+    }, 0);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  if (completeness == null) return null;
+  return (
+    <Pressable
+      onPress={() => router.push(`/project/${projectId}` as Href)}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={t('plotStats.crossTitle')}
+      className="ml-2 rounded-full bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 active:opacity-60"
+    >
+      <Text className="text-[11px] font-medium text-sky-700 dark:text-sky-300">
+        {t('plotStats.chipLabel', { pct: `${Math.round(completeness * 100)}%` })}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Per-row S/H′/J′ cache; cleared with the chip cache on reload. */
+const rowDivCache = new Map<string, { s: number; h: number | null; j: number | null } | null>();
+
+/** Tiny `S 34 · H′ 2.41` line for plot / session rows. Computed off the
+ *  mount frame and cached — same perf contract as the header chip. H′ is
+ *  omitted when the records carry no usable abundance. */
+function RowDiversityLine({ kind, id }: { kind: RecordKind; id: number }) {
+  const key = `${kind}-${id}`;
+  const [val, setVal] = useState<
+    { s: number; h: number | null; j: number | null } | null | undefined
+  >(() => rowDivCache.get(key));
+  useEffect(() => {
+    if (rowDivCache.has(key)) {
+      setVal(rowDivCache.get(key));
+      return;
+    }
+    if (kind === 'collection') {
+      rowDivCache.set(key, null);
+      setVal(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      let v: { s: number; h: number | null; j: number | null } | null = null;
+      try {
+        const rows = kind === 'plot' ? listPlotSpecies(id) : listSessionRecords(id);
+        const d = computeDiversity(
+          rows.map((r) => ({
+            taxon_id: r.taxon_id,
+            used_scientific_name: r.used_scientific_name,
+            organism_quantity: r.organism_quantity,
+            organism_quantity_type: r.organism_quantity_type,
+          })),
+        );
+        if (d.richness > 0) v = { s: d.richness, h: d.shannonH, j: d.pielouJ };
+      } catch {
+        // row stays without the line
+      }
+      rowDivCache.set(key, v);
+      setVal(v);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [key, kind, id]);
+  if (!val) return null;
+  return (
+    <Text className="mt-0.5 text-[11px] text-emerald-700 dark:text-emerald-400" style={{ fontVariant: ['tabular-nums'] }}>
+      {`S:${val.s}`}
+      {val.h != null ? `, H′:${val.h.toFixed(2)}` : ''}
+      {val.j != null ? `, Pielou J′:${val.j.toFixed(2)}` : ''}
+    </Text>
   );
 }
 
@@ -197,6 +329,12 @@ function ProjectHeader({
         <Text className="ml-2 flex-1 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
           {parts.join(' · ')}
         </Text>
+        {!selectMode ? (
+          <ProjectChao2Chip
+            projectId={group.projectId}
+            plotIds={group.items.filter((x) => x.kind === 'plot').map((x) => x.id)}
+          />
+        ) : null}
         {onExport ? (
           <Pressable
             onPress={onExport}
@@ -232,6 +370,7 @@ function buildFlatRows(groups: ProjectGroup[], collapsedIds: Set<number>): FlatR
 export default function RecordsListScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const sheetInsets = useSafeAreaInsets();
   const filterLabel: Record<Filter, string> = {
     all: t('records.filterAll'),
     session: t('nav.session'),
@@ -285,6 +424,8 @@ export default function RecordsListScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(() => {
+    chao2ChipCache.clear();
+    rowDivCache.clear();
     // One table walk: counts (always over ALL records so the chips stay in
     // sync after any delete / create), the filtered list and the grouping all
     // come from listRecordsSummary — this used to be three identical walks.
@@ -544,6 +685,36 @@ export default function RecordsListScreen() {
 
   // C7: pull-to-refresh. reload() is synchronous (op-sqlite executeSync), so
   // hold the spinner a beat — an instantly vanishing spinner reads as broken.
+  // ── 跨樣區 Chao2（multi-select → ad-hoc scope, may span projects) ──
+  const selectedPlotIds = useMemo(
+    () =>
+      [...selected]
+        .filter((k) => k.startsWith('plot-'))
+        .map((k) => Number(k.slice('plot-'.length)))
+        .filter((n) => Number.isFinite(n)),
+    [selected],
+  );
+  const [chao2Sheet, setChao2Sheet] = useState<Array<{ id: number; title: string }> | null>(null);
+  const chao2SheetData = useMemo(() => {
+    if (!chao2Sheet) return null;
+    const perPlot = chao2Sheet.map((p) => ({ ...p, records: loadPlotUnitRecords(p.id) }));
+    return {
+      result: chao2(
+        perPlot.flatMap((p) => p.records),
+        perPlot.map((p) => p.id),
+      ),
+      beta:
+        perPlot.length === 2
+          ? {
+              value: betaSimilarity(perPlot[0].records, perPlot[1].records),
+              nameA: perPlot[0].title,
+              nameB: perPlot[1].title,
+            }
+          : null,
+      count: perPlot.length,
+    };
+  }, [chao2Sheet]);
+
   const handleRefresh = () => {
     setRefreshing(true);
     requestAnimationFrame(() => {
@@ -623,6 +794,27 @@ export default function RecordsListScreen() {
               {t('records.selectedCount', { count: selected.size })}
             </Text>
             <View className="flex-row items-center gap-4">
+            <Pressable
+              onPress={() =>
+                setChao2Sheet(
+                  selectedPlotIds.map((id) => ({
+                    id,
+                    title:
+                      items.find((it) => it.kind === 'plot' && it.id === id)?.title ?? String(id),
+                  })),
+                )
+              }
+              disabled={selectedPlotIds.length < 2}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('plotStats.crossTitle')}
+            >
+              <Ionicons
+                name="analytics-outline"
+                size={20}
+                color={selectedPlotIds.length < 2 ? '#9ca3af' : '#0284c7'}
+              />
+            </Pressable>
             <Pressable
               onPress={handleSaveSelectionToFavorites}
               disabled={selected.size === 0}
@@ -785,6 +977,52 @@ export default function RecordsListScreen() {
         />
       )}
 
+      {/* 跨樣區 Chao2 sheet — ad-hoc scope from the multi-select. No text
+          input, so a floating bottom sheet is fine (the full-screen rule is
+          for keyboard-bearing modals). */}
+      <Modal
+        visible={chao2Sheet != null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setChao2Sheet(null)}
+      >
+        <Pressable className="flex-1 bg-black/40" onPress={() => setChao2Sheet(null)} />
+        <View
+          className="rounded-t-2xl bg-white dark:bg-gray-900 px-4 pt-4"
+          style={{ paddingBottom: Math.max(sheetInsets.bottom, 16) }}
+        >
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            {t('plotStats.crossTitle')}
+          </Text>
+          <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {t('plotStats.selectedPlots', { n: chao2SheetData?.count ?? 0 })}
+          </Text>
+          <Text className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+            {t('plotStats.crossHint')}
+          </Text>
+          {chao2SheetData?.beta ? (
+            <BetaSimilarityBlock
+              beta={chao2SheetData.beta.value}
+              nameA={chao2SheetData.beta.nameA}
+              nameB={chao2SheetData.beta.nameB}
+            />
+          ) : (
+            <Text className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+              {t('plotStats.betaNeedTwo')}
+            </Text>
+          )}
+          {chao2SheetData?.result.applicable ? (
+            <Chao2ResultBlock result={chao2SheetData.result} />
+          ) : (
+            <Text className="mt-2 text-xs text-amber-700 dark:text-amber-400">
+              {t('plotStats.crossEmpty')}
+            </Text>
+          )}
+          <Text className="mt-2 text-[10px] text-gray-500 dark:text-gray-400">
+            {t('plotStats.lowerBoundNote')}
+          </Text>
+        </View>
+      </Modal>
       <ExportPreferenceSheet visible={prefOpen} onClose={() => setPrefOpen(false)} />
       <DuplicateRecordModal
         request={duplicating?.request ?? null}

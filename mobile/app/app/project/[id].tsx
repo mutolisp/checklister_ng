@@ -3,6 +3,7 @@
  * the project-level export (records/ + analysis matrices + JUICE + DwC-A).
  */
 import { Ionicons } from '@expo/vector-icons';
+import { CrossPlotChao2Card } from '~/components/CrossPlotChao2Card';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -156,6 +157,9 @@ export default function ProjectDetailScreen() {
                 ) : null}
               </View>
             ) : null}
+            <CrossPlotChao2Card
+              plots={records.filter((r) => r.kind === 'plot').map((r) => ({ id: r.id, title: r.title }))}
+            />
             <View className="px-4 py-2">
               <Text className="text-xs text-gray-500 dark:text-gray-400">
                 {t('projectDetail.stats', {

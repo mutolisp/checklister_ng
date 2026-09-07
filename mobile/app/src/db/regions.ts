@@ -3,10 +3,12 @@ import i18n from '~/i18n';
 import type { RegionCode } from '~/stores/settings';
 
 /**
- * Regional checklist helpers. Taiwan (TaiCOL) is the always-on base; Japan
- * (YList → `jp_names`) is an opt-in overlay. When only ['TW'] is enabled the
- * whole app behaves exactly as before this feature — every region-aware code
- * path early-returns to its original TaiCOL-only branch.
+ * Regional checklist helpers. Taiwan (TaiCOL) and Japan (YList → `jp_names`)
+ * are both toggleable — since the unified region page, TW is a default, not a
+ * constant. With exactly ['TW'] enabled the whole app still behaves as it did
+ * before regions existed — every region-aware code path early-returns to its
+ * original TaiCOL-only branch. The "at least one region/pack stays enabled"
+ * rule is enforced by the region management UI, not here.
  *
  * Backend-built crosswalk (bundled in twnamelist.db, see
  * backend/services/ylist_import.py) powers the overlay:
@@ -19,7 +21,9 @@ import type { RegionCode } from '~/stores/settings';
  */
 
 /** Read enabled regions straight from the settings table so the DB layer stays
- *  decoupled from the React store. Always includes 'TW'. Default ['TW']. */
+ *  decoupled from the React store. May be [] (packs-only) or ['JP'] — TW is a
+ *  DEFAULT, never force-inserted (the store's parser agrees; keep them in
+ *  sync). Absent/corrupt → ['TW']. */
 export function getEnabledRegions(): RegionCode[] {
   try {
     const res = getUserDb().executeSync(
@@ -29,9 +33,7 @@ export function getEnabledRegions(): RegionCode[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        const f = parsed.filter((v): v is RegionCode => v === 'TW' || v === 'JP');
-        if (!f.includes('TW')) f.unshift('TW');
-        return f;
+        return parsed.filter((v): v is RegionCode => v === 'TW' || v === 'JP');
       }
     }
   } catch {
@@ -42,6 +44,12 @@ export function getEnabledRegions(): RegionCode[] {
 
 export function jpEnabled(): boolean {
   return getEnabledRegions().includes('JP');
+}
+
+/** Taiwan (bundled TaiCOL) is toggleable; everything TaiCOL-specific — the
+ *  search leg, the taxonomy branch, all 檢索表 entry points — gates on this. */
+export function twEnabled(): boolean {
+  return getEnabledRegions().includes('TW');
 }
 
 /** Where a taxon_id's data lives. The first character is the whole

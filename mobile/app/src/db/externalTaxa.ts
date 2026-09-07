@@ -20,7 +20,8 @@ function escapeLike(s: string): string {
   return s.replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
-export type ExternalTaxonSource = 'gbif' | 'inat';
+/** 'manual' = user-created taxon (nothing had the name, not even GBIF). */
+export type ExternalTaxonSource = 'gbif' | 'inat' | 'manual';
 
 export type ExternalTaxon = {
   taxon_id: string;
@@ -72,13 +73,19 @@ export type ExternalTaxonInput = Omit<
  * reads `charAt(0)`), so every external id must start with 'g' and none may
  * collide with 't…' or 'y…'.
  *
- * Within that constraint the two sources still have to be told apart, because
- * a GBIF usageKey and an iNaturalist taxon id are both bare integers and
- * `g2492463` would otherwise mean two different organisms. GBIF keeps the plain
- * form (it is the backbone we treat as authoritative); iNat gets 'gi' + key,
- * which cannot collide because a GBIF key is all digits.
+ * Within that constraint the two sources still have to be told apart —
+ * `g2492463` would otherwise mean two different organisms. GBIF keeps the
+ * plain form (it is the backbone we treat as authoritative); iNat gets
+ * 'gi' + key. iNat keys are bare integers; GBIF keys are integers (legacy),
+ * UPPERCASE ChecklistBank-style ids ('5XCJ3'), or 'BOLD.xxx' bins — none of
+ * which start with a lowercase 'i', so the 'gi' prefix cannot collide.
+ * (Verified on a real 4,690-row SPECIES_LIST download, 2026-09-08.)
  */
 export function externalTaxonId(source: ExternalTaxonSource, sourceKey: string): string {
+  // Manual ids are 'gm' + lowercase hex (from generateUuid). No collision:
+  // iNat is 'gi' + digits, GBIF keys are digits / UPPERCASE ChecklistBank ids
+  // / 'BOLD.xxx' — none produce a lowercase 'm' in position 2.
+  if (source === 'manual') return `gm${sourceKey}`;
   return source === 'inat' ? `gi${sourceKey}` : `g${sourceKey}`;
 }
 
@@ -152,6 +159,43 @@ export function upsertExternalTaxon(input: ExternalTaxonInput): string {
     ],
   );
   return taxonId;
+}
+
+/**
+ * Edit an existing external taxon in place (the manual-entry "事後修改" path).
+ * Direct UPDATE by id — `upsertExternalTaxon` reuses ids by NAME, which is
+ * exactly wrong for an edit (renaming a manual taxon must keep its id, since
+ * records point at it).
+ */
+export function updateExternalTaxon(
+  taxonId: string,
+  fields: Partial<
+    Pick<
+      ExternalTaxon,
+      | 'simple_name'
+      | 'name_author'
+      | 'rank'
+      | 'kingdom'
+      | 'phylum'
+      | 'class'
+      | 'order'
+      | 'family'
+      | 'genus'
+      | 'common_name_c'
+    >
+  >,
+): void {
+  const sets: string[] = ['fetched_at = ?'];
+  const params: (string | number | null)[] = [Date.now()];
+  for (const [k, v] of Object.entries(fields)) {
+    sets.push(`${k === 'order' ? '"order"' : k} = ?`);
+    params.push((v as string) ?? null);
+  }
+  params.push(taxonId);
+  getUserDb().executeSync(
+    `UPDATE external_taxa SET ${sets.join(', ')} WHERE taxon_id = ?;`,
+    params,
+  );
 }
 
 export function getExternalTaxon(taxonId: string): ExternalTaxon | null {
@@ -294,6 +338,7 @@ export function externalToSearchResult(t: ExternalTaxon): SearchResult {
     is_autonym: false,
     is_sensu_lato: false,
     region: 'TW',
+    external_source: t.source,
   };
 }
 

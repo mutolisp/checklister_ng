@@ -4,7 +4,7 @@ import { ActivityIndicator, Text, View } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Font from 'expo-font';
 import { Ionicons } from '@expo/vector-icons';
-import { initDb, prewarmFuzzyIndex, prewarmKeys, prewarmKingdoms } from '~/db';
+import { initDb, prewarmFuzzyIndex, prewarmKeys, prewarmKingdoms, twEnabled } from '~/db';
 import { perf } from '~/lib/perf';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -82,7 +82,9 @@ export function DBProvider({ children }: Props) {
             // non-fatal: search still works via exact path
           }
           try {
-            perf.time('app:prewarm-keys', prewarmKeys);
+            // Keys are TaiCOL content; with the Taiwan region off there is
+            // nothing to warm (and no UI that would read the cache).
+            if (twEnabled()) perf.time('app:prewarm-keys', prewarmKeys);
           } catch {
             // non-fatal: KeyListView falls back to lazy load
           }

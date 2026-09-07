@@ -40,6 +40,9 @@ type PromptOptions = {
   /** When true, allow blank confirm (otherwise the OK button stays disabled). */
   allowEmpty?: boolean;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  /** Password-style entry (GBIF login). The value only ever lives in the
+   *  resolved promise — this component never persists it. */
+  secureTextEntry?: boolean;
 };
 
 type PromptRequest = PromptOptions & {
@@ -119,6 +122,7 @@ export function TextPromptHost() {
                 placeholderTextColor="#9ca3af"
                 keyboardType={pending.keyboardType ?? 'default'}
                 autoCapitalize={pending.autoCapitalize ?? 'sentences'}
+                secureTextEntry={pending.secureTextEntry ?? false}
                 autoFocus
                 returnKeyType="done"
                 className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"

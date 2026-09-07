@@ -14,6 +14,7 @@ import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { showActionSheet } from './ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { useSettings } from '~/stores/settings';
 import { isoDateTime } from '~/lib/datetime';
 import { useRouter } from 'expo-router';
 import {
@@ -114,8 +115,9 @@ export function SpeciesDetailSheet({
   // Surface identification keys defined for the record's genus / family
   // ("上一階層"). Each key is shown as a tappable chip that closes this
   // sheet and pushes the user to the key runner.
+  const twOn = useSettings((s) => s.enabled_regions.includes('TW'));
   useEffect(() => {
-    if (!record) {
+    if (!record || !twOn) {
       setParentKeys([]);
       return;
     }
@@ -131,7 +133,7 @@ export function SpeciesDetailSheet({
         return true;
       }),
     );
-  }, [record]);
+  }, [record, twOn]);
 
   // Reset internal modal when the underlying record changes
   useEffect(() => {

@@ -3,13 +3,14 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { showActionSheet } from '~/components/ActionSheet';
 import {
   createBackup,
   createPhotoBackup,
   deleteSafetyBackup,
+  hasRegionPacks,
   restoreBackup,
   restoreSafetyBackup,
 } from '~/lib/backup';
@@ -22,6 +23,10 @@ export default function BackupScreen() {
   const { t } = useTranslation();
   const [busy, setBusy] = useState<Busy>(null);
   const [progress, setProgress] = useState('');
+  // 國家名錄 pack 是可重新下載的 GBIF 資料,預設不進備份;有 pack 才顯示開關。
+  const [includePacks, setIncludePacks] = useState(false);
+  const [packsExist, setPacksExist] = useState(false);
+  useEffect(() => setPacksExist(hasRegionPacks()), []);
 
   // 自動安全備份：cleanup.ts 在執行會改寫既有列的修復前留下的快照。
   // 它們寫在 app 私有目錄，DocumentPicker 看不到，所以必須由這一頁提供入口，
@@ -75,7 +80,7 @@ export default function BackupScreen() {
     if (busy) return;
     try {
       setBusy('backup');
-      const file = await createBackup();
+      const file = await createBackup({ includePacks: packsExist && includePacks });
       await share(file);
     } catch (e) {
       Alert.alert(t('backup.backupFailed'), e instanceof Error ? e.message : String(e));
@@ -138,6 +143,14 @@ export default function BackupScreen() {
           title={t('backup.dataBackupTitle')}
           desc={t('backup.dataBackupDesc')}
         >
+          {packsExist ? (
+            <View className="mt-1 flex-row items-center justify-between py-1">
+              <Text className="flex-1 pr-2 text-sm text-gray-700 dark:text-gray-300">
+                {t('backup.includePacks')}
+              </Text>
+              <Switch value={includePacks} onValueChange={setIncludePacks} />
+            </View>
+          ) : null}
           <ActionButton
             label={t('backup.createExport')}
             onPress={handleBackup}

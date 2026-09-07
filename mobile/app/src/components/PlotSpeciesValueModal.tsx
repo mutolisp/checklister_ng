@@ -8,6 +8,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useSettings } from '~/stores/settings';
 import {
   Alert,
   Modal,
@@ -165,8 +166,9 @@ export function PlotSpeciesValueModal({
   // Identification keys defined for the taxon's genus / family ("上一階層"),
   // shown as 鑰匙 chips like the taxonomy tree / SpeciesDetailSheet.
   const [parentKeys, setParentKeys] = useState<IdentificationKey[]>([]);
+  const twOn = useSettings((s) => s.enabled_regions.includes('TW'));
   useEffect(() => {
-    if (!visible || !header) {
+    if (!visible || !header || !twOn) {
       setParentKeys([]);
       return;
     }
@@ -181,7 +183,7 @@ export function PlotSpeciesValueModal({
         return true;
       }),
     );
-  }, [visible, header]);
+  }, [visible, header, twOn]);
   const [attrs, setAttrs] = useState<SpeciesAttributesDraft>({
     sex: initial?.sex ?? null,
     life_stage: initial?.life_stage ?? null,

@@ -7,7 +7,7 @@ import type { AdoptionInput } from '~/db';
 import type { TaxonGroup } from '~/db/types';
 import { applyChoice, chooseNameUsage } from '~/lib/adoptName';
 import { alienBadge } from '~/lib/conservationColors';
-import { lookupGbifName } from './GbifLookupHost';
+import { lookupGbifName, manualTaxonEntry, type GbifLookupOutcome } from './GbifLookupHost';
 import { TaxonGroupPicker } from './TaxonGroupPicker';
 import { ScientificName } from './ScientificName';
 import { useSettings } from '~/stores/settings';
@@ -180,6 +180,23 @@ export function SearchBox({
     }
   };
 
+  /** Shared tail of both empty-state CTAs (GBIF lookup / manual create):
+   *  a freshly minted taxon must not stay invisible behind the cached
+   *  "nothing found" for this very query. */
+  const applyPicked = (picked: GbifLookupOutcome | null) => {
+    if (!picked) return;
+    clearSearchResultCache();
+    setResults([]);
+    handleSelect(picked.result);
+    useToast
+      .getState()
+      .show(
+        picked.viaLocal
+          ? t('gbifLookup.resolvedLocal', { name: picked.result.cname || picked.result.name })
+          : t('gbifLookup.added', { name: picked.result.cname || picked.result.name }),
+      );
+  };
+
   return (
     <View className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
       {results.length > 0 ? (
@@ -207,35 +224,32 @@ export function SearchBox({
           <Text className="text-center text-xs text-gray-500 dark:text-gray-400">
             {t('search.noLocalMatch', { q: trimmedQuery })}
           </Text>
-          <Pressable
-            onPress={async () => {
-              Keyboard.dismiss();
-              const picked = await lookupGbifName(trimmedQuery);
-              if (!picked) return;
-              // A freshly minted taxon must not stay invisible behind the
-              // cached "nothing found" for this very query.
-              clearSearchResultCache();
-              setResults([]);
-              handleSelect(picked.result);
-              useToast
-                .getState()
-                .show(
-                  picked.viaLocal
-                    ? t('gbifLookup.resolvedLocal', {
-                        name: picked.result.cname || picked.result.name,
-                      })
-                    : t('gbifLookup.added', {
-                        name: picked.result.cname || picked.result.name,
-                      }),
-                );
-            }}
-            className="mt-2 flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
-          >
-            <Ionicons name="earth-outline" size={14} color="#2563eb" />
-            <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">
-              {t('search.lookupGbif')}
-            </Text>
-          </Pressable>
+          <View className="mt-2 flex-row items-center gap-2">
+            <Pressable
+              onPress={async () => {
+                Keyboard.dismiss();
+                applyPicked(await lookupGbifName(trimmedQuery));
+              }}
+              className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
+            >
+              <Ionicons name="earth-outline" size={14} color="#2563eb" />
+              <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">
+                {t('search.lookupGbif')}
+              </Text>
+            </Pressable>
+            <Pressable
+              onPress={async () => {
+                Keyboard.dismiss();
+                applyPicked(await manualTaxonEntry(trimmedQuery));
+              }}
+              className="flex-row items-center rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+            >
+              <Ionicons name="create-outline" size={14} color="#b45309" />
+              <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                {t('manualTaxon.createOwn')}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
       <View className="flex-row items-center justify-start gap-2 border-b border-gray-100 dark:border-gray-800 px-3 py-2">
@@ -287,7 +301,6 @@ const AutocompleteRow = memo(function AutocompleteRow({
   const { t } = useTranslation();
   const isSynonym = !!result.matched_as;
   const isFuzzy = !!result.fuzzy_match;
-  const cname = result.cname || t('species.noChineseName');
   const isEndemic = result.endemic === 1;
   const ab = alienBadge(result.alien_type, result.kingdom);
   return (
@@ -300,8 +313,12 @@ const AutocompleteRow = memo(function AutocompleteRow({
       <View className="flex-row flex-wrap items-center">
         {isSynonym ? <Text className="mr-1 text-sm text-orange-600">≡</Text> : null}
         {isFuzzy ? <Text className="mr-1 text-sm text-purple-600">~</Text> : null}
-        <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{cname}</Text>
-        <Text className="ml-1 text-xs text-gray-500 dark:text-gray-400"> </Text>
+        {result.cname ? (
+          <>
+            <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{result.cname}</Text>
+            <Text className="ml-1 text-xs text-gray-500 dark:text-gray-400"> </Text>
+          </>
+        ) : null}
         <ScientificName
           name={result.name}
           author={result.fullname.replace(result.name, '').trim()}
@@ -314,6 +331,19 @@ const AutocompleteRow = memo(function AutocompleteRow({
         ) : null}
         {ab ? (
           <Text className={`ml-1.5 text-xs font-medium ${ab.textClass}`}>{ab.shortLabel}</Text>
+        ) : null}
+        {result.pack_country ? (
+          // GBIF-derived country-pack row — badge it so it is never mistaken
+          // for a checklist-verified name (external rows historically had no
+          // marker at all, which was a known gap).
+          <Text className="ml-1.5 rounded bg-sky-100 px-1 text-xs font-medium text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+            {result.pack_country}
+          </Text>
+        ) : null}
+        {result.external_source === 'manual' ? (
+          <Text className="ml-1.5 rounded bg-amber-100 px-1 text-xs font-medium text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+            {t('manualTaxon.badge')}
+          </Text>
         ) : null}
       </View>
       {result.matched_as ? (

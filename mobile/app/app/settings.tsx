@@ -10,14 +10,12 @@ import {
   type CardDensity,
   type FontScale,
   type RecordTypeDefault,
-  type RegionCode,
   type Language,
 } from '~/stores/settings';
 import {
   checkIntegrity,
   clearAllUserData,
   clearSearchHistory,
-  clearTaxonomyCache,
   formatRecordNumber,
   maxRecordNumberSeq,
   nextRecordNumber,
@@ -151,16 +149,6 @@ export default function SettingsScreen() {
     );
   };
 
-  const jpEnabled = settings.enabled_regions.includes('JP');
-  const setJp = (on: boolean) => {
-    const next: RegionCode[] = on ? ['TW', 'JP'] : ['TW'];
-    settings.set('enabled_regions', next);
-    clearTaxonomyCache(); // tree dataset changed — drop the kingdom cache
-    // No toast here: the ToastHost banner overlays the nav header's top-left
-    // back button, swallowing taps while visible. The pill's active state is
-    // sufficient feedback and matches the other rows on this screen.
-  };
-
   const handleClearHistory = () => {
     Alert.alert(t('settings.clearHistoryConfirmTitle'), t('settings.clearHistoryConfirmMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
@@ -220,20 +208,16 @@ export default function SettingsScreen() {
           />
         </Section>
         <Section title={t('settings.sectionRegions')}>
-          <RowSelect
-            label={t('settings.regionJapan')}
-            value={jpEnabled ? 'on' : 'off'}
-            options={[
-              { value: 'off', label: t('settings.off') },
-              { value: 'on', label: t('settings.on') },
-            ]}
-            onChange={(v) => setJp(v === 'on')}
-          />
-          <View className="bg-white dark:bg-gray-900 px-4 pb-3">
-            <Text className="text-xs text-gray-500 dark:text-gray-400">
-              {t('settings.regionJapanDesc')}
-            </Text>
-          </View>
+          <Pressable
+            onPress={() => router.push('/regionpacks' as Href)}
+            className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <View>
+              <Text className="text-base text-gray-900 dark:text-gray-100">{t('settings.regionPacks')}</Text>
+              <Text className="text-xs text-gray-500 dark:text-gray-400">{t('settings.regionPacksDesc')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </Pressable>
         </Section>
         <Section title={t('settings.sectionCollection')}>
           {/* 預設鑑定者：新增標本時自動帶入，比照採集者從行程繼承的作法。

@@ -91,6 +91,7 @@ function ThemedShell() {
             <Stack.Screen name="about" options={{ title: t('nav.about') }} />
             <Stack.Screen name="favorites" options={{ title: t('nav.favorites') }} />
             <Stack.Screen name="backup" options={{ title: t('nav.backup') }} />
+            <Stack.Screen name="regionpacks" options={{ title: t('nav.regionPacks') }} />
           </Stack>
         </View>
         <ToastHost />
