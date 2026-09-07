@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, FlatList, LayoutAnimation, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { isoDateTime } from '~/lib/datetime';
 import { ExportPreferenceSheet } from '~/components/ExportPreferenceSheet';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
@@ -10,8 +11,7 @@ import {
   deleteCollectionTrip,
   deletePlotSurvey,
   deleteSession,
-  listRecords,
-  listRecordsByProject,
+  listRecordsSummary,
   takenRecordNames,
   taxonIdsOfRecord,
   type ProjectGroup,
@@ -25,16 +25,18 @@ import {
   bundleSession,
   type BundleItem,
 } from '~/lib/bundleExport';
+import { confirmExportContent } from '~/components/AnalysisExportOptions';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import {
   DuplicateRecordModal,
   type DuplicateRequest,
 } from '~/components/DuplicateRecordModal';
-import { duplicateRecordAndOpen, importRecordPromptAndOpen } from '~/lib/recordCreate';
+import { duplicateRecordAndOpen, importRecordPromptAndOpen, showCreateChooser } from '~/lib/recordCreate';
 import { nextRecordName } from '~/lib/recordName';
 import { pickFavoriteFolder } from '~/lib/pickFavoriteFolder';
 import { useFavorites } from '~/stores/favorites';
 import { estimateBundleSize } from '~/lib/exportSize';
+import { bundleProject } from '~/lib/projectExport';
 import { useExportShare } from '~/lib/useExportShare';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
@@ -85,6 +87,7 @@ function RecordRow({
   selected: boolean;
 }) {
   const { t } = useTranslation();
+  const compact = useSettings((s) => s.card_density) === 'compact';
   const showTimestamp = Boolean(
     item.kind === 'session' &&
       item.session &&
@@ -95,7 +98,7 @@ function RecordRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
+      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 ${compact ? 'py-2' : 'py-3'} active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
     >
       {selectMode ? <SelectCheckbox checked={selected} /> : <KindIcon kind={item.kind} active={item.active} />}
       <View className="flex-1">
@@ -120,9 +123,11 @@ function RecordRow({
           ) : null}
         </View>
         <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
-          {showProject ? item.subtitle.replace(` · ${item.projectName}`, '') : item.subtitle}
+          {showProject ? item.subtitlePlain : item.subtitle}
         </Text>
-        {item.startedAt > 0 ? (
+        {/* Third line dropped when the title IS the timestamp (auto-named
+            sessions printed the same time twice) and in compact density. */}
+        {item.startedAt > 0 && !showTimestamp && !compact ? (
           <Text className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{formatTime(item.startedAt)}</Text>
         ) : null}
       </View>
@@ -131,7 +136,28 @@ function RecordRow({
   );
 }
 
-function ProjectHeader({ group }: { group: ProjectGroup }) {
+function ProjectHeader({
+  group,
+  collapsed,
+  onToggle,
+  onToggleAll,
+  onExport,
+  selectMode = false,
+  groupSelected = false,
+  onToggleSelect,
+}: {
+  group: ProjectGroup;
+  collapsed: boolean;
+  onToggle: () => void;
+  /** Long-press: collapse / expand every group. */
+  onToggleAll: () => void;
+  onExport?: () => void;
+  /** Multi-select mode: tap selects / deselects the whole group instead of
+   *  collapsing (collapse stays available outside select mode). */
+  selectMode?: boolean;
+  groupSelected?: boolean;
+  onToggleSelect?: () => void;
+}) {
   const { t } = useTranslation();
   const countOf = (k: RecordKind) => group.items.filter((x) => x.kind === k).length;
   const parts = (
@@ -147,13 +173,43 @@ function ProjectHeader({ group }: { group: ProjectGroup }) {
     })
     .filter((x): x is string => x !== null);
   return (
-    <View className="border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-4 py-2">
+    <Pressable
+      onPress={selectMode ? onToggleSelect : onToggle}
+      onLongPress={selectMode ? undefined : onToggleAll}
+      delayLongPress={350}
+      className="border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-4 py-2 active:bg-gray-200 dark:active:bg-gray-700"
+    >
       <View className="flex-row items-center">
+        {selectMode ? (
+          <View className="mr-1">
+            <SelectCheckbox checked={groupSelected} />
+          </View>
+        ) : (
+          <Ionicons
+            name={collapsed ? 'chevron-forward' : 'chevron-down'}
+            size={14}
+            color="#6b7280"
+            style={{ marginRight: 4 }}
+          />
+        )}
         <Ionicons name="folder-outline" size={14} color="#4b5563" />
         <Text className="ml-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200">{group.projectName}</Text>
-        <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">{parts.join(' · ')}</Text>
+        <Text className="ml-2 flex-1 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
+          {parts.join(' · ')}
+        </Text>
+        {onExport ? (
+          <Pressable
+            onPress={onExport}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('common.export')}
+            className="ml-2 p-1.5 active:opacity-60"
+          >
+            <Ionicons name="share-outline" size={16} color="#2563eb" />
+          </Pressable>
+        ) : null}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -161,10 +217,11 @@ type FlatRow =
   | { kind: 'header'; group: ProjectGroup; key: string }
   | { kind: 'row'; item: RecordItem; key: string };
 
-function buildFlatRows(groups: ProjectGroup[]): FlatRow[] {
+function buildFlatRows(groups: ProjectGroup[], collapsedIds: Set<number>): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const g of groups) {
     rows.push({ kind: 'header', group: g, key: `h-${g.projectId}` });
+    if (collapsedIds.has(g.projectId)) continue;
     for (const item of g.items) {
       rows.push({ kind: 'row', item, key: `${item.kind}-${item.id}` });
     }
@@ -185,7 +242,12 @@ export default function RecordsListScreen() {
   const refreshActivePlot = useActivePlot((s) => s.refresh);
   const toast = useToast((s) => s.show);
   const [filter, setFilter] = useState<Filter>('all');
-  const [viewMode, setViewMode] = useState<ViewMode>('flat');
+  // 預設以專案分組（使用者要求 2026-09-07）；切回時間軸不持久化。
+  const [viewMode, setViewMode] = useState<ViewMode>('byProject');
+  // 收合的專案 id（byProject 檢視），持久化到 settings（比照 taxonomy_expanded）。
+  const collapsedList = useSettings((s) => s.records_collapsed);
+  const setSetting = useSettings((s) => s.set);
+  const collapsedIds = useMemo(() => new Set(collapsedList), [collapsedList]);
   const [items, setItems] = useState<RecordItem[]>([]);
   const [groups, setGroups] = useState<ProjectGroup[]>([]);
   const [counts, setCounts] = useState<Record<Filter, number>>({
@@ -208,25 +270,28 @@ export default function RecordsListScreen() {
   const selected = useRecordSelection((s) => s.selected);
   const selectEnter = useRecordSelection((s) => s.enter);
   const selectToggle = useRecordSelection((s) => s.toggle);
+  const selectSetMany = useRecordSelection((s) => s.setMany);
   const selectClear = useRecordSelection((s) => s.clear);
   const geoFormats = useSettings((s) => s.export_geo_formats);
   const includePhotos = useSettings((s) => s.export_include_photos);
   const includeDocx = useSettings((s) => s.export_include_docx);
   const levels = useSettings((s) => s.export_levels);
   const conservationFields = useSettings((s) => s.export_conservation_fields);
+  const matrixValue = useSettings((s) => s.export_matrix_value);
+  const analysisFormats = useSettings((s) => s.export_analysis_formats);
+  const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
+  const swipeHintShown = useSettings((s) => s.records_swipe_hint_shown);
+  const settingsLoaded = useSettings((s) => s.loaded);
+  const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(() => {
-    // Always recompute the top-bar stats from a full listRecords('all') query
-    // so the counters stay in sync with DB state after any delete / create.
-    const all = listRecords('all');
-    setCounts({
-      all: all.length,
-      session: all.filter((x) => x.kind === 'session').length,
-      plot: all.filter((x) => x.kind === 'plot').length,
-      collection: all.filter((x) => x.kind === 'collection').length,
-    });
-    setItems(listRecords(filter));
-    setGroups(listRecordsByProject(filter));
+    // One table walk: counts (always over ALL records so the chips stay in
+    // sync after any delete / create), the filtered list and the grouping all
+    // come from listRecordsSummary — this used to be three identical walks.
+    const summary = listRecordsSummary(filter);
+    setCounts(summary.counts);
+    setItems(summary.items);
+    setGroups(summary.groups);
     refreshActive();
     refreshActivePlot();
   }, [filter, refreshActive, refreshActivePlot]);
@@ -241,12 +306,21 @@ export default function RecordsListScreen() {
   // alerts fire "結束" while the user is staring at the records tab — without
   // this the row keeps showing「進行中」until the user manually switches
   // screens). Subscribe to the id alone so a no-op refresh (same object
-  // shape) doesn't trigger reload.
+  // shape) doesn't trigger reload. `reload` is read through a ref (not a dep):
+  // with it in the deps this effect also re-fired on mount and on every
+  // filter change, doubling the reload useFocusEffect already performs.
   const activeSessionId = useActiveSession((s) => s.session?.id ?? null);
   const activePlotId = useActivePlot((s) => s.plot?.id ?? null);
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  const activeIdsSeen = useRef(false);
   useEffect(() => {
-    reload();
-  }, [activeSessionId, activePlotId, reload]);
+    if (!activeIdsSeen.current) {
+      activeIdsSeen.current = true;
+      return;
+    }
+    reloadRef.current();
+  }, [activeSessionId, activePlotId]);
 
   const handleOpen = (item: RecordItem) => {
     if (item.kind === 'session') router.push(`/session/${item.id}` as Href);
@@ -262,8 +336,16 @@ export default function RecordsListScreen() {
     handleOpen(item);
   };
 
+  // Select-mode tap on a group header: whole group in / out.
+  const handleToggleSelectGroup = (group: ProjectGroup) => {
+    const keys = group.items.map((it) => selectionKey(it.kind, it.id));
+    const allSelected = keys.every((k) => selected.has(k));
+    selectSetMany(keys, !allSelected);
+  };
+
   const handleRowLongPress = (item: RecordItem) => {
     if (selectMode) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     selectEnter(selectionKey(item.kind, item.id));
   };
 
@@ -280,6 +362,39 @@ export default function RecordsListScreen() {
       if (item.kind === 'collection') return bundleCollection(item.id, bundleOpts);
       return bundlePlot(item.id, bundleOpts);
     });
+  };
+
+  // 專案分組標頭的匯出：整個專案打包（records/ + 分析資料表），與
+  // /projects 的 swipe 匯出同一套（沿用持久化偏好，不開選項 sheet）。
+  const handleExportProject = async (group: ProjectGroup) => {
+    if (exportBusy) return;
+    const okGo = await confirmExportContent(t, {
+      analysisFormats,
+      matrixValue,
+      matrixByLayer,
+      includePhotos,
+      includeDocx,
+      geoFormats,
+    });
+    if (!okGo) return;
+    const est = await estimateBundleSize(
+      group.items.map((it) => ({ kind: it.kind, id: it.id })),
+      { includePhotos },
+    );
+    if (!(await confirmIfLarge(est.totalBytes))) return;
+    await shareBundle(() =>
+      bundleProject(group.projectId, {
+        geoFormats,
+        includePhotos,
+        includeDocx,
+        levels,
+        conservationFields,
+        matrixValue,
+        analysisFormats,
+        matrixByLayer,
+        onProgress,
+      }),
+    );
   };
 
   const handleExportSelection = async () => {
@@ -399,14 +514,69 @@ export default function RecordsListScreen() {
     );
   };
 
-  const flatRowsForGrouped = viewMode === 'byProject' ? buildFlatRows(groups) : [];
+  const toggleCollapsed = (projectId: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSetting(
+      'records_collapsed',
+      collapsedIds.has(projectId)
+        ? collapsedList.filter((id) => id !== projectId)
+        : [...collapsedList, projectId],
+    );
+  };
+
+  // 長按分組標頭：全部收合／全部展開（比照分類樹的 collapseAll）。只動當前
+  // 檢視看得到的分組——其他 filter 下的收合狀態原樣保留。
+  const toggleCollapseAll = () => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const visibleIds = groups.map((g) => g.projectId);
+    const allCollapsed = visibleIds.every((id) => collapsedIds.has(id));
+    setSetting(
+      'records_collapsed',
+      allCollapsed
+        ? collapsedList.filter((id) => !visibleIds.includes(id))
+        : [...new Set([...collapsedList, ...visibleIds])],
+    );
+  };
+
+  const flatRowsForGrouped = viewMode === 'byProject' ? buildFlatRows(groups, collapsedIds) : [];
   const isEmpty = viewMode === 'flat' ? items.length === 0 : groups.length === 0;
+
+  // C7: pull-to-refresh. reload() is synchronous (op-sqlite executeSync), so
+  // hold the spinner a beat — an instantly vanishing spinner reads as broken.
+  const handleRefresh = () => {
+    setRefreshing(true);
+    requestAnimationFrame(() => {
+      reload();
+      setTimeout(() => setRefreshing(false), 300);
+    });
+  };
+
+  // C4: one-shot swipe-actions teaser on the first visible record row. The
+  // flag flips AFTER the animation window so the prop doesn't change (and
+  // cancel the timers) mid-teaser.
+  const firstRecordKey =
+    viewMode === 'flat'
+      ? items.length > 0
+        ? selectionKey(items[0].kind, items[0].id)
+        : null
+      : (() => {
+          const row = flatRowsForGrouped.find((r) => r.kind === 'row');
+          return row && row.kind === 'row' ? selectionKey(row.item.kind, row.item.id) : null;
+        })();
+  const teaserKey = settingsLoaded && !swipeHintShown && !selectMode ? firstRecordKey : null;
+  useEffect(() => {
+    if (teaserKey == null) return;
+    const done = setTimeout(() => setSetting('records_swipe_hint_shown', true), 2200);
+    return () => clearTimeout(done);
+  }, [teaserKey, setSetting]);
 
   const renderRow = (item: RecordItem, showProject: boolean) => {
     const key = selectionKey(item.kind, item.id);
     return (
       <SwipeRowActions
         disabled={selectMode}
+        teaser={key === teaserKey}
         actions={[
           {
             label: t('records.duplicate'),
@@ -457,6 +627,8 @@ export default function RecordsListScreen() {
               onPress={handleSaveSelectionToFavorites}
               disabled={selected.size === 0}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('records.favorites')}
             >
               <Ionicons
                 name="star-outline"
@@ -495,6 +667,8 @@ export default function RecordsListScreen() {
                   reload();
                 }}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('record.kindImport')}
                 className="rounded-full bg-gray-100 dark:bg-gray-800 p-1.5 active:bg-gray-200 dark:active:bg-gray-700"
               >
                 <Ionicons name="download-outline" size={16} color="#4b5563" />
@@ -502,36 +676,43 @@ export default function RecordsListScreen() {
               <Pressable
                 onPress={() => setPrefOpen(true)}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('exportPref.title')}
                 className="rounded-full bg-gray-100 dark:bg-gray-800 p-1.5 active:bg-gray-200 dark:active:bg-gray-700"
               >
                 <Ionicons name="settings-outline" size={16} color="#4b5563" />
               </Pressable>
-              <Pressable
-                onPress={() => setViewMode((m) => (m === 'flat' ? 'byProject' : 'flat'))}
-                className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
-              >
-                <Ionicons
-                  name={viewMode === 'byProject' ? 'folder' : 'folder-outline'}
-                  size={14}
-                  color="#2563eb"
-                />
-                <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">
-                  {viewMode === 'byProject' ? t('records.byProject') : t('records.timeline')}
-                </Text>
-              </Pressable>
+              {/* Segmented control instead of a state-labelled chip: the old
+                  chip showed the CURRENT mode, which reads as "tap to get
+                  this" — ambiguous both ways. */}
+              <View className="flex-row rounded-full bg-gray-100 dark:bg-gray-800 p-0.5">
+                {(
+                  [
+                    ['byProject', t('records.byProject')],
+                    ['flat', t('records.timeline')],
+                  ] as Array<[ViewMode, string]>
+                ).map(([mode, label]) => {
+                  const on = viewMode === mode;
+                  return (
+                    <Pressable
+                      key={mode}
+                      onPress={() => setViewMode(mode)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: on }}
+                      className={`rounded-full px-2.5 py-1 ${on ? 'bg-blue-500' : ''}`}
+                    >
+                      <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-600 dark:text-gray-400'}`}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </View>
           </View>
         )}
         {selectMode ? null : (
           <>
-            <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {t('records.stats', {
-                all: counts.all,
-                session: counts.session,
-                plot: counts.plot,
-                collection: counts.collection,
-              })}
-            </Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -563,19 +744,42 @@ export default function RecordsListScreen() {
             {filter === 'all' ? t('records.empty') : t('records.emptyFiltered', { kind: filterLabel[filter] })}
           </Text>
           <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{t('records.emptyHint')}</Text>
+          <Pressable
+            onPress={() => showCreateChooser()}
+            className="mt-5 flex-row items-center rounded-lg bg-emerald-500 px-5 py-2.5 active:bg-emerald-600"
+          >
+            <Ionicons name="add" size={18} color="white" />
+            <Text className="ml-1 text-sm font-medium text-white">{t('records.emptyCreate')}</Text>
+          </Pressable>
         </View>
       ) : viewMode === 'flat' ? (
         <FlatList
           data={items}
           keyExtractor={(x) => `${x.kind}-${x.id}`}
           renderItem={({ item }) => renderRow(item, false)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
         />
       ) : (
         <FlatList
           data={flatRowsForGrouped}
           keyExtractor={(row) => row.key}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           renderItem={({ item: row }) => {
-            if (row.kind === 'header') return <ProjectHeader group={row.group} />;
+            if (row.kind === 'header')
+              return (
+                <ProjectHeader
+                  group={row.group}
+                  collapsed={collapsedIds.has(row.group.projectId)}
+                  onToggle={() => toggleCollapsed(row.group.projectId)}
+                  onToggleAll={toggleCollapseAll}
+                  onExport={selectMode ? undefined : () => handleExportProject(row.group)}
+                  selectMode={selectMode}
+                  groupSelected={row.group.items.every((it) =>
+                    selected.has(selectionKey(it.kind, it.id)),
+                  )}
+                  onToggleSelect={() => handleToggleSelectGroup(row.group)}
+                />
+              );
             return renderRow(row.item, true);
           }}
         />

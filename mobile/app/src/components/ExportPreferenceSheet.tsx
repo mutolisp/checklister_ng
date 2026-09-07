@@ -7,9 +7,10 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import { Modal, Pressable, Switch, Text, View } from 'react-native';
+import { Modal, Pressable, ScrollView, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettings } from '~/stores/settings';
+import { AnalysisExportOptions } from './AnalysisExportOptions';
 import type { ConservationField } from '~/lib/markdown';
 
 type Props = {
@@ -44,6 +45,11 @@ const CONSERVATION_OPTIONS: Array<{ value: ConservationField; label: string }> =
 export function ExportPreferenceSheet({ visible, onClose }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  // Bottom sheet must never reach the Dynamic Island / status bar: cap its
+  // height at window height minus the top inset (85% guesses wrong on short
+  // screens with tall content).
+  const { height: winHeight } = useWindowDimensions();
+  const sheetMaxHeight = winHeight - insets.top - 12;
   const formats = useSettings((s) => s.export_geo_formats);
   const includePhotos = useSettings((s) => s.export_include_photos);
   const includeDocx = useSettings((s) => s.export_include_docx);
@@ -80,20 +86,22 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
           style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}
         />
         <View
-          style={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}
+          style={{ position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: sheetMaxHeight }}
           className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
-          <SafeAreaView edges={['bottom']} className="px-4">
+          <SafeAreaView edges={['bottom']} style={{ flexShrink: 1 }}>
             <View className="items-center pt-2">
               <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
 
-            <View className="flex-row items-center justify-between pt-3 pb-2">
+            <View className="flex-row items-center justify-between px-4 pt-3 pb-2">
               <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('exportPref.title')}</Text>
               <Pressable onPress={onClose} hitSlop={8}>
                 <Ionicons name="close" size={22} color="#6b7280" />
               </Pressable>
             </View>
+
+            <ScrollView className="px-4" style={{ flexShrink: 1 }} bounces={false}>
 
             <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {t('exportPref.geoFormats')}
@@ -201,7 +209,15 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
               })}
             </View>
 
-            <View style={{ paddingBottom: Math.max(insets.bottom, 12) }}>
+              <View className="mb-3 border-t border-gray-200 dark:border-gray-700 pt-3">
+                <Text className="mb-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
+                  {t('projectExport.prefSection')}
+                </Text>
+                <AnalysisExportOptions />
+              </View>
+            </ScrollView>
+
+            <View className="px-4" style={{ paddingBottom: Math.max(insets.bottom, 12), paddingTop: 4 }}>
               <Pressable
                 onPress={onClose}
                 className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"

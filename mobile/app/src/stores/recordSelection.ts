@@ -14,6 +14,8 @@ type State = {
   selected: Set<string>;
   enter: (key: string) => void;
   toggle: (key: string) => void;
+  /** Bulk add / remove (group-header select-all in the byProject view). */
+  setMany: (keys: string[], on: boolean) => void;
   clear: () => void;
 };
 
@@ -30,6 +32,14 @@ export const useRecordSelection = create<State>((set, get) => ({
     const next = new Set(cur);
     if (next.has(key)) next.delete(key);
     else next.add(key);
+    set({ selected: next });
+  },
+  setMany: (keys, on) => {
+    const next = new Set(get().selected);
+    for (const k of keys) {
+      if (on) next.add(k);
+      else next.delete(k);
+    }
     set({ selected: next });
   },
   clear: () => set({ active: false, selected: new Set<string>() }),

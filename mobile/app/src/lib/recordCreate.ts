@@ -535,3 +535,23 @@ export async function duplicateRecordAndOpen(
   }
   return newId;
 }
+
+/** The「新增記錄」chooser (名錄 / 樣區 / 採集 / 匯入). Shared by the tab-bar
+ *  ＋ button and the records tab's empty state. */
+export async function showCreateChooser(): Promise<void> {
+  const idx = await showActionSheet({
+    title: i18n.t('record.createChooserTitle'),
+    options: [
+      { label: i18n.t('record.kindSession') },
+      { label: i18n.t('record.kindPlot') },
+      { label: i18n.t('record.kindCollection') },
+      // Restoring an exported record is a peer of creating one from scratch;
+      // the file decides which kind it becomes.
+      { label: i18n.t('record.kindImport') },
+    ],
+  });
+  if (idx === 0) startSessionAndOpen();
+  else if (idx === 1) createPlotPromptAndOpen();
+  else if (idx === 2) startCollectionAndOpen();
+  else if (idx === 3) importRecordPromptAndOpen();
+}

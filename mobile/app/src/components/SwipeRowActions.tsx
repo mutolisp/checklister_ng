@@ -9,9 +9,14 @@
  * rows in session/plot) don't have to change. Use this on the records list.
  */
 import { Ionicons } from '@expo/vector-icons';
-import { useRef, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Swipeable from 'react-native-gesture-handler/Swipeable';
+// Reanimated-based Swipeable: the legacy RNGH `Swipeable` animates on the JS
+// thread and mounts one Animated pipeline per row; this one runs on the UI
+// thread (reanimated is already a dependency). Same props/close() contract.
+import ReanimatedSwipeable, {
+  type SwipeableMethods,
+} from 'react-native-gesture-handler/ReanimatedSwipeable';
 
 export type SwipeAction = {
   /** Display label next to the icon. */
@@ -37,17 +42,31 @@ type Props = {
   /** When true, the row is non-swipeable. Use this in multi-select mode so
    *  the user can't accidentally delete while picking. */
   disabled?: boolean;
+  /** One-shot discovery hint: shortly after mount the row peeks its actions
+   *  open and closes again. The caller decides when (first row, first visit)
+   *  and persists that it has been shown. */
+  teaser?: boolean;
 };
 
-export function SwipeRowActions({ children, actions, disabled = false }: Props) {
-  const ref = useRef<Swipeable>(null);
+export function SwipeRowActions({ children, actions, disabled = false, teaser = false }: Props) {
+  const ref = useRef<SwipeableMethods>(null);
+
+  useEffect(() => {
+    if (!teaser || disabled) return;
+    const open = setTimeout(() => ref.current?.openRight(), 600);
+    const close = setTimeout(() => ref.current?.close(), 1600);
+    return () => {
+      clearTimeout(open);
+      clearTimeout(close);
+    };
+  }, [teaser, disabled]);
 
   if (disabled || actions.length === 0) {
     return <View>{children}</View>;
   }
 
   return (
-    <Swipeable
+    <ReanimatedSwipeable
       ref={ref}
       friction={2}
       rightThreshold={40}
@@ -71,6 +90,6 @@ export function SwipeRowActions({ children, actions, disabled = false }: Props) 
       )}
     >
       {children}
-    </Swipeable>
+    </ReanimatedSwipeable>
   );
 }

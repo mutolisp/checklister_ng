@@ -158,9 +158,8 @@
     "noneSelected": "No records selected",
     "noExportable": "No exportable records",
     "selectedCount": "{{count}} selected",
-    "byProject": "By project",
+    "byProject": "Project",
     "timeline": "Timeline",
-    "stats": "{{all}} total · {{session}} checklists / {{plot}} plots / {{collection}} collections",
     "filterAll": "All",
     "empty": "No records yet",
     "emptyFiltered": "No {{kind}} records",
@@ -182,7 +181,8 @@
     "startNow": "Start recording after copying",
     "startNowHint": "The copy becomes the record in progress. If another one is open, you'll be asked to end it first.",
     "saveToFavorites": "Save to favorites",
-    "includeSpeciesCollection": "Specimens carry career collection numbers that cannot be issued in advance, so they are not copied."
+    "includeSpeciesCollection": "Specimens carry career collection numbers that cannot be issued in advance, so they are not copied.",
+    "emptyCreate": "New record"
   },
   "export": {
     "preparing": "Preparing…",
@@ -486,7 +486,7 @@
     "themeAuto": "Follow system",
     "themeLight": "Light",
     "themeDark": "Dark",
-    "cardDensity": "Species card density",
+    "cardDensity": "Card density",
     "densityCompact": "Compact",
     "densityComfortable": "Comfortable",
     "fontSize": "Font size",
@@ -904,7 +904,7 @@
     "siteNotesEx": "Describe location, elevation, vegetation, etc."
   },
   "exportPref": {
-    "title": "Export preferences",
+    "title": "Export settings",
     "geoFormats": "Geo file formats",
     "geoFormatsHint": "Pick at least one; all checked formats go into the zip.",
     "photo": "Photos",
@@ -1018,7 +1018,9 @@
   "recordsList": {
     "sessionSubtitle": "{{count}} · {{project}}",
     "plotSubtitle": "{{count}} · {{protocol}}{{size}}",
-    "collectionSubtitle": "{{count}} specimens · {{project}}"
+    "collectionSubtitle": "{{count}} specimens · {{project}}",
+    "sessionSubtitleNoProject": "{{count}} records",
+    "collectionSubtitleNoProject": "{{count}} specimens"
   },
   "plotImport": {
     "invalidYml": "Not a valid plot yml (missing plot block)",
@@ -1239,7 +1241,20 @@
     "matrixValueHint": "How Braun-Blanquet codes are numericised in the vegan matrices; JUICE files always keep the raw codes",
     "valueCover": "Cover % (midpoint)",
     "valueOrdinal": "Ordinal (1–9)",
-    "valueBb": "Raw BB codes",
-    "exportNow": "Export"
+    "valueBb": "Br.-Bq. original grades",
+    "exportNow": "Export",
+    "listTitle": "This export will include",
+    "itemRecords": "Per-record exports ({{formats}})",
+    "itemPhotos": "photos",
+    "itemMatrix": "Species matrix ({{mode}}{{layered}})",
+    "itemLayeredSuffix": ", incl. per-layer version",
+    "itemEnv": "Environmental table (env.csv, variables as columns)",
+    "itemLong": "Species long table & indices (species_long, relevé/species index, cover scale)",
+    "itemJuice": "JUICE import files (semicolon table + header data + species list)",
+    "itemDwca": "Darwin Core Archive (for GBIF)",
+    "itemSites": "Site geometries (sites)",
+    "byLayer": "Per-layer matrix",
+    "byLayerHint": "Also emit the species × layer expanded matrix (species_matrix_by_layer.csv)",
+    "prefSection": "Project export (analysis data)"
   }
 }

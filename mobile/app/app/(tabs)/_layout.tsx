@@ -11,29 +11,13 @@ import { showActionSheet } from '~/components/ActionSheet';
 import {
   createPlotPromptAndOpen,
   importRecordPromptAndOpen,
+  showCreateChooser,
   startCollectionAndOpen,
   startSessionAndOpen,
 } from '~/lib/recordCreate';
 import { perf } from '~/lib/perf';
 import i18n from '~/i18n';
 
-async function showCreateChooser(): Promise<void> {
-  const idx = await showActionSheet({
-    title: i18n.t('record.createChooserTitle'),
-    options: [
-      { label: i18n.t('record.kindSession') },
-      { label: i18n.t('record.kindPlot') },
-      { label: i18n.t('record.kindCollection') },
-      // Restoring an exported record is a peer of creating one from scratch;
-      // the file decides which kind it becomes.
-      { label: i18n.t('record.kindImport') },
-    ],
-  });
-  if (idx === 0) startSessionAndOpen();
-  else if (idx === 1) createPlotPromptAndOpen();
-  else if (idx === 2) startCollectionAndOpen();
-  else if (idx === 3) importRecordPromptAndOpen();
-}
 
 async function showLongPressMenu(): Promise<void> {
   const updateDefault = (v: RecordTypeDefault) =>

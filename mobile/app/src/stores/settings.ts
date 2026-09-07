@@ -103,6 +103,11 @@ type SettingsValues = {
    *  second time flips this. */
   last_record_sort_dir: SortDirection;
   taxonomy_expanded: string[];
+  /** Collapsed project ids in the records tab's byProject view. Stale ids
+   *  (deleted projects) are harmless — they just never match a group. */
+  records_collapsed: number[];
+  /** One-shot: the records list already played its swipe-actions teaser. */
+  records_swipe_hint_shown: boolean;
   font_scale: FontScale;
   map_view: MapViewState;
   record_type_default: RecordTypeDefault;
@@ -138,6 +143,9 @@ type SettingsValues = {
   export_matrix_value: MatrixValueMode;
   /** Analysis-format folders the project export produces. */
   export_analysis_formats: AnalysisFormat[];
+  /** Whether the project export also emits the per-layer species matrix
+   *  (species_matrix_by_layer.csv) alongside the cross-layer merged one. */
+  export_matrix_by_layer: boolean;
   /** Classification levels to group the exported checklist by. Empty = use each
    *  taxon group's default (vascular = 高階分類群 + 科, birds = 目 + 科, …).
    *  Non-empty = global override, applied in LEVEL_ORDER. */
@@ -164,6 +172,8 @@ const DEFAULTS: SettingsValues = {
   collection_label_family: false,
   last_record_sort_dir: 'desc',
   taxonomy_expanded: [],
+  records_collapsed: [],
+  records_swipe_hint_shown: false,
   font_scale: 'normal',
   map_view: DEFAULT_MAP_VIEW,
   record_type_default: 'ask',
@@ -178,6 +188,7 @@ const DEFAULTS: SettingsValues = {
   export_include_docx: true,
   export_matrix_value: 'cover',
   export_analysis_formats: ['vegan', 'juice', 'dwca'],
+  export_matrix_by_layer: true,
   export_levels: [],
   export_conservation_fields: ['redlist'],
   enabled_regions: ['TW'],
@@ -255,6 +266,8 @@ function readAll(): SettingsValues {
     last_record_sort_dir:
       (map.get('last_record_sort_dir') as SortDirection) ?? DEFAULTS.last_record_sort_dir,
     taxonomy_expanded: taxonomyExpanded,
+    records_collapsed: parseNumberArray(map.get('records_collapsed')),
+    records_swipe_hint_shown: map.get('records_swipe_hint_shown') === 'true',
     font_scale: (map.get('font_scale') as FontScale) ?? DEFAULTS.font_scale,
     map_view: mapView,
     record_type_default:
@@ -286,6 +299,10 @@ function readAll(): SettingsValues {
         : map.get('export_include_docx') === 'true',
     export_matrix_value: parseMatrixValue(map.get('export_matrix_value')),
     export_analysis_formats: parseAnalysisFormats(map.get('export_analysis_formats')),
+    export_matrix_by_layer:
+      map.get('export_matrix_by_layer') == null
+        ? DEFAULTS.export_matrix_by_layer
+        : map.get('export_matrix_by_layer') === 'true',
     export_levels: parseLevels(map.get('export_levels')),
     export_conservation_fields: parseConservationFields(map.get('export_conservation_fields')),
     enabled_regions: parseRegions(map.get('enabled_regions')),
@@ -376,6 +393,17 @@ function parseGeoFormats(raw: string | undefined): Array<'geojson' | 'gpx' | 'km
     // ignore corrupt setting
   }
   return DEFAULTS.export_geo_formats;
+}
+
+function parseNumberArray(raw: string | undefined): number[] {
+  if (raw == null) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter((v): v is number => typeof v === 'number');
+  } catch {
+    // ignore corrupt setting
+  }
+  return [];
 }
 
 const MATRIX_VALUE_KEYS = new Set<MatrixValueMode>(['bb', 'cover', 'ordinal']);

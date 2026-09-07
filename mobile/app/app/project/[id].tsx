@@ -52,6 +52,7 @@ export default function ProjectDetailScreen() {
   const conservationFields = useSettings((s) => s.export_conservation_fields);
   const matrixValue = useSettings((s) => s.export_matrix_value);
   const analysisFormats = useSettings((s) => s.export_analysis_formats);
+  const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
 
   const reload = useCallback(() => {
     setProject(getProject(projectId));
@@ -91,6 +92,7 @@ export default function ProjectDetailScreen() {
         conservationFields,
         matrixValue,
         analysisFormats,
+        matrixByLayer,
         onProgress,
       }),
     );

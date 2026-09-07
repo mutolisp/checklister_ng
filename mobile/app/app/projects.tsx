@@ -12,6 +12,7 @@ import {
   type ProjectInput,
   type ProjectWithCounts,
 } from '~/db';
+import { confirmExportContent } from '~/components/AnalysisExportOptions';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { ProjectEditModal, type ProjectEditTarget } from '~/components/ProjectEditModal';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
@@ -35,12 +36,22 @@ export default function ProjectsScreen() {
   const conservationFields = useSettings((s) => s.export_conservation_fields);
   const matrixValue = useSettings((s) => s.export_matrix_value);
   const analysisFormats = useSettings((s) => s.export_analysis_formats);
+  const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
 
   // Swipe export: straight to share with the persisted preferences, mirroring
   // the records tab's swipe export. The detail page's sheet is where the
   // analysis options get changed.
   const handleExport = async (project: ProjectWithCounts) => {
     if (busy) return;
+    const okGo = await confirmExportContent(t, {
+      analysisFormats,
+      matrixValue,
+      matrixByLayer,
+      includePhotos,
+      includeDocx,
+      geoFormats,
+    });
+    if (!okGo) return;
     const items = listRecords('all')
       .filter((r) => r.projectId === project.id)
       .map((r) => ({ kind: r.kind, id: r.id }));
@@ -55,6 +66,7 @@ export default function ProjectsScreen() {
         conservationFields,
         matrixValue,
         analysisFormats,
+        matrixByLayer,
         onProgress,
       }),
     );

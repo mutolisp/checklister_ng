@@ -158,9 +158,8 @@
     "noneSelected": "沒有選取任何記錄",
     "noExportable": "沒有可匯出的記錄",
     "selectedCount": "已選 {{count}}",
-    "byProject": "按專案",
+    "byProject": "專案",
     "timeline": "時間軸",
-    "stats": "{{all}} 筆 · 名錄 {{session}} / 樣區 {{plot}} / 採集 {{collection}}",
     "filterAll": "全部",
     "empty": "還沒有任何記錄",
     "emptyFiltered": "沒有{{kind}}記錄",
@@ -182,7 +181,8 @@
     "startNow": "複製後直接開始",
     "startNowHint": "複製完就成為進行中的記錄。若已有其他進行中的記錄，會先問是否結束。",
     "saveToFavorites": "存進常用名錄",
-    "includeSpeciesCollection": "標本的採集號是實體標本的編號，無法預先配發，因此不會一併複製。"
+    "includeSpeciesCollection": "標本的採集號是實體標本的編號，無法預先配發，因此不會一併複製。",
+    "emptyCreate": "新增記錄"
   },
   "export": {
     "preparing": "準備中…",
@@ -486,7 +486,7 @@
     "themeAuto": "跟隨系統",
     "themeLight": "淺色",
     "themeDark": "深色",
-    "cardDensity": "物種卡片密度",
+    "cardDensity": "卡片密度",
     "densityCompact": "緊湊",
     "densityComfortable": "寬鬆",
     "fontSize": "字體大小",
@@ -904,7 +904,7 @@
     "siteNotesEx": "描述地點、海拔、植被等"
   },
   "exportPref": {
-    "title": "匯出偏好",
+    "title": "匯出設定",
     "geoFormats": "地理檔案格式",
     "geoFormatsHint": "至少選一種；勾選的格式都會包進 zip。",
     "photo": "照片",
@@ -1018,7 +1018,9 @@
   "recordsList": {
     "sessionSubtitle": "{{count}} 筆 · {{project}}",
     "plotSubtitle": "{{count}} 筆 · {{protocol}}{{size}}",
-    "collectionSubtitle": "{{count}} 份標本 · {{project}}"
+    "collectionSubtitle": "{{count}} 份標本 · {{project}}",
+    "sessionSubtitleNoProject": "{{count}} 筆",
+    "collectionSubtitleNoProject": "{{count}} 份標本"
   },
   "plotImport": {
     "invalidYml": "不是有效的樣區 yml（缺 plot 區塊）",
@@ -1239,7 +1241,20 @@
     "matrixValueHint": "Braun-Blanquet 等級在 vegan 矩陣中的數值化方式；JUICE 檔一律保留原始碼",
     "valueCover": "覆蓋度 %（中點）",
     "valueOrdinal": "Ordinal（1–9）",
-    "valueBb": "BB 原始碼",
-    "exportNow": "匯出"
+    "valueBb": "Br.-Bq. 原等級",
+    "exportNow": "匯出",
+    "listTitle": "本次將匯出",
+    "itemRecords": "逐筆記錄（{{formats}}）",
+    "itemPhotos": "照片",
+    "itemMatrix": "物種矩陣（{{mode}}{{layered}}）",
+    "itemLayeredSuffix": "，含分層版",
+    "itemEnv": "環境因子表（env.csv，變數為欄）",
+    "itemLong": "物種長表與索引（species_long、樣方/物種索引、換算表）",
+    "itemJuice": "JUICE 匯入檔（分號表格＋header data＋物種清單）",
+    "itemDwca": "Darwin Core Archive（GBIF 發布用）",
+    "itemSites": "地理樣區幾何（sites）",
+    "byLayer": "分層矩陣",
+    "byLayerHint": "另出一份物種×層展開的矩陣（species_matrix_by_layer.csv）",
+    "prefSection": "專案匯出（分析資料）"
   }
 }

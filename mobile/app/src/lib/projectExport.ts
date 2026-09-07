@@ -64,6 +64,8 @@ import type { AnalysisFormat } from '~/stores/settings';
 export type ProjectExportOptions = BundleOptions & {
   matrixValue: MatrixValueMode;
   analysisFormats: AnalysisFormat[];
+  /** Also emit the per-layer matrix (species_matrix_by_layer.csv). */
+  matrixByLayer: boolean;
 };
 
 export async function bundleProject(
@@ -157,7 +159,9 @@ export async function bundleProject(
       put('species_index.csv', tableToCsv(buildSpeciesIndex(cols)));
       put('species_long.csv', tableToCsv(buildSpeciesLong(releves, cols, mode)));
       put('species_matrix.csv', tableToCsv(buildMatrix(releves, cols, mode)));
-      put('species_matrix_by_layer.csv', tableToCsv(buildMatrixByLayer(releves, cols, mode)));
+      if (opts.matrixByLayer) {
+        put('species_matrix_by_layer.csv', tableToCsv(buildMatrixByLayer(releves, cols, mode)));
+      }
       put('env.csv', tableToCsv(buildEnvWide(releves)));
       put('cover_scale.csv', buildCoverScaleCsv());
     }
@@ -497,7 +501,7 @@ function buildReadme(
     '```',
     '',
     '- `species_matrix.csv` — 合併版：同一物種跨層取最大值。**注意**：同一樣區不同層使用不同計量（如喬木層 DBH、草本層 BB）時，合併值單位混雜，請改用 `species_long.csv` 自訂合併規則',
-    '- `species_matrix_by_layer.csv` — 分層版：欄名 `物種@E4`',
+    ...(opts.matrixByLayer ? ['- `species_matrix_by_layer.csv` — 分層版：欄名 `物種@E4`'] : []),
     '- `species_long.csv` — 無損長表（每筆記錄一列，含原值 quantity/quantityType 與轉換值 value）',
     '- `env.csv` — 環境表（列＝樣方、欄＝變數），與矩陣同列序',
     '- `releve_index.csv` — 樣方整數編號 ↔ 樣方 ID ↔ 樣區 UUID 對照',

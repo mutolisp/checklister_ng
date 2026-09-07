@@ -7,8 +7,12 @@
  */
 import { getUserDb } from './init';
 import i18n from '~/i18n';
-import { listPlotSurveys, plotCanAcceptSpecies, type PlotSurvey } from './plots';
-import { listProjects } from './projects';
+import {
+  listPlotSurveysWithMeta,
+  plotCanAcceptSpecies,
+  type PlotSurvey,
+  type PlotSurveyWithMeta,
+} from './plots';
 import { listSessions, type SessionWithStats } from './sessions';
 import { listCollectionTrips, type CollectionTripWithStats } from './collections';
 
@@ -26,6 +30,12 @@ export type RecordItem = {
   /** Sort key (ms). For sessions = started_at; for plots = start_ts ?? created_at. */
   startedAt: number;
   recordCount: number;
+  /** `subtitle` minus the project name — for the byProject view, where the
+   *  group header already names the project. Built from its own i18n template
+   *  (NOT by string-stripping `subtitle`, which breaks the moment a locale
+   *  orders the template differently). Equals `subtitle` for kinds whose
+   *  subtitle carries no project (plots). */
+  subtitlePlain: string;
   projectId: number;
   projectName: string;
   /** Plot-only: hard-gate not yet satisfied (plotid + lat/lng + uncertainty). */
@@ -38,22 +48,13 @@ export type RecordItem = {
   trip?: CollectionTripWithStats;
 };
 
-function plotRecordCount(plotSurveyId: number): number {
-  const db = getUserDb();
-  const res = db.executeSync(
-    `SELECT COUNT(*) AS n FROM plot_species_records WHERE plot_survey_id = ?`,
-    [plotSurveyId],
-  );
-  const row = (res.rows?.[0] ?? {}) as { n?: number };
-  return Number(row.n ?? 0);
-}
-
 function sessionToItem(s: SessionWithStats): RecordItem {
   return {
     kind: 'session',
     id: s.id,
     title: s.name,
     subtitle: i18n.t('recordsList.sessionSubtitle', { count: s.record_count, project: s.project_name }),
+    subtitlePlain: i18n.t('recordsList.sessionSubtitleNoProject', { count: s.record_count }),
     active: s.ended_at === null,
     startedAt: s.started_at,
     recordCount: s.record_count,
@@ -63,18 +64,19 @@ function sessionToItem(s: SessionWithStats): RecordItem {
   };
 }
 
-function plotToItem(p: PlotSurvey, projectNameById: Map<number, string>): RecordItem {
-  const n = plotRecordCount(p.id);
+function plotToItem(p: PlotSurveyWithMeta): RecordItem {
+  const n = p.species_count;
   const sizeStr = p.sample_size_value
     ? ` · ${p.sample_size_value}${p.sample_size_unit ?? ''}`
     : '';
   const protocol = p.sampling_protocol || i18n.t('plots.noProtocol');
-  const projectName = projectNameById.get(p.project_id) ?? i18n.t('plot.uncategorized');
+  const projectName = p.project_name || i18n.t('plot.uncategorized');
   return {
     kind: 'plot',
     id: p.id,
     title: p.plotid,
     subtitle: i18n.t('recordsList.plotSubtitle', { count: n, protocol, size: sizeStr }),
+    subtitlePlain: i18n.t('recordsList.plotSubtitle', { count: n, protocol, size: sizeStr }),
     active: p.status === 'active',
     startedAt: p.start_ts ?? p.created_at,
     recordCount: n,
@@ -94,6 +96,7 @@ function tripToItem(c: CollectionTripWithStats): RecordItem {
       count: c.specimen_count,
       project: c.project_name,
     }),
+    subtitlePlain: i18n.t('recordsList.collectionSubtitleNoProject', { count: c.specimen_count }),
     active: c.status === 'active',
     startedAt: c.started_at,
     recordCount: c.specimen_count,
@@ -104,14 +107,14 @@ function tripToItem(c: CollectionTripWithStats): RecordItem {
 }
 
 export function listRecords(filter: RecordFilter = 'all'): RecordItem[] {
-  const projects = listProjects();
-  const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
   const items: RecordItem[] = [];
   if (filter === 'all' || filter === 'session') {
     items.push(...listSessions().map(sessionToItem));
   }
   if (filter === 'all' || filter === 'plot') {
-    items.push(...listPlotSurveys().map((p) => plotToItem(p, projectNameById)));
+    // One query with project name + species count (no per-plot COUNT — that
+    // N+1 made the records tab O(plots) queries on every focus).
+    items.push(...listPlotSurveysWithMeta().map(plotToItem));
   }
   if (filter === 'all' || filter === 'collection') {
     items.push(...listCollectionTrips().map(tripToItem));
@@ -133,7 +136,10 @@ export type ProjectGroup = {
 /** Items grouped by project, preserving "active first → newest first" inside
  *  each group. Groups themselves are ordered by their newest item. */
 export function listRecordsByProject(filter: RecordFilter = 'all'): ProjectGroup[] {
-  const flat = listRecords(filter);
+  return groupByProject(listRecords(filter));
+}
+
+function groupByProject(flat: RecordItem[]): ProjectGroup[] {
   const groups = new Map<number, ProjectGroup>();
   for (const it of flat) {
     let g = groups.get(it.projectId);
@@ -154,6 +160,30 @@ export function listRecordsByProject(filter: RecordFilter = 'all'): ProjectGroup
   // Sort groups by newest item's startedAt desc.
   result.sort((a, b) => (b.items[0]?.startedAt ?? 0) - (a.items[0]?.startedAt ?? 0));
   return result;
+}
+
+export type RecordsSummary = {
+  /** Flat list under `filter` (active first, newest first). */
+  items: RecordItem[];
+  /** `items` grouped by project. */
+  groups: ProjectGroup[];
+  /** Per-kind totals over ALL records (filter-independent, for the tab chips). */
+  counts: Record<'all' | RecordKind, number>;
+};
+
+/**
+ * Everything the records tab needs from ONE walk of the tables. The tab used
+ * to call listRecords('all') for the counters, listRecords(filter) for the
+ * list and listRecordsByProject(filter) (which itself calls listRecords) for
+ * the grouping — three identical table walks per focus. Counts, filtered
+ * items and groups all derive from a single 'all' query here.
+ */
+export function listRecordsSummary(filter: RecordFilter = 'all'): RecordsSummary {
+  const all = listRecords('all');
+  const counts: RecordsSummary['counts'] = { all: all.length, session: 0, plot: 0, collection: 0 };
+  for (const it of all) counts[it.kind] += 1;
+  const items = filter === 'all' ? all : all.filter((it) => it.kind === filter);
+  return { items, groups: groupByProject(items), counts };
 }
 
 /** Column holding the parent id, per record kind. */
