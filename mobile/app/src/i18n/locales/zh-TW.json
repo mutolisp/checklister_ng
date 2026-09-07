@@ -1224,5 +1224,22 @@
     "adopted": "已用「{{name}}」記錄",
     "messageMisapplied": "本地名錄把「{{typed}}」記為誤用名——意思是臺灣的文獻曾用這個名字指「{{accepted}}」。但這個名字本身通常是另一個合法物種；若你採到的就是真正的「{{typed}}」，請選獨立分類群。",
     "useMineSameTaxonMisapplied": "用「{{name}}」，並認定它就是「{{accepted}}」"
+  },
+  "projectDetail": {
+    "stats": "名錄 {{sessions}} · 樣區 {{plots}} · 採集 {{collections}} · 地理樣區 {{sites}}",
+    "empty": "此專案還沒有任何記錄"
+  },
+  "projectExport": {
+    "title": "專案匯出",
+    "formats": "分析資料格式",
+    "veganHint": "樣方 × 物種矩陣 + 環境表（CSV，vegan / CANOCO / PC-ORD 通用）",
+    "juiceHint": "JUICE 匯入檔（分號分隔表格 + header data + 物種清單）",
+    "dwcaHint": "Darwin Core Archive（Event core + Humboldt extension，GBIF 發布用）",
+    "matrixValue": "矩陣數值表示法",
+    "matrixValueHint": "Braun-Blanquet 等級在 vegan 矩陣中的數值化方式；JUICE 檔一律保留原始碼",
+    "valueCover": "覆蓋度 %（中點）",
+    "valueOrdinal": "Ordinal（1–9）",
+    "valueBb": "BB 原始碼",
+    "exportNow": "匯出"
   }
 }

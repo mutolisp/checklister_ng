@@ -12,7 +12,7 @@ import { File, Paths } from 'expo-file-system';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import yaml from 'js-yaml';
-import { strToU8, zipSync, type Zippable } from 'fflate';
+import { strToU8, zipSync, type Zippable, type ZipOptions } from 'fflate';
 import {
   getActiveLayers,
   getPlotLayers,
@@ -40,8 +40,10 @@ import {
 } from '~/db';
 import { convertToDwc } from './dwcMapper';
 import {
+  buildPlotEnvRows,
   buildPlotYamlDoc,
   buildSessionYamlDoc,
+  csvEscape,
   localIso,
   multiToPipe,
   recordToYamlItem,
@@ -333,87 +335,7 @@ function plotSpeciesToMarkdownItem(
   };
 }
 
-function csvEscape(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  const s = String(v);
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
 
-type PlotForEnv = Awaited<ReturnType<typeof getPlotSurvey>>;
-
-/** Build the (term,value) rows for a plot's environmental CSV. Omits any
- *  field whose value is null / empty so the file is dense. DwC terms used:
- *  eventID (plotid), eventDate (start/stop), samplingProtocol, sampleSizeValue,
- *  sampleSizeUnit, recordedBy, locality, decimalLatitude, decimalLongitude,
- *  coordinateUncertaintyInMeters, minimumElevationInMeters. Vegetation fields
- *  use descriptive non-DwC keys. */
-function buildPlotEnvRows(plot: NonNullable<PlotForEnv>, projectName: string): Array<{ term: string; value: string }> {
-  const rows: Array<{ term: string; value: string }> = [];
-  const push = (term: string, v: unknown) => {
-    if (v === null || v === undefined) return;
-    const s = String(v);
-    if (!s) return;
-    rows.push({ term, value: s });
-  };
-
-  // Event / location identity
-  push('eventID', plot.plotid);
-  push('eventType', plot.plot_type); // fixed | transect | point_count
-  if (projectName) push('datasetName', projectName);
-  if (plot.start_ts !== null) {
-    const startIso = localIso(plot.start_ts);
-    const endIso = plot.stop_ts !== null ? localIso(plot.stop_ts) : null;
-    push('eventDate', endIso ? `${startIso}/${endIso}` : startIso);
-  }
-  push('samplingProtocol', plot.sampling_protocol);
-  push('sampleSizeValue', plot.sample_size_value);
-  push('sampleSizeUnit', plot.sample_size_unit);
-  push('pointRadiusM', plot.point_radius_m); // 定點計數法 count circle radius (m)
-  push('recordedBy', plot.recorded_by);
-  push('locality', plot.locality);
-  push('eventRemarks', plot.field_note);
-
-  // Coordinates (decimal)
-  push('decimalLatitude', plot.decimal_latitude);
-  push('decimalLongitude', plot.decimal_longitude);
-  push('coordinateUncertaintyInMeters', plot.coord_uncertainty_m);
-  push('minimumElevationInMeters', plot.elevation_m);
-
-  // Site morphology (no standard DwC term — use descriptive keys)
-  push('slopeDeg', plot.slope_deg);
-  push('aspectDeg', plot.aspect_deg);
-  push('terrainPosition', plot.terrain_position);
-  push('totalCoverPct', plot.total_cover_pct);
-  push('rockCoverPct', plot.rock_cover_pct);
-  push('gravelCoverPct', plot.gravel_cover_pct);
-  push('barelandCoverPct', plot.bareland_cover_pct);
-  push('vascularCoverPct', plot.vascular_cover_pct);
-  push('bryophyteCoverPct', plot.bryophyte_cover_pct);
-  push('lichenCoverPct', plot.lichen_cover_pct);
-  push('litterCoverPct', plot.litter_cover_pct);
-
-  // Per-layer vegetation cover / height / abundance method (fixed plots only;
-  // transect plots have no layer concept and the active layer list is empty).
-  if (plot.plot_type === 'fixed') {
-    const layers = getPlotLayers(plot.id);
-    const activeLayers = getActiveLayers(plot.layer_count);
-    for (const layerKey of activeLayers) {
-      const idx = layerIndexOf(layerKey as FixedLayer);
-      const row = layers.find((l) => l.layer_index === idx);
-      if (!row) continue;
-      push(`${layerKey.toLowerCase()}CoverPct`, row.cover_pct);
-      // Emit height in the layer's chosen unit; height_cm is stored in cm.
-      const inM = row.height_unit === 'm';
-      const heightVal =
-        row.height_cm == null ? null : inM ? row.height_cm / 100 : row.height_cm;
-      push(`${layerKey.toLowerCase()}Height${inM ? 'M' : 'Cm'}`, heightVal);
-      push(`${layerKey.toLowerCase()}Method`, row.method);
-    }
-  }
-
-  return rows;
-}
 
 /** Build the species CSV body for a plot. Columns are DwC terms — only
  *  `verbatimVegetationLayer` is non-standard because there's no DwC term for
@@ -552,9 +474,9 @@ function buildPlotPoints(records: PlotSpeciesRecordWithTaxon[]): { type: 'Featur
 
 // ---- Public API -----------------------------------------------------------
 
-export type BuiltZipEntry = { name: string; bytes: Uint8Array };
+export type BuiltZipEntry = { name: string; bytes: Uint8Array; zipOpts?: ZipOptions };
 
-async function buildSessionEntries(
+export async function buildSessionEntries(
   sessionId: number,
   opts: BundleOptions,
   progressCtx: ProgressCtx,
@@ -704,7 +626,7 @@ async function buildSessionEntries(
   return { entries, folderName: base };
 }
 
-async function buildPlotEntries(
+export async function buildPlotEntries(
   plotId: number,
   opts: BundleOptions,
   progressCtx: ProgressCtx,
@@ -796,7 +718,7 @@ async function buildPlotEntries(
   // empty columns. Standard DwC location / event terms where they exist;
   // vegetation-survey columns (cover/height/method per layer) kept under
   // descriptive camelCase keys (no DwC equivalent exists).
-  const envRows = buildPlotEnvRows(plot, project?.name ?? '');
+  const envRows = buildPlotEnvRows(plot, project?.name ?? '', plotLayers);
   if (envRows.length > 0) {
     const envCsv = '﻿' + ['term,value', ...envRows.map((r) => `${csvEscape(r.term)},${csvEscape(r.value)}`)].join('\n');
     entries.push({ name: `${base}/${plot.plotid}_env.csv`, bytes: strToU8(envCsv) });
@@ -904,7 +826,7 @@ async function buildPlotEntries(
   return { entries, folderName: base };
 }
 
-async function buildCollectionEntries(
+export async function buildCollectionEntries(
   tripId: number,
   opts: BundleOptions,
   progressCtx: ProgressCtx,
@@ -1326,7 +1248,7 @@ function buildManifest(meta: {
 
 // Count photos before reading so we can publish the total to the progress
 // callback up front.
-function countPhotosSession(records: { photo_paths: string | null }[]): number {
+export function countPhotosSession(records: { photo_paths: string | null }[]): number {
   let n = 0;
   for (const r of records) n += parsePhotoUris(r.photo_paths).length;
   return n;
@@ -1338,7 +1260,7 @@ function countPhotosPlot(records: PlotSpeciesRecordWithTaxon[]): number {
 }
 
 /** Total photo count for a plot including env photos. Used for progress bar. */
-function countPhotosPlotWithEnv(plotId: number): number {
+export function countPhotosPlotWithEnv(plotId: number): number {
   const species = listPlotSpecies(plotId);
   const plot = getPlotSurvey(plotId);
   return countPhotosPlot(species) + (plot ? parseEnvPhotos(plot.env_photos_json).length : 0);
@@ -1465,7 +1387,7 @@ export async function bundleMany(items: BundleItem[], opts: BundleOptions): Prom
 
 export function finalizeZip(entries: BuiltZipEntry[], folderName: string): ExportFile {
   const zippable: Zippable = {};
-  for (const e of entries) zippable[e.name] = e.bytes;
+  for (const e of entries) zippable[e.name] = e.zipOpts ? [e.bytes, e.zipOpts] : e.bytes;
   const zipped = zipSync(zippable, { level: 6 });
 
   const filename = `${folderName}.zip`;

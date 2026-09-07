@@ -659,7 +659,7 @@ Phase 3 Schema 版本：v9。
 - 記錄 tab：列項 long-press 加「匯出」action（已有 ActionSheet 框架）
 - sites 列表：swipe-right → 匯出（4 格式已就緒，row 6.4）
 
-**X.3 專案打包（~1 天）**：
+**X.3 專案打包**：✅ 2026-09-07 完成（見文末 Sprint「專案層級匯出 + 植群分析格式」；實作超出本節原規劃：加入 vegan 矩陣 / JUICE / DwC-A + Humboldt 分析輸出）。原規劃：
 - projects 頁加「整個專案匯出」按鈕
 - 產 `{project_name}_{YYYY-MM-DD}.zip` 結構：
   ```
@@ -2041,3 +2041,41 @@ TaiCOL 改版後 `(taxon_id, used_name_id)` 可能不再一致（半年內 527 �
 ### 待驗證（實機）
 
 尚未上機。要測：搜 `Lycopodium tamariscinum` → 提示列可點 → 四個選項各走一次；選 2 後記錄列顯示的是採用名且帶狀態標示、匯出 `taxonID` 不變而 `scientificName` 是採用名；選 3 後綁 `g…` 且階層完整；**既有記錄（兩欄皆 NULL）顯示與匯出完全不變**（回歸重點）；離線時選項 2 要能用（不需網路）。
+
+
+## Sprint：專案層級匯出 + 植群分析格式（vegan / JUICE / DwC-A）（2026-09-07）
+
+以專案為單位匯出一包 zip：既有逐筆記錄輸出（`records/`，重用三個 entry builder 原樣）＋跨樣區分析資料表。完整計畫（含格式調查一手來源核對）見 `~/.claude/plans/1-mobile-app-vectorized-widget.md`。
+
+### 使用者決策
+- 分析矩陣只涵蓋樣區（plot）；名錄/採集照舊進 `records/` 與 DwC-A
+- relevé：有小區用小區（`B-S1`），否則用樣區；BB 數值化讓使用者選（cover mid% / ordinal 1-9 / 原碼）
+- 分層兩份都出（`species_matrix_by_layer.csv` + 跨層合併版）
+- 額外格式：DwC-A + Humboldt extension（Turboveg XML 無公開 schema、CEP 8 字元截斷、VegX 低採用 → 不做）
+
+### Zip 結構
+`README.md` + `project.yml` + `manifest.json` + `records/<per-record>/…` + `analysis/`（releve_index / species_index / species_long / species_matrix / species_matrix_by_layer / env / cover_scale，UTF-8 無 BOM，R-first）+ `juice/`（分號 table + header + species list）+ `dwca/<name>_dwca.zip`（Event core + Occurrence + Humboldt eco:Event，巢狀 zip 以 `{level:0}` store）+ `sites/`
+
+### 關鍵設計事實
+- **BB 換算表出處**：cover 整數慣例 r=1,+=2,1=3,3=38,4=63 為 JUICE 手冊 §1.11.6 逐字範例；2=15、5=88 為區間中點（4/5 區間見 van der Maarel 2007 摘要）。ordinal plain 2→5 為 app 文件化約定。全部寫進 `cover_scale.csv` provenance 欄
+- **split plot 的 `subplot_id IS NULL` 記錄**（setSubplotCount shrink 保留、切分前記錄）→ 另立母樣區 relevé，不然觀測會靜默消失
+- **plotid 非 UNIQUE**（resurvey）→ releveId 撞名加 `_YYYYMMDD` 後綴；DwC eventID 同樣 dedupe
+- **聚合**：BB/percent 取最大（r<+<1..5）、個體數加總、DBH 莖聯集（BA 相加）；JUICE 表非覆蓋度記錄以 `1`（=1%）標記出現 + README 列出物種
+- **JUICE 層次欄**：E1-E6 → 數字 1-6；全專案無 fixed plot 則整欄省略
+- meta.xml 欄序與 txt 欄序由同一 ColSpec 陣列產生（`dwcArchive.ts`），check script 驗證不漂移
+
+### 檔案
+- 新純模組（Node 可跑）：`dwcAbundanceCore.ts`（自 dwcAbundance 分家，同 dwcMultiValue 前例——dwcAbundance import ~/i18n → RN NativeModules）、`vegMatrix.ts`、`juiceExport.ts`、`dwcArchive.ts`
+- `buildPlotEnvRows` + `csvEscape` 搬進 `bundleYaml.ts`（layers 改參數，行為不變）；bundleExport 三個 builder + countPhotos* 改 export；`BuiltZipEntry` 加 `zipOpts`
+- `useExportShare.ts`：自 (tabs)/index.tsx 抽出 shareBundle/confirmIfLarge/進度（含 iOS Modal dismiss 450ms 等待）
+- UI：`app/project/[id].tsx`（新詳細頁：metadata/統計/記錄列表/編輯/匯出 sheet）、`ProjectExportSheet.tsx`（格式勾選 + 數值表示法，persist 到 settings）、`app/projects.tsx`（tap→詳細頁、SwipeRowActions 匯出+刪除、未分類可匯出不可刪）
+- settings：`export_matrix_value`（預設 'cover'）、`export_analysis_formats`（預設全開）
+- `scripts/check-vegmatrix.mjs` + `npm run check:vegmatrix`：relevé 編號/去重、聚合規則、三表列序一致、env pivot 覆蓋 buildPlotEnvRows 全部 term、JUICE 形狀、meta.xml 欄序
+
+### 驗證狀態
+- [x] `npx tsc --noEmit` / `check:roundtrip` / `check:vegmatrix` / `check:i18n` / `check:dock` 全過；跨平台 audit 無違規
+- [ ] 實機：匯出混合專案（fixed 有/無小區 + transect + 名錄 + 採集）解壓逐檔檢查
+- [ ] R：`read.csv(row.names=1)` 讀 matrix/env，rownames 一致、無 BOM 殘留
+- [ ] JUICE：spreadsheet 匯入（Semicolon、第 2 欄層次）+ header data 匯入；混合 fixed+transect 的空層次格行為
+- [ ] GBIF data validator 檢 `dwca/*_dwca.zip`
+- [ ] Android 實機 share sheet

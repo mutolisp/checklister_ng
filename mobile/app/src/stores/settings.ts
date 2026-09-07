@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { getUserDb } from '~/db';
 import type { TaxonGroup } from '~/db/types';
 import type { ConservationField } from '~/lib/markdown';
+import type { MatrixValueMode } from '~/lib/vegMatrix';
+
+export type { MatrixValueMode };
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type CardDensity = 'compact' | 'comfortable';
@@ -30,6 +33,7 @@ export type SortDirection = 'asc' | 'desc';
 export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
 export type MapBasemap = 'standard' | 'satellite' | 'hybrid' | 'terrain';
 export type RecordTypeDefault = 'session' | 'plot' | 'collection' | 'ask';
+export type AnalysisFormat = 'vegan' | 'juice' | 'dwca';
 
 export type MapViewState = {
   latitude: number;
@@ -129,6 +133,11 @@ type SettingsValues = {
   export_include_photos: boolean;
   /** Whether to emit a Word (.docx) version of the checklist alongside .md. */
   export_include_docx: boolean;
+  /** How Braun-Blanquet codes are numericised in the project export's vegan
+   *  matrices ('bb' keeps the raw code; JUICE files always get raw codes). */
+  export_matrix_value: MatrixValueMode;
+  /** Analysis-format folders the project export produces. */
+  export_analysis_formats: AnalysisFormat[];
   /** Classification levels to group the exported checklist by. Empty = use each
    *  taxon group's default (vascular = 高階分類群 + 科, birds = 目 + 科, …).
    *  Non-empty = global override, applied in LEVEL_ORDER. */
@@ -167,6 +176,8 @@ const DEFAULTS: SettingsValues = {
   export_geo_formats: ['kml'],
   export_include_photos: true,
   export_include_docx: true,
+  export_matrix_value: 'cover',
+  export_analysis_formats: ['vegan', 'juice', 'dwca'],
   export_levels: [],
   export_conservation_fields: ['redlist'],
   enabled_regions: ['TW'],
@@ -273,6 +284,8 @@ function readAll(): SettingsValues {
       map.get('export_include_docx') == null
         ? DEFAULTS.export_include_docx
         : map.get('export_include_docx') === 'true',
+    export_matrix_value: parseMatrixValue(map.get('export_matrix_value')),
+    export_analysis_formats: parseAnalysisFormats(map.get('export_analysis_formats')),
     export_levels: parseLevels(map.get('export_levels')),
     export_conservation_fields: parseConservationFields(map.get('export_conservation_fields')),
     enabled_regions: parseRegions(map.get('enabled_regions')),
@@ -363,6 +376,30 @@ function parseGeoFormats(raw: string | undefined): Array<'geojson' | 'gpx' | 'km
     // ignore corrupt setting
   }
   return DEFAULTS.export_geo_formats;
+}
+
+const MATRIX_VALUE_KEYS = new Set<MatrixValueMode>(['bb', 'cover', 'ordinal']);
+function parseMatrixValue(raw: string | undefined): MatrixValueMode {
+  return raw != null && MATRIX_VALUE_KEYS.has(raw as MatrixValueMode)
+    ? (raw as MatrixValueMode)
+    : DEFAULTS.export_matrix_value;
+}
+
+const ANALYSIS_FORMAT_KEYS = new Set<AnalysisFormat>(['vegan', 'juice', 'dwca']);
+function parseAnalysisFormats(raw: string | undefined): AnalysisFormat[] {
+  if (raw == null) return DEFAULTS.export_analysis_formats;
+  try {
+    const parsed = JSON.parse(raw);
+    // Empty array is valid: the user can turn every analysis folder off.
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (v): v is AnalysisFormat => typeof v === 'string' && ANALYSIS_FORMAT_KEYS.has(v as AnalysisFormat),
+      );
+    }
+  } catch {
+    // ignore corrupt setting
+  }
+  return DEFAULTS.export_analysis_formats;
 }
 
 /** Push a key id to the most-recent slot. Dedupes + caps at 10. Module-level

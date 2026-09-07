@@ -1,4 +1,18 @@
 import i18n from '~/i18n';
+import { kindForType, parseDbhArray, type QuantityKind } from './dwcAbundanceCore';
+
+// Pure helpers live in dwcAbundanceCore (Node-runnable, no ~/i18n) and are
+// re-exported here so existing call sites keep their import path.
+export {
+  basalArea,
+  bbRank,
+  BB_CODES_ASC,
+  kindForType,
+  legacyMethodToType,
+  parseDbhArray,
+  serializeDbhArray,
+} from './dwcAbundanceCore';
+export type { QuantityKind } from './dwcAbundanceCore';
 /**
  * DwC organismQuantity / organismQuantityType helpers.
  *
@@ -12,8 +26,6 @@ import i18n from '~/i18n';
  * The set of "built-in" types below covers vegetation + animal surveys.
  * Anything else the user types into a custom field is stored verbatim.
  */
-
-export type QuantityKind = 'BB' | 'percent' | 'count' | 'DBH' | 'custom';
 
 export type QuantityTypeOption = {
   /** Persisted enum value. Stable for DwC export. */
@@ -41,36 +53,6 @@ export function findQuantityType(stored: string | null | undefined): QuantityTyp
   return quantityTypes().find((q) => q.value === stored) ?? null;
 }
 
-/** Determine the input kind given a stored type. Custom strings fall back to 'custom'. */
-export function kindForType(stored: string | null | undefined): QuantityKind {
-  return findQuantityType(stored)?.kind ?? 'custom';
-}
-
-// ────────── DBH array helpers (organism_quantity = JSON array TEXT) ──────────
-
-export function parseDbhArray(s: string | null | undefined): number[] {
-  if (!s) return [];
-  try {
-    const arr = JSON.parse(s);
-    if (Array.isArray(arr)) return arr.filter((x): x is number => typeof x === 'number');
-  } catch {
-    // ignore — could be a plain number string (single DBH)
-  }
-  const single = Number(s);
-  return Number.isFinite(single) && single > 0 ? [single] : [];
-}
-
-export function serializeDbhArray(arr: number[] | null | undefined): string | null {
-  if (!arr || arr.length === 0) return null;
-  return JSON.stringify(arr);
-}
-
-// ────────── BA helper ──────────
-
-export function basalArea(dbhCm: number[]): number {
-  return dbhCm.reduce((s, d) => s + Math.PI * (d / 2) ** 2, 0);
-}
-
 // ────────── Default suggested type per kingdom ──────────
 
 /** Sensible default quantity_type for a freshly-added taxon based on kingdom. */
@@ -81,20 +63,6 @@ export function defaultQuantityTypeFor(kingdom: string | null | undefined): stri
   // Plants and others default to Braun-Blanquet (vegetation convention).
   if (k === 'plantae') return 'Braun-Blanquet Scale';
   return 'individuals';
-}
-
-/** Legacy abundance method (BB|percent|DBH) → DwC organismQuantityType. */
-export function legacyMethodToType(method: string | null | undefined): string | null {
-  switch (method) {
-    case 'BB':
-      return 'Braun-Blanquet Scale';
-    case 'percent':
-      return '% cover';
-    case 'DBH':
-      return 'DBH (cm)';
-    default:
-      return null;
-  }
 }
 
 // ────────── Display badge helper ──────────

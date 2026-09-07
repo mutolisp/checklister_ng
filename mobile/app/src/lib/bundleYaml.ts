@@ -282,3 +282,94 @@ export function buildPlotYamlDoc(input: PlotYamlInput): Record<string, unknown> 
   doc.species = yamlItems;
   return doc;
 }
+
+// ── CSV / plot environmental rows ──────────────────────────────────────────
+
+/** RFC-4180-style CSV field escaping. Lives here (not bundleExport) so the
+ *  Node check scripts can use it without importing expo modules. */
+export function csvEscape(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  const s = String(v);
+  if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
+/** Build the (term,value) rows for a plot's environmental CSV. Omits any
+ *  field whose value is null / empty so the file is dense. DwC terms used:
+ *  eventID (plotid), eventDate (start/stop), samplingProtocol, sampleSizeValue,
+ *  sampleSizeUnit, recordedBy, locality, decimalLatitude, decimalLongitude,
+ *  coordinateUncertaintyInMeters, minimumElevationInMeters. Vegetation fields
+ *  use descriptive non-DwC keys.
+ *
+ *  `layers` are the plot's plot_survey_layers rows (empty for transect /
+ *  point_count) — passed in rather than fetched so this stays runnable in the
+ *  Node check scripts (same contract as buildPlotYamlDoc). */
+export function buildPlotEnvRows(
+  plot: PlotSurvey,
+  projectName: string,
+  layers: PlotLayer[],
+): Array<{ term: string; value: string }> {
+  const rows: Array<{ term: string; value: string }> = [];
+  const push = (term: string, v: unknown) => {
+    if (v === null || v === undefined) return;
+    const s = String(v);
+    if (!s) return;
+    rows.push({ term, value: s });
+  };
+
+  // Event / location identity
+  push('eventID', plot.plotid);
+  push('eventType', plot.plot_type); // fixed | transect | point_count
+  if (projectName) push('datasetName', projectName);
+  if (plot.start_ts !== null) {
+    const startIso = localIso(plot.start_ts);
+    const endIso = plot.stop_ts !== null ? localIso(plot.stop_ts) : null;
+    push('eventDate', endIso ? `${startIso}/${endIso}` : startIso);
+  }
+  push('samplingProtocol', plot.sampling_protocol);
+  push('sampleSizeValue', plot.sample_size_value);
+  push('sampleSizeUnit', plot.sample_size_unit);
+  push('pointRadiusM', plot.point_radius_m); // 定點計數法 count circle radius (m)
+  push('recordedBy', plot.recorded_by);
+  push('locality', plot.locality);
+  push('eventRemarks', plot.field_note);
+
+  // Coordinates (decimal)
+  push('decimalLatitude', plot.decimal_latitude);
+  push('decimalLongitude', plot.decimal_longitude);
+  push('coordinateUncertaintyInMeters', plot.coord_uncertainty_m);
+  push('minimumElevationInMeters', plot.elevation_m);
+
+  // Site morphology (no standard DwC term — use descriptive keys)
+  push('slopeDeg', plot.slope_deg);
+  push('aspectDeg', plot.aspect_deg);
+  push('terrainPosition', plot.terrain_position);
+  push('totalCoverPct', plot.total_cover_pct);
+  push('rockCoverPct', plot.rock_cover_pct);
+  push('gravelCoverPct', plot.gravel_cover_pct);
+  push('barelandCoverPct', plot.bareland_cover_pct);
+  push('vascularCoverPct', plot.vascular_cover_pct);
+  push('bryophyteCoverPct', plot.bryophyte_cover_pct);
+  push('lichenCoverPct', plot.lichen_cover_pct);
+  push('litterCoverPct', plot.litter_cover_pct);
+
+  // Per-layer vegetation cover / height / abundance method (fixed plots only;
+  // transect plots have no layer concept and `layers` comes in empty).
+  if (plot.plot_type === 'fixed') {
+    const count = Math.max(1, Math.min(6, plot.layer_count));
+    for (let idx = 1; idx <= count; idx++) {
+      const layerKey = `E${idx}`;
+      const row = layers.find((l) => l.layer_index === idx);
+      if (!row) continue;
+      push(`${layerKey.toLowerCase()}CoverPct`, row.cover_pct);
+      // Emit height in the layer's chosen unit; height_cm is stored in cm.
+      const inM = row.height_unit === 'm';
+      const heightVal =
+        row.height_cm == null ? null : inM ? row.height_cm / 100 : row.height_cm;
+      push(`${layerKey.toLowerCase()}Height${inM ? 'M' : 'Cm'}`, heightVal);
+      push(`${layerKey.toLowerCase()}Method`, row.method);
+    }
+  }
+
+  return rows;
+}

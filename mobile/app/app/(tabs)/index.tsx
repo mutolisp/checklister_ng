@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
-import * as Sharing from 'expo-sharing';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Pressable, ScrollView, Text, View } from 'react-native';
@@ -25,7 +24,6 @@ import {
   bundlePlot,
   bundleSession,
   type BundleItem,
-  type ExportProgress,
 } from '~/lib/bundleExport';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import {
@@ -36,7 +34,8 @@ import { duplicateRecordAndOpen, importRecordPromptAndOpen } from '~/lib/recordC
 import { nextRecordName } from '~/lib/recordName';
 import { pickFavoriteFolder } from '~/lib/pickFavoriteFolder';
 import { useFavorites } from '~/stores/favorites';
-import { estimateBundleSize, formatBytes } from '~/lib/exportSize';
+import { estimateBundleSize } from '~/lib/exportSize';
+import { useExportShare } from '~/lib/useExportShare';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { selectionKey, useRecordSelection } from '~/stores/recordSelection';
@@ -197,8 +196,13 @@ export default function RecordsListScreen() {
   });
   const [prefOpen, setPrefOpen] = useState(false);
   const [duplicating, setDuplicating] = useState<{ item: RecordItem; request: DuplicateRequest } | null>(null);
-  const [exportBusy, setExportBusy] = useState(false);
-  const [exportProgress, setExportProgress] = useState<ExportProgress | null>(null);
+  const {
+    busy: exportBusy,
+    progress: exportProgress,
+    onProgress,
+    shareBundle,
+    confirmIfLarge,
+  } = useExportShare();
 
   const selectMode = useRecordSelection((s) => s.active);
   const selected = useRecordSelection((s) => s.selected);
@@ -263,36 +267,6 @@ export default function RecordsListScreen() {
     selectEnter(selectionKey(item.kind, item.id));
   };
 
-  const shareBundle = async (
-    bundleFn: () => Promise<{ uri: string; filename: string; mimeType: string }>,
-  ) => {
-    if (exportBusy) return;
-    setExportBusy(true);
-    setExportProgress({ label: t('export.preparing') });
-    try {
-      const file = await bundleFn();
-      // Dismiss the progress Modal AND wait for it to finish animating out.
-      // iOS can't present the native share sheet on top of a Modal that is
-      // still on screen / mid-dismiss, so the sheet would silently never show.
-      setExportProgress(null);
-      await new Promise((r) => setTimeout(r, 450));
-      const ok = await Sharing.isAvailableAsync();
-      if (!ok) {
-        Alert.alert(t('export.shareUnavailable'), t('export.fileGenerated', { uri: file.uri }));
-      } else {
-        await Sharing.shareAsync(file.uri, {
-          mimeType: file.mimeType,
-          dialogTitle: file.filename,
-        });
-      }
-      toast(t('export.done', { filename: file.filename }));
-    } catch (e) {
-      Alert.alert(t('export.failed'), e instanceof Error ? e.message : String(e));
-    } finally {
-      setExportProgress(null);
-      setExportBusy(false);
-    }
-  };
 
   const handleExportOne = async (item: RecordItem) => {
     const bundleItem: BundleItem = { kind: item.kind, id: item.id };
@@ -300,7 +274,6 @@ export default function RecordsListScreen() {
     const proceed = await confirmIfLarge(est.totalBytes);
     if (!proceed) return;
 
-    const onProgress = (p: ExportProgress) => setExportProgress(p);
     const bundleOpts = { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress };
     await shareBundle(() => {
       if (item.kind === 'session') return bundleSession(item.id, bundleOpts);
@@ -331,40 +304,12 @@ export default function RecordsListScreen() {
     const proceed = await confirmIfLarge(est.totalBytes);
     if (!proceed) return;
 
-    const onProgress = (p: ExportProgress) => setExportProgress(p);
     await shareBundle(() =>
       bundleMany(bundleItems, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
     );
     selectClear();
   };
 
-  function confirmIfLarge(bytes: number): Promise<boolean> {
-    return new Promise((resolve) => {
-      if (bytes < 100 * 1024 * 1024) {
-        resolve(true);
-        return;
-      }
-      if (bytes >= 500 * 1024 * 1024) {
-        Alert.alert(
-          t('export.veryLargeTitle'),
-          t('export.veryLargeMsg', { size: formatBytes(bytes) }),
-          [
-            { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
-            { text: t('export.exportAnyway'), style: 'destructive', onPress: () => resolve(true) },
-          ],
-        );
-        return;
-      }
-      Alert.alert(
-        t('export.largeTitle'),
-        t('export.largeMsg', { size: formatBytes(bytes) }),
-        [
-          { text: t('common.cancel'), style: 'cancel', onPress: () => resolve(false) },
-          { text: t('common.continue'), onPress: () => resolve(true) },
-        ],
-      );
-    });
-  }
 
   const nounOf = (kind: RecordKind): string =>
     t(kind === 'session' ? 'nav.session' : kind === 'plot' ? 'nav.plot' : 'nav.collection');

@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useFocusEffect } from 'expo-router';
+import { Stack, useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
@@ -12,14 +12,53 @@ import {
   type ProjectInput,
   type ProjectWithCounts,
 } from '~/db';
+import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { ProjectEditModal, type ProjectEditTarget } from '~/components/ProjectEditModal';
-import { SwipeRow } from '~/components/SwipeRow';
+import { SwipeRowActions } from '~/components/SwipeRowActions';
+import { estimateBundleSize } from '~/lib/exportSize';
+import { bundleProject } from '~/lib/projectExport';
+import { useExportShare } from '~/lib/useExportShare';
+import { useSettings } from '~/stores/settings';
+import { listRecords } from '~/db';
 import { BackHeaderLeft } from '~/lib/goBack';
 
 export default function ProjectsScreen() {
   const { t } = useTranslation();
+  const router = useRouter();
   const [projects, setProjects] = useState<ProjectWithCounts[]>([]);
   const [editing, setEditing] = useState<ProjectEditTarget>(null);
+  const { busy, progress, onProgress, shareBundle, confirmIfLarge } = useExportShare();
+  const geoFormats = useSettings((s) => s.export_geo_formats);
+  const includePhotos = useSettings((s) => s.export_include_photos);
+  const includeDocx = useSettings((s) => s.export_include_docx);
+  const levels = useSettings((s) => s.export_levels);
+  const conservationFields = useSettings((s) => s.export_conservation_fields);
+  const matrixValue = useSettings((s) => s.export_matrix_value);
+  const analysisFormats = useSettings((s) => s.export_analysis_formats);
+
+  // Swipe export: straight to share with the persisted preferences, mirroring
+  // the records tab's swipe export. The detail page's sheet is where the
+  // analysis options get changed.
+  const handleExport = async (project: ProjectWithCounts) => {
+    if (busy) return;
+    const items = listRecords('all')
+      .filter((r) => r.projectId === project.id)
+      .map((r) => ({ kind: r.kind, id: r.id }));
+    const est = await estimateBundleSize(items, { includePhotos });
+    if (!(await confirmIfLarge(est.totalBytes))) return;
+    await shareBundle(() =>
+      bundleProject(project.id, {
+        geoFormats,
+        includePhotos,
+        includeDocx,
+        levels,
+        conservationFields,
+        matrixValue,
+        analysisFormats,
+        onProgress,
+      }),
+    );
+  };
 
   const reload = useCallback(() => setProjects(listProjectsWithCounts()), []);
   useFocusEffect(useCallback(() => reload(), [reload]));
@@ -69,8 +108,7 @@ export default function ProjectsScreen() {
         renderItem={({ item }) => {
           const row = (
             <Pressable
-              onPress={() => setEditing(item)}
-              disabled={item.id === 0}
+              onPress={() => router.push(`/project/${item.id}` as Href)}
               className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
             >
               <Ionicons
@@ -94,11 +132,29 @@ export default function ProjectsScreen() {
               </View>
             </Pressable>
           );
-          if (item.id === 0) return row;
-          return <SwipeRow onDelete={() => handleDelete(item)}>{row}</SwipeRow>;
+          const actions = [
+            {
+              label: t('common.export'),
+              icon: 'share-outline' as const,
+              color: 'blue' as const,
+              onPress: () => handleExport(item),
+            },
+            ...(item.id !== 0
+              ? [
+                  {
+                    label: t('common.delete'),
+                    icon: 'trash-outline' as const,
+                    color: 'red' as const,
+                    onPress: () => handleDelete(item),
+                  },
+                ]
+              : []),
+          ];
+          return <SwipeRowActions actions={actions}>{row}</SwipeRowActions>;
         }}
       />
       <ProjectEditModal target={editing} onCancel={() => setEditing(null)} onSave={handleSave} />
+      <ExportProgressOverlay progress={progress} />
     </SafeAreaView>
   );
 }

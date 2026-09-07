@@ -1224,5 +1224,22 @@
     "adopted": "Recorded as \"{{name}}\"",
     "messageMisapplied": "The checklist records \"{{typed}}\" as misapplied: Taiwanese literature has used this name for \"{{accepted}}\". The name itself is usually a legitimate species of its own, so if you collected the true \"{{typed}}\", choose the independent taxon.",
     "useMineSameTaxonMisapplied": "Use \"{{name}}\", treating it as \"{{accepted}}\""
+  },
+  "projectDetail": {
+    "stats": "{{sessions}} checklists · {{plots}} plots · {{collections}} collections · {{sites}} sites",
+    "empty": "No records in this project yet"
+  },
+  "projectExport": {
+    "title": "Project export",
+    "formats": "Analysis formats",
+    "veganHint": "Relevé × species matrices + env table (CSV; vegan / CANOCO / PC-ORD)",
+    "juiceHint": "JUICE import files (semicolon table + header data + species list)",
+    "dwcaHint": "Darwin Core Archive (Event core + Humboldt extension, for GBIF)",
+    "matrixValue": "Matrix values",
+    "matrixValueHint": "How Braun-Blanquet codes are numericised in the vegan matrices; JUICE files always keep the raw codes",
+    "valueCover": "Cover % (midpoint)",
+    "valueOrdinal": "Ordinal (1–9)",
+    "valueBb": "Raw BB codes",
+    "exportNow": "Export"
   }
 }
