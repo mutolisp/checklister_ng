@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { RecordLocationMap } from '~/components/RecordLocationMap';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -101,6 +101,16 @@ export default function PlotDetailScreen() {
           title: plot.plotid,
           headerLeft: BackHeaderLeft,
           headerRight: () => (
+            <View className="flex-row items-center gap-2">
+            <Pressable
+              onPress={() => router.push(`/report/plot/${plot.id}` as Href)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('report.navTitle')}
+              className="h-9 w-9 items-center justify-center active:opacity-60"
+            >
+              <Ionicons name="document-text-outline" size={22} color="#2563eb" />
+            </Pressable>
             <Pressable
               onPress={() => {
                 if (plot.status === 'done') {
@@ -128,11 +138,20 @@ export default function PlotDetailScreen() {
                 }
               }}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={plot.status === 'done' ? t('plot.reopen') : t('session.end')}
+              className="h-9 w-9 items-center justify-center active:opacity-60"
             >
-              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">
-                {plot.status === 'done' ? t('plot.reopen') : t('session.end')}
-              </Text>
+              {/* Icon-only: the words cost most of the header's width and the
+                   glyphs carry the same two states. The label survives for
+                   screen readers. */}
+              <Ionicons
+                name={plot.status === 'done' ? 'refresh-outline' : 'stop-circle-outline'}
+                size={22}
+                color={plot.status === 'done' ? '#2563eb' : '#dc2626'}
+              />
             </Pressable>
+            </View>
           ),
         }}
       />

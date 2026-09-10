@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, Switch, Text, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSettings } from '~/stores/settings';
+import { useSettings, type ReportFormat } from '~/stores/settings';
 import { AnalysisExportOptions } from './AnalysisExportOptions';
 import type { ConservationField } from '~/lib/markdown';
 
@@ -35,6 +35,12 @@ const LEVEL_OPTIONS: Array<{ value: string; label: string }> = [
   { value: 'genus', label: 'rank.genus' },
 ];
 
+const REPORT_FORMAT_OPTIONS: Array<{ value: ReportFormat; label: string }> = [
+  { value: 'html', label: 'HTML' },
+  { value: 'docx', label: 'DOCX' },
+  { value: 'both', label: 'HTML + DOCX' },
+];
+
 const CONSERVATION_OPTIONS: Array<{ value: ConservationField; label: string }> = [
   { value: 'redlist', label: 'exportPref.consRedlist' },
   { value: 'iucn_category', label: 'IUCN' },
@@ -53,6 +59,8 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
   const formats = useSettings((s) => s.export_geo_formats);
   const includePhotos = useSettings((s) => s.export_include_photos);
   const includeDocx = useSettings((s) => s.export_include_docx);
+  const includeReport = useSettings((s) => s.export_include_report);
+  const reportFormat = useSettings((s) => s.export_report_format);
   const levels = useSettings((s) => s.export_levels);
   const conservationFields = useSettings((s) => s.export_conservation_fields);
   const setSetting = useSettings((s) => s.set);
@@ -163,6 +171,53 @@ export function ExportPreferenceSheet({ visible, onClose }: Props) {
                 onValueChange={(v) => setSetting('export_include_docx', v)}
               />
             </View>
+
+            <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {t('exportPref.report')}
+            </Text>
+            <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 py-3">
+              <View className="flex-1 pr-3">
+                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{t('exportPref.includeReport')}</Text>
+                <Text className="text-xs text-gray-500 dark:text-gray-400">
+                  {t('exportPref.includeReportHint')}
+                </Text>
+              </View>
+              <Switch
+                value={includeReport}
+                onValueChange={(v) => setSetting('export_include_report', v)}
+              />
+            </View>
+            {/* Format chips only matter once the report is on. */}
+            {includeReport ? (
+              <View className="mb-4 flex-row flex-wrap gap-1.5 pt-2">
+                {REPORT_FORMAT_OPTIONS.map((opt) => {
+                  const on = reportFormat === opt.value;
+                  return (
+                    <Pressable
+                      key={opt.value}
+                      onPress={() => setSetting('export_report_format', opt.value)}
+                      className={`rounded-full border px-3 py-1.5 ${
+                        on
+                          ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'
+                          : 'border-gray-300 dark:border-gray-700'
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs ${
+                          on
+                            ? 'font-semibold text-emerald-700 dark:text-emerald-300'
+                            : 'text-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <View className="mb-4" />
+            )}
 
             <Text className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {t('exportPref.levels')}

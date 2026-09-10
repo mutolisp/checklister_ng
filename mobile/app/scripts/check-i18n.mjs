@@ -28,7 +28,23 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOTS = ['src', 'app'];
-const LOCALES = ['src/i18n/locales/zh-TW.json', 'src/i18n/locales/en.json'];
+const LOCALES = [
+  'src/i18n/locales/zh-TW.json',
+  'src/i18n/locales/en.json',
+  'src/i18n/locales/ja.json',
+  'src/i18n/locales/ko.json',
+  'src/i18n/locales/de.json',
+  'src/i18n/locales/fr.json',
+  'src/i18n/locales/es.json',
+];
+
+/** Regional overrides: NOT complete locales. They carry only the keys whose
+ *  base wording would read wrong in that region and resolve the rest through
+ *  `base` via i18next's fallback chain — so they are checked as a subset,
+ *  never for structural identity. */
+const OVERRIDE_LOCALES = [
+  { file: 'src/i18n/locales/es-419.json', base: 'src/i18n/locales/es.json' },
+];
 
 /** Matches t('a.b'), tr("a.b"), i18n.t('a.b') — single/double quotes only, so
  *  a backtick template literal is skipped rather than half-parsed. */
@@ -194,6 +210,29 @@ for (const a of locales) {
     if (a === b) continue;
     for (const k of a.keys) {
       if (!b.keys.has(k)) problems.push(`${b.file}: missing "${k}" (present in ${a.file})`);
+    }
+  }
+}
+
+// Regional overrides: every key must exist in the base locale, carry the same
+// placeholders, and actually differ from it (an override equal to its base is
+// dead weight that silently rots when the base changes).
+for (const { file, base } of OVERRIDE_LOCALES) {
+  const ov = flatten(JSON.parse(readFileSync(file, 'utf8')));
+  const ovv = flattenValues(JSON.parse(readFileSync(file, 'utf8')));
+  const baseV = flattenValues(JSON.parse(readFileSync(base, 'utf8')));
+  for (const k of ov) {
+    if (!baseV.has(k)) {
+      problems.push(`${file}: "${k}" is not a key of ${base}`);
+      continue;
+    }
+    const a = [...String(baseV.get(k)).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
+    const b = [...String(ovv.get(k)).matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]).sort();
+    if (a.join(',') !== b.join(',')) {
+      problems.push(`${file}: "${k}" placeholders ${b} differ from ${base} ${a}`);
+    }
+    if (String(baseV.get(k)) === String(ovv.get(k))) {
+      problems.push(`${file}: "${k}" is identical to ${base} — drop it from the override`);
     }
   }
 }

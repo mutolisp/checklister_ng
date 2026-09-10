@@ -37,6 +37,8 @@ export default function ProjectsScreen() {
   const matrixValue = useSettings((s) => s.export_matrix_value);
   const analysisFormats = useSettings((s) => s.export_analysis_formats);
   const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
+  const includeReport = useSettings((s) => s.export_include_report);
+  const reportFormat = useSettings((s) => s.export_report_format);
 
   // Swipe export: straight to share with the persisted preferences, mirroring
   // the records tab's swipe export. The detail page's sheet is where the
@@ -47,6 +49,8 @@ export default function ProjectsScreen() {
       analysisFormats,
       matrixValue,
       matrixByLayer,
+      includeReport,
+      reportFormat,
       includePhotos,
       includeDocx,
       geoFormats,
@@ -67,6 +71,8 @@ export default function ProjectsScreen() {
         matrixValue,
         analysisFormats,
         matrixByLayer,
+        includeReport,
+        reportFormat,
         onProgress,
       }),
     );

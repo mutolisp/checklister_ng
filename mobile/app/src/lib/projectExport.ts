@@ -58,14 +58,22 @@ import {
 } from './vegMatrix';
 import { buildJuiceHeader, buildJuiceSpeciesList, buildJuiceTable } from './juiceExport';
 import { buildDwcArchive, type DwcRow } from './dwcArchive';
+import { collectProjectReportInput } from './reportData';
+import { buildProjectReport, type Translate } from './reportModel';
+import { buildReportHtml } from './reportHtml';
+import { buildReportDocx } from './reportDocx';
+import i18n from '~/i18n';
 import { sitesToGeoJSON, sitesToGPX, sitesToKML } from './geoExporters';
-import type { AnalysisFormat } from '~/stores/settings';
+import type { AnalysisFormat, ReportFormat } from '~/stores/settings';
 
 export type ProjectExportOptions = BundleOptions & {
   matrixValue: MatrixValueMode;
   analysisFormats: AnalysisFormat[];
   /** Also emit the per-layer matrix (species_matrix_by_layer.csv). */
   matrixByLayer: boolean;
+  /** Also emit the research report under report/. */
+  includeReport: boolean;
+  reportFormat: ReportFormat;
 };
 
 export async function bundleProject(
@@ -221,6 +229,33 @@ export async function bundleProject(
     records: recordMeta,
   };
   entries.push({ name: 'project.yml', bytes: strToU8(yaml.dump(projectYml, { lineWidth: -1, noRefs: true })) });
+
+  // ── research report ──────────────────────────────────────────────────────
+  // Written in the CURRENT UI language, not the zh-TW every other export is
+  // fixed to. The report is prose and statistics commentary; a French user
+  // handed a Chinese narrative has nothing. That exception is the report's
+  // alone — record files, DwC terms and the checklist Markdown are unchanged.
+  if (opts.includeReport) {
+    opts.onProgress?.({ label: '產生研究報表…' });
+    try {
+      const input = collectProjectReportInput(projectId);
+      if (input) {
+        const lang = i18n.language;
+        const report = buildProjectReport(input, i18n.getFixedT(lang) as unknown as Translate);
+        if (opts.reportFormat === 'html' || opts.reportFormat === 'both') {
+          entries.push({ name: 'report/report.html', bytes: strToU8(buildReportHtml(report, lang)) });
+        }
+        if (opts.reportFormat === 'docx' || opts.reportFormat === 'both') {
+          entries.push({ name: 'report/report.docx', bytes: buildReportDocx(report) });
+        }
+        readmeNotes.push(`研究報表語言：${lang}（報表以目前介面語言產生，其餘匯出內容維持既有慣例）`);
+      }
+    } catch (e) {
+      // A report that fails must not cost the user the rest of the bundle.
+      readmeNotes.push(`研究報表產生失敗：${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   entries.push({
     name: 'README.md',
     bytes: strToU8(buildReadme(project.name, stats, opts, readmeNotes, lossyTaxa)),
@@ -238,6 +273,8 @@ export async function bundleProject(
           stats,
           matrix_value: opts.matrixValue,
           analysis_formats: opts.analysisFormats,
+          include_report: opts.includeReport,
+          report_format: opts.includeReport ? opts.reportFormat : null,
           geoFormats: opts.geoFormats,
           includePhotos: opts.includePhotos,
           records: recordMeta,

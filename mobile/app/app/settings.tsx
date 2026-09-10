@@ -1,9 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter, type Href } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { useEffect, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, FlatList, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { ExportPreferenceSheet } from '~/components/ExportPreferenceSheet';
+import { LANGUAGE_CATALOGUE } from '~/i18n';
 import {
   useSettings,
   type Theme,
@@ -29,6 +31,7 @@ export default function SettingsScreen() {
   const { t } = useTranslation();
   const toast = useToast((s) => s.show);
   const router = useRouter();
+  const [exportPrefOpen, setExportPrefOpen] = useState(false);
   const refreshActiveSession = useActiveSession((s) => s.refresh);
   const reloadSettings = useSettings((s) => s.load);
 
@@ -38,11 +41,15 @@ export default function SettingsScreen() {
     { value: 'dark', label: t('settings.themeDark') },
   ];
 
-  // Language self-names stay untranslated (English / 正體中文).
-  const languageOptions: Array<{ value: Language; label: string }> = [
-    { value: 'system', label: t('settings.languageSystem') },
-    { value: 'en', label: 'English' },
-    { value: 'zh-TW', label: '正體中文' },
+  const languageOptions: Array<{ value: Language; label: string; sublabel?: string }> = [
+    { value: 'system', label: t('settings.languageSystem'), sublabel: 'System' },
+    // Endonyms: someone hunting for their language reads it in that language,
+    // not in whichever one the UI is currently showing.
+    ...LANGUAGE_CATALOGUE.map((l) => ({
+      value: l.value as Language,
+      label: l.native,
+      sublabel: `${l.english} · ${l.value}`,
+    })),
   ];
 
   const undoOptions = [5, 8, 10];
@@ -168,25 +175,30 @@ export default function SettingsScreen() {
       <Stack.Screen options={{ title: t('settings.title') }} />
       <ScrollView>
         <Section title={t('settings.sectionAppearance')}>
-          <RowSelect
+          {/* Searchable: a pill row stopped scaling at 9 languages, and the
+              search box is the way out for a user stranded in a script they
+              cannot read. */}
+          <SelectRow
             label={t('settings.language')}
             value={settings.language}
             options={languageOptions}
             onChange={(v) => settings.set('language', v)}
+            searchable
+            searchPlaceholder={t('settings.languageSearch')}
           />
-          <RowSelect
+          <SelectRow
             label={t('settings.theme')}
             value={settings.theme}
             options={themeOptions}
             onChange={(v) => settings.set('theme', v)}
           />
-          <RowSelect
+          <SelectRow
             label={t('settings.cardDensity')}
             value={settings.card_density}
             options={densityOptions}
             onChange={(v) => settings.set('card_density', v)}
           />
-          <RowSelect
+          <SelectRow
             label={t('settings.fontSize')}
             value={settings.font_scale}
             options={fontScaleOptions}
@@ -194,13 +206,13 @@ export default function SettingsScreen() {
           />
         </Section>
         <Section title={t('settings.sectionInteraction')}>
-          <RowSelect
+          <SelectRow
             label={t('settings.undoDuration')}
             value={settings.undo_duration}
             options={undoOptions.map((s) => ({ value: s, label: t('settings.undoSeconds', { count: s }) }))}
             onChange={(v) => settings.set('undo_duration', v)}
           />
-          <RowSelect
+          <SelectRow
             label={t('settings.defaultCreate')}
             value={settings.record_type_default}
             options={recordTypeOptions}
@@ -281,6 +293,21 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
           </Pressable>
         </Section>
+        <Section title={t('settings.sectionExport')}>
+          {/* Same row shape as the regionPacks / surveyors rows, but it opens
+              the existing sheet instead of pushing a route — the sheet is a
+              self-contained component with its own chrome. */}
+          <Pressable
+            onPress={() => setExportPrefOpen(true)}
+            className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <View className="flex-1 pr-3">
+              <Text className="text-base text-gray-900 dark:text-gray-100">{t('exportPref.title')}</Text>
+              <Text className="text-xs text-gray-500 dark:text-gray-400">{t('settings.exportPrefDesc')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </Pressable>
+        </Section>
         <Section title={t('settings.sectionData')}>
           <Pressable
             onPress={handleCheckIntegrity}
@@ -336,6 +363,12 @@ export default function SettingsScreen() {
           </Pressable>
         </Section>
       </ScrollView>
+
+      <ExportPreferenceSheet
+        visible={exportPrefOpen}
+        onClose={() => setExportPrefOpen(false)}
+      />
+
     </SafeAreaView>
   );
 }
@@ -388,34 +421,119 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function RowSelect<T extends string | number>({
+/**
+ * A settings row that opens a modal list — the select this app uses instead of
+ * a native picker (no new native module, and it renders identically on both
+ * platforms). `searchable` adds a filter box; only worth it for long lists
+ * like the language catalogue.
+ */
+function SelectRow<T extends string | number>({
   label,
   value,
   options,
   onChange,
+  searchable = false,
+  searchPlaceholder,
 }: {
   label: string;
   value: T;
-  options: Array<{ value: T; label: string }>;
+  options: Array<{ value: T; label: string; sublabel?: string }>;
   onChange: (v: T) => void;
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }) {
+  const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const current = options.find((o) => o.value === value);
+
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!searchable || !needle) return options;
+    return options.filter(
+      (o) =>
+        o.label.toLowerCase().includes(needle) ||
+        (o.sublabel ?? '').toLowerCase().includes(needle) ||
+        String(o.value).toLowerCase().includes(needle),
+    );
+  }, [options, q, searchable]);
+
   return (
-    <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
-      <Text className="text-sm text-gray-700 dark:text-gray-300">{label}</Text>
-      <View className="mt-2 flex-row gap-2">
-        {options.map((opt) => {
-          const active = opt.value === value;
-          return (
+    <>
+      <Pressable
+        onPress={() => setOpen(true)}
+        className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+        accessibilityRole="button"
+        accessibilityLabel={label}
+      >
+        <Text className="text-base text-gray-900 dark:text-gray-100">{label}</Text>
+        <View className="flex-row items-center">
+          <Text className="mr-1 text-base text-gray-500 dark:text-gray-400">
+            {current?.label ?? String(value)}
+          </Text>
+          <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+        </View>
+      </Pressable>
+
+      <Modal
+        visible={open}
+        animationType="slide"
+        onRequestClose={() => setOpen(false)}
+        onShow={() => setQ('')}
+      >
+        <View style={{ paddingTop: insets.top }} className="flex-1 bg-white dark:bg-gray-900">
+          <View className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+            <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-100">
+              {label}
+            </Text>
             <Pressable
-              key={String(opt.value)}
-              onPress={() => onChange(opt.value)}
-              className={`rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+              onPress={() => setOpen(false)}
+              hitSlop={10}
+              accessibilityLabel={t('common.cancel')}
             >
-              <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>{opt.label}</Text>
+              <Ionicons name="close" size={22} color="#6b7280" />
             </Pressable>
-          );
-        })}
-      </View>
-    </View>
+          </View>
+          {searchable ? (
+            <View className="px-4 py-2">
+              <TextInput
+                value={q}
+                onChangeText={setQ}
+                placeholder={searchPlaceholder}
+                placeholderTextColor="#9ca3af"
+                autoCapitalize="none"
+                autoCorrect={false}
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+              />
+            </View>
+          ) : null}
+          <FlatList
+            data={rows}
+            keyExtractor={(o) => String(o.value)}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <Pressable
+                onPress={() => {
+                  onChange(item.value);
+                  setOpen(false);
+                }}
+                className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-blue-50 dark:active:bg-blue-900/40"
+              >
+                <View className="flex-1">
+                  <Text className="text-base text-gray-900 dark:text-gray-100">{item.label}</Text>
+                  {item.sublabel ? (
+                    <Text className="text-xs text-gray-500 dark:text-gray-400">{item.sublabel}</Text>
+                  ) : null}
+                </View>
+                {item.value === value ? (
+                  <Ionicons name="checkmark" size={20} color="#2563eb" />
+                ) : null}
+              </Pressable>
+            )}
+          />
+        </View>
+      </Modal>
+    </>
   );
 }

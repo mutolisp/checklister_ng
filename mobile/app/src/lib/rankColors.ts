@@ -57,7 +57,14 @@ const COLORS: Record<string, RankColor> = {
   },
 };
 
-const ZH_TO_EN: Record<string, string> = {
+/**
+ * Traditional-Chinese rank label → the canonical English key. TaiCOL supplies
+ * English, the Japanese list supplies Chinese, so anything that reasons about
+ * rank has to normalise first. Exported because `dataQuality.ts` needs the
+ * same mapping to tell a species-level record from a genus-level one, and two
+ * copies of this table would drift.
+ */
+export const ZH_TO_EN: Record<string, string> = {
   域: 'kingdom',
   界: 'kingdom',
   門: 'phylum',

@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { AdoptionInput } from '~/db';
 import * as Location from 'expo-location';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { BackHeaderLeft, goBackOrHome } from '~/lib/goBack';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -578,18 +578,40 @@ export default function SessionDetailScreen() {
           // Override the default chevron back so a fresh deep-link / replace
           // entry doesn't strand the user with a dead button.
           headerLeft: BackHeaderLeft,
-          headerRight: isActive
-            ? () => (
-                <Pressable onPress={handleEnd} hitSlop={8}>
-                  <Text className="text-base font-medium text-red-600 dark:text-red-400">{t('session.end')}</Text>
+          headerRight: () => (
+            <View className="flex-row items-center gap-2">
+              <Pressable
+                onPress={() => router.push(`/report/session/${sessionId}` as Href)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('report.navTitle')}
+                className="h-9 w-9 items-center justify-center active:opacity-60"
+              >
+                <Ionicons name="document-text-outline" size={22} color="#2563eb" />
+              </Pressable>
+              {isActive ? (
+                <Pressable
+                  onPress={handleEnd}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('session.end')}
+                  className="h-9 w-9 items-center justify-center active:opacity-60"
+                >
+                  <Ionicons name="stop-circle-outline" size={22} color="#dc2626" />
                 </Pressable>
-              )
-            : () => (
-                <Pressable onPress={handleReopen} hitSlop={8} className="flex-row items-center">
-                  <Ionicons name="refresh" size={16} color="#2563eb" />
-                  <Text className="ml-1 text-base font-medium text-blue-600 dark:text-blue-400">{t('session.continueEdit')}</Text>
+              ) : (
+                <Pressable
+                  onPress={handleReopen}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('session.continueEdit')}
+                  className="h-9 w-9 items-center justify-center active:opacity-60"
+                >
+                  <Ionicons name="refresh-outline" size={22} color="#2563eb" />
                 </Pressable>
-              ),
+              )}
+            </View>
+          ),
         }}
       />
       <View className="flex-1">

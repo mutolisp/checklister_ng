@@ -150,7 +150,6 @@ export default function SitesScreen() {
       <Stack.Screen
         options={{
           title: t('sites.title'),
-          headerBackTitle: t('nav.back'),
           headerLeft: BackHeaderLeft,
           headerRight: () =>
             sites.length > 0 ? (

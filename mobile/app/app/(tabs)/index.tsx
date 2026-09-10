@@ -5,7 +5,6 @@ import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, LayoutAnimation, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { isoDateTime } from '~/lib/datetime';
-import { ExportPreferenceSheet } from '~/components/ExportPreferenceSheet';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
 import {
   deleteCollectionTrip,
@@ -29,6 +28,7 @@ import {
 } from '~/lib/bundleExport';
 import { confirmExportContent } from '~/components/AnalysisExportOptions';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
+import { showActionSheet } from '~/components/ActionSheet';
 import {
   DuplicateRecordModal,
   type DuplicateRequest,
@@ -377,6 +377,10 @@ export default function RecordsListScreen() {
     plot: t('nav.plot'),
     collection: t('nav.collection'),
   };
+  const viewLabel: Record<ViewMode, string> = {
+    byProject: t('records.byProject'),
+    flat: t('records.timeline'),
+  };
   const refreshActive = useActiveSession((s) => s.refresh);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
   const toast = useToast((s) => s.show);
@@ -395,7 +399,6 @@ export default function RecordsListScreen() {
     plot: 0,
     collection: 0,
   });
-  const [prefOpen, setPrefOpen] = useState(false);
   const [duplicating, setDuplicating] = useState<{ item: RecordItem; request: DuplicateRequest } | null>(null);
   const {
     busy: exportBusy,
@@ -419,6 +422,8 @@ export default function RecordsListScreen() {
   const matrixValue = useSettings((s) => s.export_matrix_value);
   const analysisFormats = useSettings((s) => s.export_analysis_formats);
   const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
+  const includeReport = useSettings((s) => s.export_include_report);
+  const reportFormat = useSettings((s) => s.export_report_format);
   const swipeHintShown = useSettings((s) => s.records_swipe_hint_shown);
   const settingsLoaded = useSettings((s) => s.loaded);
   const [refreshing, setRefreshing] = useState(false);
@@ -513,6 +518,8 @@ export default function RecordsListScreen() {
       analysisFormats,
       matrixValue,
       matrixByLayer,
+      includeReport,
+      reportFormat,
       includePhotos,
       includeDocx,
       geoFormats,
@@ -533,6 +540,8 @@ export default function RecordsListScreen() {
         matrixValue,
         analysisFormats,
         matrixByLayer,
+        includeReport,
+        reportFormat,
         onProgress,
       }),
     );
@@ -715,6 +724,24 @@ export default function RecordsListScreen() {
     };
   }, [chao2Sheet]);
 
+  const pickFilter = async () => {
+    const opts: Filter[] = ['all', 'session', 'plot', 'collection'];
+    const idx = await showActionSheet({
+      title: t('records.filterTitle'),
+      options: opts.map((f) => ({ label: `${filterLabel[f]} (${counts[f]})` })),
+    });
+    if (idx >= 0) setFilter(opts[idx]);
+  };
+
+  const pickView = async () => {
+    const opts: ViewMode[] = ['byProject', 'flat'];
+    const idx = await showActionSheet({
+      title: t('records.viewTitle'),
+      options: opts.map((m) => ({ label: viewLabel[m] })),
+    });
+    if (idx >= 0) setViewMode(opts[idx]);
+  };
+
   const handleRefresh = () => {
     setRefreshing(true);
     requestAnimationFrame(() => {
@@ -842,8 +869,39 @@ export default function RecordsListScreen() {
             </View>
           </View>
         ) : (
-          <View className="flex-row items-center justify-between">
-            <Text className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('tab.records')}</Text>
+          <View className="flex-row items-center">
+            <Text
+              numberOfLines={1}
+              className="flex-shrink text-2xl font-bold text-gray-900 dark:text-gray-100"
+            >
+              {t('tab.records')}
+            </Text>
+            {/* Filter / view live on the title row. The chips are icon-only so
+                their width no longer tracks the UI language — that is what
+                stopped them colliding with the favourites pill. The scroller
+                stays as insurance for the parts that DO grow (fr title
+                "Enregistrements" + "Favoris"); the action cluster is
+                deliberately outside it, since primary actions must never
+                scroll out of reach. */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="ml-3 flex-1"
+              contentContainerClassName="flex-row items-center gap-2 pr-2"
+              keyboardShouldPersistTaps="handled"
+            >
+              <DropdownChip
+                icon="funnel-outline"
+                a11yLabel={`${t('records.filterTitle')}: ${filterLabel[filter]} (${counts[filter]})`}
+                active={filter !== 'all'}
+                onPress={pickFilter}
+              />
+              <DropdownChip
+                icon={viewMode === 'byProject' ? 'folder-outline' : 'time-outline'}
+                a11yLabel={`${t('records.viewTitle')}: ${viewLabel[viewMode]}`}
+                onPress={pickView}
+              />
+            </ScrollView>
             <View className="flex-row items-center gap-2">
               <Pressable
                 onPress={() => router.push('/favorites')}
@@ -861,71 +919,12 @@ export default function RecordsListScreen() {
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={t('record.kindImport')}
-                className="rounded-full bg-gray-100 dark:bg-gray-800 p-1.5 active:bg-gray-200 dark:active:bg-gray-700"
+                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
               >
                 <Ionicons name="download-outline" size={16} color="#4b5563" />
               </Pressable>
-              <Pressable
-                onPress={() => setPrefOpen(true)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('exportPref.title')}
-                className="rounded-full bg-gray-100 dark:bg-gray-800 p-1.5 active:bg-gray-200 dark:active:bg-gray-700"
-              >
-                <Ionicons name="settings-outline" size={16} color="#4b5563" />
-              </Pressable>
-              {/* Segmented control instead of a state-labelled chip: the old
-                  chip showed the CURRENT mode, which reads as "tap to get
-                  this" — ambiguous both ways. */}
-              <View className="flex-row rounded-full bg-gray-100 dark:bg-gray-800 p-0.5">
-                {(
-                  [
-                    ['byProject', t('records.byProject')],
-                    ['flat', t('records.timeline')],
-                  ] as Array<[ViewMode, string]>
-                ).map(([mode, label]) => {
-                  const on = viewMode === mode;
-                  return (
-                    <Pressable
-                      key={mode}
-                      onPress={() => setViewMode(mode)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: on }}
-                      className={`rounded-full px-2.5 py-1 ${on ? 'bg-blue-500' : ''}`}
-                    >
-                      <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-600 dark:text-gray-400'}`}>
-                        {label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
             </View>
           </View>
-        )}
-        {selectMode ? null : (
-          <>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerClassName="mt-3 flex-row gap-2 pr-4"
-            >
-              {(['all', 'session', 'plot', 'collection'] as Filter[]).map((f) => {
-                const on = filter === f;
-                return (
-                  <Pressable
-                    key={f}
-                    onPress={() => setFilter(f)}
-                    className={`items-center rounded-lg px-4 py-2 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
-                  >
-                    <Text className={`text-sm font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {filterLabel[f]} ({counts[f]})
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </>
         )}
       </View>
 
@@ -1023,12 +1022,54 @@ export default function RecordsListScreen() {
           </Text>
         </View>
       </Modal>
-      <ExportPreferenceSheet visible={prefOpen} onClose={() => setPrefOpen(false)} />
       <DuplicateRecordModal
         request={duplicating?.request ?? null}
         onCancel={() => setDuplicating(null)}
         onConfirm={handleDuplicateConfirm}
       />
     </View>
+  );
+}
+
+/**
+ * Icon-only dropdown: an icon + a chevron, opening an ActionSheet.
+ *
+ * The label used to ride along inside the chip, which made the header row's
+ * width depend on the UI language — in longer languages it collided with the
+ * favourites pill. An icon is fixed-width in every language; the current value
+ * lives in `a11yLabel` for screen readers and is spelled out in the sheet the
+ * chevron promises.
+ */
+function DropdownChip({
+  icon,
+  a11yLabel,
+  active = false,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  a11yLabel: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      className={`flex-row items-center rounded-full border px-2.5 py-1.5 active:opacity-70 ${
+        active
+          ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/40'
+          : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'
+      }`}
+    >
+      <Ionicons name={icon} size={16} color={active ? '#059669' : '#4b5563'} />
+      <Ionicons
+        name="chevron-down"
+        size={12}
+        color={active ? '#059669' : '#9ca3af'}
+        style={{ marginLeft: 2 }}
+      />
+    </Pressable>
   );
 }

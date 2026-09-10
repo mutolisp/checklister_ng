@@ -9,7 +9,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Alert, Pressable, Switch, Text, View } from 'react-native';
-import { useSettings, type AnalysisFormat, type MatrixValueMode } from '~/stores/settings';
+import {
+  useSettings,
+  type AnalysisFormat,
+  type MatrixValueMode,
+  type ReportFormat,
+} from '~/stores/settings';
 
 const FORMAT_OPTIONS: Array<{ value: AnalysisFormat; label: string; hintKey: string }> = [
   { value: 'vegan', label: 'R (vegan)', hintKey: 'projectExport.veganHint' },
@@ -38,6 +43,8 @@ export function exportContentItems(
     includePhotos: boolean;
     includeDocx: boolean;
     geoFormats: string[];
+    includeReport: boolean;
+    reportFormat: ReportFormat;
   },
 ): string[] {
   const items: string[] = [];
@@ -63,6 +70,11 @@ export function exportContentItems(
   if (opts.analysisFormats.includes('juice')) items.push(t('projectExport.itemJuice'));
   if (opts.analysisFormats.includes('dwca')) items.push(t('projectExport.itemDwca'));
   items.push(t('projectExport.itemSites'));
+  if (opts.includeReport) {
+    const formats =
+      opts.reportFormat === 'both' ? 'HTML / DOCX' : opts.reportFormat.toUpperCase();
+    items.push(t('projectExport.itemReport', { formats }));
+  }
   return items;
 }
 

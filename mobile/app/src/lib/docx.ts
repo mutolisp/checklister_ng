@@ -7,9 +7,12 @@
  * named styles, which Word/Pages/Google Docs all open fine.
  *
  * `buildDocx` and the run helpers are shared with the herbarium label sheet
- * (`docxLabels.ts`). Because there is no `word/_rels/document.xml.rels`, no
- * caller may emit anything carrying an `r:id` (image, hyperlink, header) —
- * adding one means adding a part here AND an entry in `[Content_Types].xml`.
+ * (`docxLabels.ts`) and the research report (`reportDocx.ts`). A caller that
+ * needs an `r:id` (chart, image, hyperlink, header) must pass `extras`: the
+ * relationship AND the part AND its `[Content_Types].xml` entry travel
+ * together, so `buildDocx` takes all three at once and no caller can supply
+ * one without the others. With no `extras` the output is the same three-part
+ * package it has always been, minus the document-rels part.
  *
  * This intentionally parses only the Markdown subset that `generateMarkdown`
  * (src/lib/markdown.ts) emits:
@@ -117,8 +120,62 @@ function paragraphXml(line: string): string {
   return `<w:p><w:pPr><w:spacing w:after="0"/>${indXml(line)}</w:pPr>${body}</w:p>`;
 }
 
-const CONTENT_TYPES = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>`;
+/**
+ * Extra package content, for callers that need a part the three-part skeleton
+ * does not have. All three fields describe ONE addition from different angles:
+ * `parts` is the bytes, `documentRels` is how `document.xml` reaches it, and
+ * `overrides`/`defaults` is how a consumer knows what it is. Omitting any one
+ * of them is what produces a file Word offers to repair.
+ */
+export type DocxExtras = {
+  /** Zip entries keyed by full part name, e.g. `word/charts/chart1.xml`. */
+  parts?: Record<string, Uint8Array>;
+  /** Relationships from `word/document.xml`. Emitted as
+   *  `word/_rels/document.xml.rels`; omitted entirely when empty. */
+  documentRels?: Array<{ id: string; type: string; target: string }>;
+  /** `[Content_Types].xml` per-part overrides. `partName` is absolute. */
+  overrides?: Array<{ partName: string; contentType: string }>;
+  /** `[Content_Types].xml` per-extension defaults (e.g. `xlsx`). */
+  defaults?: Array<{ extension: string; contentType: string }>;
+};
+
+function contentTypesXml(extras: DocxExtras): string {
+  const defaults = [
+    { extension: 'rels', contentType: 'application/vnd.openxmlformats-package.relationships+xml' },
+    { extension: 'xml', contentType: 'application/xml' },
+    ...(extras.defaults ?? []),
+  ];
+  const overrides = [
+    {
+      partName: '/word/document.xml',
+      contentType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml',
+    },
+    ...(extras.overrides ?? []),
+  ];
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+    defaults
+      .map((d) => `<Default Extension="${d.extension}" ContentType="${d.contentType}"/>`)
+      .join('') +
+    overrides
+      .map((o) => `<Override PartName="${o.partName}" ContentType="${o.contentType}"/>`)
+      .join('') +
+    `</Types>`
+  );
+}
+
+function documentRelsXml(rels: Array<{ id: string; type: string; target: string }>): string {
+  return (
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n` +
+    `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    rels
+      .map((r) => `<Relationship Id="${r.id}" Type="${r.type}" Target="${xmlEscape(r.target)}"/>`)
+      .join('') +
+    `</Relationships>`
+  );
+}
 
 const RELS = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>`;
@@ -143,15 +200,30 @@ export const A4_SECT_PR =
  * requirement, not a convention. The default empty `<w:sectPr/>` inherits
  * Word's own page setup, which is what the Markdown path has always done.
  */
-export function buildDocx(bodyXml: string, sectPrXml: string = '<w:sectPr/>'): Uint8Array {
+export function buildDocx(
+  bodyXml: string,
+  sectPrXml: string = '<w:sectPr/>',
+  extras: DocxExtras = {},
+): Uint8Array {
+  // The drawing namespaces are declared unconditionally. They cost one line
+  // and are inert when unused, whereas declaring them only for chart callers
+  // means the Markdown path and the report path emit different roots — two
+  // shapes to keep valid instead of one.
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${bodyXml}${sectPrXml}</w:body></w:document>`;
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><w:body>${bodyXml}${sectPrXml}</w:body></w:document>`;
 
   const zippable: Zippable = {
-    '[Content_Types].xml': strToU8(CONTENT_TYPES),
+    '[Content_Types].xml': strToU8(contentTypesXml(extras)),
     '_rels/.rels': strToU8(RELS),
     'word/document.xml': strToU8(documentXml),
   };
+  const rels = extras.documentRels ?? [];
+  if (rels.length > 0) {
+    zippable['word/_rels/document.xml.rels'] = strToU8(documentRelsXml(rels));
+  }
+  for (const [name, bytes] of Object.entries(extras.parts ?? {})) {
+    zippable[name] = bytes;
+  }
   return zipSync(zippable, { level: 6 });
 }
 

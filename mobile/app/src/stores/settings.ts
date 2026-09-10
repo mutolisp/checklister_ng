@@ -10,9 +10,20 @@ export type Theme = 'light' | 'dark' | 'auto';
 export type CardDensity = 'compact' | 'comfortable';
 
 /** UI language. 'system' follows the device locale; others force that language.
- *  Only 'en' and 'zh-TW' ship locale files today (see `~/i18n`); 'ja'/'ko' are
- *  reserved so the picker + stored values are forward-compatible. */
-export type Language = 'system' | 'en' | 'zh-TW' | 'ja' | 'ko';
+ *  All four ship a locale file (see `~/i18n`), kept structurally identical to
+ *  zh-TW by `npm run check:i18n`. */
+export type Language =
+  | 'system'
+  | 'en'
+  | 'zh-TW'
+  | 'ja'
+  | 'ko'
+  | 'de'
+  | 'fr'
+  | 'es'
+  /** Latin American Spanish (CLDR es-419); overrides only the keys that
+   *  would read wrong in Spain's wording. */
+  | 'es-419';
 
 /** Enabled regional checklist databases. Taiwan (TaiCOL) is the always-on base;
  *  others (Japan/YList, …) are opt-in overlays that widen search/tree/export and
@@ -34,6 +45,9 @@ export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
 export type MapBasemap = 'standard' | 'satellite' | 'hybrid' | 'terrain';
 export type RecordTypeDefault = 'session' | 'plot' | 'collection' | 'ask';
 export type AnalysisFormat = 'vegan' | 'juice' | 'dwca';
+
+/** File format(s) the project bundle's research report is written as. */
+export type ReportFormat = 'html' | 'docx' | 'both';
 
 export type MapViewState = {
   latitude: number;
@@ -152,6 +166,10 @@ type SettingsValues = {
   /** Whether the project export also emits the per-layer species matrix
    *  (species_matrix_by_layer.csv) alongside the cross-layer merged one. */
   export_matrix_by_layer: boolean;
+  /** Whether the project export bundle also carries a research report. */
+  export_include_report: boolean;
+  /** Which file(s) that report is written as. */
+  export_report_format: ReportFormat;
   /** Classification levels to group the exported checklist by. Empty = use each
    *  taxon group's default (vascular = 高階分類群 + 科, birds = 目 + 科, …).
    *  Non-empty = global override, applied in LEVEL_ORDER. */
@@ -198,6 +216,8 @@ const DEFAULTS: SettingsValues = {
   export_matrix_value: 'cover',
   export_analysis_formats: ['vegan', 'juice', 'dwca'],
   export_matrix_by_layer: true,
+  export_include_report: true,
+  export_report_format: 'html',
   export_levels: [],
   export_conservation_fields: ['redlist'],
   enabled_regions: ['TW'],
@@ -315,6 +335,11 @@ function readAll(): SettingsValues {
       map.get('export_matrix_by_layer') == null
         ? DEFAULTS.export_matrix_by_layer
         : map.get('export_matrix_by_layer') === 'true',
+    export_include_report:
+      map.get('export_include_report') == null
+        ? DEFAULTS.export_include_report
+        : map.get('export_include_report') === 'true',
+    export_report_format: parseReportFormat(map.get('export_report_format')),
     export_levels: parseLevels(map.get('export_levels')),
     export_conservation_fields: parseConservationFields(map.get('export_conservation_fields')),
     enabled_regions: parseRegions(map.get('enabled_regions')),
@@ -322,7 +347,17 @@ function readAll(): SettingsValues {
   };
 }
 
-const LANGUAGE_KEYS = new Set<Language>(['system', 'en', 'zh-TW', 'ja', 'ko']);
+const LANGUAGE_KEYS = new Set<Language>([
+  'system',
+  'en',
+  'zh-TW',
+  'ja',
+  'ko',
+  'de',
+  'fr',
+  'es',
+  'es-419',
+]);
 function parseLanguage(raw: string | undefined): Language {
   return raw != null && LANGUAGE_KEYS.has(raw as Language)
     ? (raw as Language)
@@ -423,6 +458,13 @@ function parseMatrixValue(raw: string | undefined): MatrixValueMode {
   return raw != null && MATRIX_VALUE_KEYS.has(raw as MatrixValueMode)
     ? (raw as MatrixValueMode)
     : DEFAULTS.export_matrix_value;
+}
+
+const REPORT_FORMAT_KEYS = new Set<ReportFormat>(['html', 'docx', 'both']);
+function parseReportFormat(raw: string | undefined): ReportFormat {
+  return raw != null && REPORT_FORMAT_KEYS.has(raw as ReportFormat)
+    ? (raw as ReportFormat)
+    : DEFAULTS.export_report_format;
 }
 
 const ANALYSIS_FORMAT_KEYS = new Set<AnalysisFormat>(['vegan', 'juice', 'dwca']);

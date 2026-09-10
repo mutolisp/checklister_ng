@@ -619,7 +619,7 @@ export default function CollectionTripScreen() {
               <Pressable
                 onPress={() => setSelectMode(true)}
                 hitSlop={8}
-                className="rounded-full bg-gray-100 p-1.5 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
+                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
               >
                 <Ionicons name="checkbox-outline" size={15} color="#4b5563" />
               </Pressable>

@@ -32,6 +32,8 @@ export function ProjectExportSheet({ visible, onClose, onExport }: Props) {
   const includePhotos = useSettings((s) => s.export_include_photos);
   const includeDocx = useSettings((s) => s.export_include_docx);
   const geoFormats = useSettings((s) => s.export_geo_formats);
+  const includeReport = useSettings((s) => s.export_include_report);
+  const reportFormat = useSettings((s) => s.export_report_format);
 
   const items = exportContentItems(t, {
     analysisFormats,
@@ -40,6 +42,8 @@ export function ProjectExportSheet({ visible, onClose, onExport }: Props) {
     includePhotos,
     includeDocx,
     geoFormats,
+    includeReport,
+    reportFormat,
   });
 
   return (

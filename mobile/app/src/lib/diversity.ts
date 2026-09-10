@@ -101,6 +101,9 @@ export type DiversityResult = {
   invSimpson: number | null;
   /** Pielou evenness J′ = H′/ln(S). Null when S < 2 (undefined) or H′ null. */
   pielouJ: number | null;
+  /** Hill's modified evenness ratio E5 = (N₂−1)/(N₁−1). Null when N₁ = 1
+   *  (a single effective species), where the denominator is zero. */
+  hillE5: number | null;
   /** Berger–Parker dominance d = max(pᵢ): the most abundant species' share
    *  of the total. Null when nothing is quantified. Hill ∞ = 1/d. */
   bergerParker: number | null;
@@ -162,11 +165,35 @@ export function computeDiversity(records: DiversityRecord[]): DiversityResult {
     invSimpson: simpsonD != null && simpsonD > 0 ? 1 / simpsonD : null,
     pielouJ:
       shannonH != null && values.length >= 2 ? shannonH / Math.log(values.length) : null,
+    hillE5: hillE5(shannonH, simpsonD),
     bergerParker: dominants.length > 0 ? dominants[0].share : null,
     dominants,
     basis,
     lossy,
   };
+}
+
+/**
+ * Hill's modified evenness ratio, E5 = [(1/λ) − 1] / [e^H′ − 1], i.e.
+ * (N₂ − 1)/(N₁ − 1).
+ *
+ * Transcribed from 「植物生態評估技術規範」附件二 §三 3.「歧異度分析
+ * (α-diversity)」, which gives the six indices S, λ, H′, N₁, N₂ and E5 and
+ * attributes them to Ludwig & Reynolds (1988). That specification is issued
+ * under 開發行為環境影響評估作業準則第四十九條, so its index set is what a
+ * Taiwanese EIA report is expected to contain — which is why E5 is here even
+ * though Pielou's J′ already measures evenness.
+ *
+ * Undefined when N₁ = 1: a single effective species makes e^H′ − 1 zero, and
+ * the spec's own note ("如果此社會只有一種時，指數為 0") describes the
+ * limiting case rather than the division.
+ */
+function hillE5(shannonH: number | null, simpsonD: number | null): number | null {
+  if (shannonH == null || simpsonD == null || simpsonD <= 0) return null;
+  const n1 = Math.exp(shannonH);
+  const n2 = 1 / simpsonD;
+  if (!(n1 > 1)) return null;
+  return (n2 - 1) / (n1 - 1);
 }
 
 /**

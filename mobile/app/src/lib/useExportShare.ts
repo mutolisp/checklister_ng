@@ -23,7 +23,17 @@ export function useExportShare() {
   const onProgress = useCallback((p: ExportProgress) => setProgress(p), []);
 
   const shareBundle = useCallback(
-    async (bundleFn: () => Promise<{ uri: string; filename: string; mimeType: string }>) => {
+    async (
+      bundleFn: () => Promise<{
+        uri: string;
+        filename: string;
+        mimeType: string;
+        /** iOS type identifier. Optional — the share sheet infers one from the
+         *  extension — but naming it is what makes "Open in Word" appear
+         *  first rather than a generic file handler. */
+        UTI?: string;
+      }>,
+    ) => {
       if (busy) return;
       setBusy(true);
       setProgress({ label: t('export.preparing') });
@@ -40,6 +50,7 @@ export function useExportShare() {
         } else {
           await Sharing.shareAsync(file.uri, {
             mimeType: file.mimeType,
+            ...(file.UTI ? { UTI: file.UTI } : {}),
             dialogTitle: file.filename,
           });
         }

@@ -79,7 +79,11 @@ function ThemedShell() {
               session left unattended in 檢索表 runner still gets nagged. */}
           <StaleSessionWatcher />
           <StalePlotWatcher />
-          <Stack screenOptions={{ headerBackTitle: t('nav.back') }}>
+          {/* `minimal` shows the chevron alone. The word cost most of the header's
+                width in the longer languages and repeated what the glyph
+                already says; screens with a custom `headerLeft` carry the
+                label on the button's accessibility label instead. */}
+          <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="session/[id]" options={{ title: t('nav.session') }} />
             <Stack.Screen name="plot/[id]" options={{ title: t('nav.plot') }} />
@@ -92,6 +96,7 @@ function ThemedShell() {
             <Stack.Screen name="favorites" options={{ title: t('nav.favorites') }} />
             <Stack.Screen name="backup" options={{ title: t('nav.backup') }} />
             <Stack.Screen name="regionpacks" options={{ title: t('nav.regionPacks') }} />
+            <Stack.Screen name="report/[kind]/[id]" options={{ title: t('report.navTitle') }} />
           </Stack>
         </View>
         <ToastHost />

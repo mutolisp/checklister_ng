@@ -585,7 +585,6 @@ export default function KeyRunnerScreen() {
       <Stack.Screen
         options={{
           title: screenTitle,
-          headerBackTitle: tr('nav.back'),
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <Pressable onPress={restart} hitSlop={8}>

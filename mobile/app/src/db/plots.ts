@@ -6,7 +6,12 @@ import {
   type AdoptionInput,
   type AdoptionStatus,
 } from './taxonLookup';
-import { buildTrackGeoJSON, parseTrackSegments, type TrackSegment } from '~/lib/track';
+import {
+  buildTrackGeoJSON,
+  parseTrackSegments,
+  trackLengthMeters,
+  type TrackSegment,
+} from '~/lib/track';
 import { generateUuid } from './uuid';
 import { getUserDb, withTransaction } from './init';
 import { ensureExternalCopy } from './regionpacks';
@@ -654,7 +659,7 @@ export function updatePlotSurvey(id: number, patch: UpdatePlotPatch): void {
 
 // 純資料形狀移到 ~/lib/track（匯入解析器也要用，不能相依 DB）；re-export 讓既有
 // import 路徑不變。
-export { buildTrackGeoJSON, parseTrackSegments, type TrackSegment };
+export { buildTrackGeoJSON, parseTrackSegments, trackLengthMeters, type TrackSegment };
 
 /** Replace the plot's track with the given segments (fast path used by UI). */
 export function writePlotTrack(plotId: number, segments: TrackSegment[]): void {
@@ -683,25 +688,6 @@ export function unfinalizePlotTrack(plotId: number): void {
   );
 }
 
-/** Haversine length in meters; sums per-segment distances. */
-export function trackLengthMeters(segments: TrackSegment[]): number {
-  let total = 0;
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  for (const seg of segments) {
-    for (let i = 1; i < seg.length; i++) {
-      const [lng1, lat1] = seg[i - 1];
-      const [lng2, lat2] = seg[i];
-      const dLat = toRad(lat2 - lat1);
-      const dLng = toRad(lng2 - lng1);
-      const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
-      total += 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
-    }
-  }
-  return total;
-}
 
 export function endPlotSurvey(id: number): void {
   const db = getUserDb();

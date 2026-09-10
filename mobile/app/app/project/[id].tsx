@@ -54,6 +54,8 @@ export default function ProjectDetailScreen() {
   const matrixValue = useSettings((s) => s.export_matrix_value);
   const analysisFormats = useSettings((s) => s.export_analysis_formats);
   const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
+  const includeReport = useSettings((s) => s.export_include_report);
+  const reportFormat = useSettings((s) => s.export_report_format);
 
   const reload = useCallback(() => {
     setProject(getProject(projectId));
@@ -94,6 +96,8 @@ export default function ProjectDetailScreen() {
         matrixValue,
         analysisFormats,
         matrixByLayer,
+        includeReport,
+        reportFormat,
         onProgress,
       }),
     );
@@ -120,13 +124,36 @@ export default function ProjectDetailScreen() {
           title: project.name,
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <View className="flex-row items-center gap-4">
+            <View className="flex-row items-center gap-1">
+              <Pressable
+                onPress={() => router.push(`/report/project/${projectId}` as Href)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('report.navTitle')}
+                className="h-9 w-9 items-center justify-center active:opacity-60"
+              >
+                <Ionicons name="document-text-outline" size={22} color="#2563eb" />
+              </Pressable>
               {projectId !== 0 ? (
-                <Pressable onPress={() => setEditing(true)} hitSlop={8} disabled={busy}>
-                  <Ionicons name="pencil" size={20} color="#2563eb" />
+                <Pressable
+                  onPress={() => setEditing(true)}
+                  hitSlop={8}
+                  disabled={busy}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('common.edit')}
+                  className="h-9 w-9 items-center justify-center active:opacity-60"
+                >
+                  <Ionicons name="pencil" size={22} color="#2563eb" />
                 </Pressable>
               ) : null}
-              <Pressable onPress={() => setSheetOpen(true)} hitSlop={8} disabled={busy}>
+              <Pressable
+                onPress={() => setSheetOpen(true)}
+                hitSlop={8}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.export')}
+                className="h-9 w-9 items-center justify-center active:opacity-60"
+              >
                 <Ionicons name="share-outline" size={22} color={busy ? '#9ca3af' : '#2563eb'} />
               </Pressable>
             </View>
