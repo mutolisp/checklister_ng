@@ -1,0 +1,40 @@
+{
+  "gps": {
+    "permMsg": "Vaya a Configuración → Checklister → Ubicación y active «Al usar la app»"
+  },
+  "nav": {
+    "backup": "Respaldo"
+  },
+  "menu": {
+    "backupDesc": "Respaldo y restauración de datos y fotos"
+  },
+  "settings": {
+    "clearAllConfirmMsg": "Se eliminarán todos los registros, proyectos y configuraciones. Los datos de especies de TaiCOL se conservan."
+  },
+  "backup": {
+    "backupFailed": "Error en el respaldo",
+    "photoBackupFailed": "Error en el respaldo de fotos",
+    "restoreTitle": "Restaurar respaldo",
+    "restoreMsg": "Esto sobrescribe todos los datos actuales de la app (listas de especies, parcelas, favoritos, configuración) y no se puede deshacer. La app se reiniciará al terminar.",
+    "dataBackupTitle": "Respaldo de los datos",
+    "createExport": "Crear respaldo y exportar",
+    "photoBackupTitle": "Respaldo de las fotos",
+    "dataRestoreDesc": "Restaura los datos de usuario desde un zip de respaldo. ⚠️ Sobrescribe todos los datos actuales, no se puede deshacer; la app se reiniciará al terminar.",
+    "restoreFromFile": "Restaurar desde un archivo de respaldo",
+    "invalidFile": "No es un archivo de respaldo válido (falta user.db o manifest.json)",
+    "corrupt": "Archivo de respaldo dañado (no se puede leer manifest.json)",
+    "notChecklister": "No es un archivo de respaldo de Checklister",
+    "tooNew": "Este respaldo se creó con una versión más reciente de la app (esquema v{{version}}); actualice la app antes de restaurarlo.",
+    "safetyTitle": "Respaldos automáticos de protección",
+    "includePacks": "Incluir los «paquetes de lista nacional» en el respaldo"
+  },
+  "plotValue": {
+    "permMsg": "Active el permiso de ubicación en la configuración del sistema"
+  },
+  "exportPref": {
+    "title": "Configuración de exportación"
+  },
+  "regionPacks": {
+    "savePwMsg": "Se guarda solo en este dispositivo (nunca se incluye en los respaldos), de modo que las próximas descargas no pidan iniciar sesión."
+  }
+}
