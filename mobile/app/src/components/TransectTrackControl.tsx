@@ -114,7 +114,7 @@ export function TransectTrackControl({ plot, onUpdated }: Props) {
 
       {totalPoints > 0 ? (
         <Text className="mt-1 text-sm text-gray-900 dark:text-gray-100">
-          {t('transect.summary', { segments: totalSegments, points: totalPoints, length: lengthStr })}
+          {t('transect.summary', { count: totalSegments, points: totalPoints, length: lengthStr })}
         </Text>
       ) : (
         <Text className="mt-1 text-xs text-gray-400 dark:text-gray-500">{t('transect.notStarted')}</Text>

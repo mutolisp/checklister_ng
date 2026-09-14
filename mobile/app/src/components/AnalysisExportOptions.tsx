@@ -57,6 +57,13 @@ export function exportContentItems(
     ...(opts.includePhotos ? [t('projectExport.itemPhotos')] : []),
   ];
   items.push(t('projectExport.itemRecords', { formats: recordFormats.join(' / ') }));
+  // The merged checklist always ships — it needs no setting of its own, but it
+  // must appear here or the confirmation list understates what lands in the zip.
+  items.push(
+    t('projectExport.itemChecklist', {
+      formats: ['Markdown', ...(opts.includeDocx ? ['DOCX'] : []), 'CSV'].join(' / '),
+    }),
+  );
   if (opts.analysisFormats.includes('vegan')) {
     items.push(
       t('projectExport.itemMatrix', {

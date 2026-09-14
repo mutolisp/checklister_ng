@@ -32,7 +32,6 @@
     "sortTitle": "並べ替え",
     "notInDb": "この種は種名データベースに存在しません",
     "addToRecord": "記録に追加",
-    "count": "{{count}} 件",
     "searchPlaceholder": "お気に入り内を検索...",
     "empty": "お気に入りはまだありません。下の検索ボックスから追加するか、種の詳細／分類ツリー／記録で長押しして追加してください。",
     "noMatch": "該当する項目はありません",
@@ -44,13 +43,11 @@
     "addedNamed": "お気に入りに追加しました：{{name}}",
     "defaultFolder": "お気に入り",
     "allFolders": "すべてのリスト",
-    "folderCount": "{{count}} 個のリスト",
     "newFolder": "新規リスト",
     "folderNamePlaceholder": "例：陽明山、鳥類、要確認",
     "folderCreated": "リスト「{{name}}」を作成しました",
     "renameFolder": "名前を変更",
     "deleteFolder": "リストを削除",
-    "deleteFolderConfirm": "リスト「{{name}}」とその中の {{count}} 種を削除します。この操作は取り消せません。",
     "folderDeleted": "リスト「{{name}}」を削除しました",
     "emptyFolders": "リストがまだありません。右上の「新規リスト」をタップするか、種の詳細／分類ツリー／記録で種を長押しして既定のリストに追加してください。",
     "moveTo": "他のリストへ移動",
@@ -60,30 +57,40 @@
     "importPaste": "名前を貼り付けて照合・追加",
     "importFromRecord": "既存の記録からインポート",
     "noRecordsToImport": "種を含む既存の記録がありません",
-    "importDone": "{{added}} 種を追加しました（重複 {{skipped}}、未解決 {{unresolved}}）",
-    "importedCount": "{{count}} 種を追加しました",
+    "importDone": "{{added}}（{{skipped}}、{{unresolved}}）",
     "kindSession": "種リスト",
     "kindPlot": "調査区",
     "kindCollection": "標本",
     "selectAll": "すべて選択",
     "deselectAll": "選択を解除",
-    "pickerSummary": "{{records}} 件の記録、{{species}} 種を選択中",
-    "selectedCount": "{{count}} 種を選択中",
+    "pickerSummary": "{{records}}、{{species}}を選択中",
     "deleteSelected": "選択した種を削除",
-    "deleteSelectedConfirm": "このリストから {{count}} 種を削除します。他のリストには影響しません。",
-    "deletedCount": "{{count}} 種を削除しました",
     "goToFavorites": "移動",
     "area": "リストの範囲",
     "areaFrom": "リストの範囲（出典：{{source}}）",
     "editArea": "範囲を編集",
     "setArea": "このリストの範囲を設定",
     "fitArea": "範囲に戻る",
-    "selectedFolders": "{{count}} 個のリストを選択中",
-    "deleteFoldersConfirm": "{{count}} 個のリストとその中の {{species}} 種を削除します。この操作は取り消せません。",
-    "foldersDeleted": "{{count}} 個のリストを削除しました",
+    "deleteFoldersConfirm": "{{folders}}と{{species}}を削除します。この操作は取り消せません。",
     "exportDocx": "Word (.docx) でエクスポート",
     "exportCsv": "表計算 (.csv) でエクスポート",
-    "exportEmpty": "このリストに種がありません"
+    "exportEmpty": "このリストに種がありません",
+    "count_other": "{{count}} 件",
+    "folderCount_other": "{{count}} 個のリスト",
+    "deleteFolderConfirm_other": "リスト「{{name}}」とその中の {{count}} 種を削除します。この操作は取り消せません。",
+    "importedCount_other": "{{count}} 種を追加しました",
+    "selectedCount_other": "{{count}} 種を選択中",
+    "deleteSelectedConfirm_other": "このリストから {{count}} 種を削除します。他のリストには影響しません。",
+    "deletedCount_other": "{{count}} 種を削除しました",
+    "selectedFolders_other": "{{count}} 個のリストを選択中",
+    "foldersDeleted_other": "{{count}} 個のリストを削除しました",
+    "nImported_other": "{{count}} 種を追加しました",
+    "nDuplicate_other": "重複 {{count}}",
+    "nUnresolvedNames_other": "未解決 {{count}}",
+    "nRecordsSelected_other": "{{count}} 件の記録",
+    "nSpeciesTotal_other": "{{count}} 種",
+    "nFolders_other": "{{count}} 個のリスト",
+    "nSpeciesInThem_other": "その中の {{count}} 種"
   },
   "gps": {
     "permTitle": "位置情報の許可が必要です",
@@ -106,7 +113,6 @@
     "removed": "削除しました：{{name}}",
     "photoSavedLinked": "アルバムに保存して関連付けました",
     "photoAdded": "写真を追加しました",
-    "photosAdded": "写真を {{count}} 枚追加しました",
     "photoFailTitle": "写真を追加できませんでした",
     "photoRemoved": "写真を削除しました",
     "projectUpdated": "プロジェクトを更新しました",
@@ -147,7 +153,8 @@
     "notes": "備考",
     "coordCleared": "座標を消去しました",
     "coordRecorded": "この種の座標を記録しました",
-    "imported": "{{count}} 件をインポートしました"
+    "photosAdded_other": "写真を {{count}} 枚追加しました",
+    "imported_other": "{{count}} 件をインポートしました"
   },
   "records": {
     "recording": "記録中",
@@ -157,7 +164,6 @@
     "plotCount": "調査区 {{count}}",
     "noneSelected": "記録が選択されていません",
     "noExportable": "エクスポートできる記録がありません",
-    "selectedCount": "{{count}} 件を選択中",
     "byProject": "プロジェクト",
     "timeline": "タイムライン",
     "filterAll": "すべて",
@@ -168,8 +174,6 @@
     "emptyHint": "下の + をタップして新しい記録を開始",
     "favorites": "お気に入り",
     "deleteTitle": "{{noun}}を削除しますか？",
-    "deleteMsg": "「{{title}}」とその {{count}} 件の記録がすべて削除されます。元に戻せません。",
-    "collectionCount": "採集 {{count}}",
     "duplicate": "複製",
     "duplicateTitle": "{{noun}}を複製",
     "duplicateFailTitle": "複製に失敗しました",
@@ -184,7 +188,10 @@
     "startNowHint": "複製した記録がそのまま進行中の記録になります。他に進行中の記録があれば、先に終了するか確認します。",
     "saveToFavorites": "お気に入りに保存",
     "includeSpeciesCollection": "標本の採集番号は実物の標本に付ける番号で、あらかじめ発行できないため、複製されません。",
-    "emptyCreate": "記録を新規作成"
+    "emptyCreate": "記録を新規作成",
+    "selectedCount_other": "{{count}} 件を選択中",
+    "deleteMsg_other": "「{{title}}」とその {{count}} 件の記録がすべて削除されます。元に戻せません。",
+    "collectionCount_other": "採集 {{count}}"
   },
   "export": {
     "preparing": "準備中…",
@@ -197,7 +204,8 @@
     "exportAnyway": "それでもエクスポート",
     "largeTitle": "エクスポートするファイルが大きいです",
     "largeMsg": "推定約 {{size}} です。続けますか？",
-    "exporting": "エクスポート中…"
+    "exporting": "エクスポート中…",
+    "language": "目録の言語"
   },
   "nav": {
     "session": "種リスト",
@@ -280,7 +288,7 @@
     "Animalia": "その他の動物",
     "limitTitle": "検索する分類群を限定",
     "limitHint": "複数選択できます。チェックした分類群の中だけを検索します",
-    "selectedGroups": "{{count}} 分類群"
+    "selectedGroups_other": "{{count}} 分類群"
   },
   "species": {
     "noChineseName": "(和名なし)",
@@ -321,7 +329,6 @@
   },
   "attr": {
     "advanced": "詳細（種の属性）",
-    "filledCount": "{{count}} 項目",
     "sexLabel": "性別 (sex)",
     "lifeStageLabel": "生活段階 (lifeStage)",
     "reproLabel": "花・果実 (reproductiveCondition、複数選択可)",
@@ -358,7 +365,8 @@
       "shedding": "落葉",
       "green": "緑葉",
       "colored": "紅葉・黄葉"
-    }
+    },
+    "filledCount_other": "{{count}} 項目"
   },
   "recordCreate": {
     "conflictTitle": "すでに{{noun}}が進行中です",
@@ -400,12 +408,12 @@
     "endTitle": "記録を終了",
     "emptyMsg": "この記録にはまだ項目がありません。",
     "emptyHint": "右上の「削除」で破棄するか、キャンセルで戻って種の追加を続けてください。",
-    "summary": "全 {{count}} 件 · 所要 {{duration}}",
     "name": "名称",
     "namePlaceholder": "記録名",
     "notesOptional": "備考（任意）",
     "notesPlaceholder": "今回の調査の概要、天候、参加者など",
-    "selectProject": "プロジェクトを選択"
+    "selectProject": "プロジェクトを選択",
+    "summary_other": "全 {{count}} 件 · 所要 {{duration}}"
   },
   "plot": {
     "notFound": "この調査区が見つかりません",
@@ -540,16 +548,18 @@
     "integrityDesc": "重複した識別子と孤立したデータを読み取り専用で点検します。何も変更しません",
     "integrityTitle": "データ点検の結果",
     "integrityClean": "問題は見つかりませんでした。",
-    "integrityDup": "{{table}}：occurrenceID の重複 {{groups}} 組（計 {{rows}} 件）",
-    "integrityOrphan": "{{table}}：孤立データ {{n}} 件",
-    "integrityProject": "{{table}}：削除済みプロジェクトを参照する {{n}} 件",
-    "integrityFk": "外部キー違反 {{n}} 件",
+    "integrityDup": "{{table}}：{{groups}}（{{rows}}）",
     "integrityFailed": "データ点検に失敗しました：{{error}}",
     "defaultDeterminer": "既定の同定者",
     "defaultDeterminerPlaceholder": "例：林政道 (Cheng-Tao Lin)",
-    "integrityAdopted": "{{table}}：{{n}} 件の採用名が現行の種リストと一致しません（リストの更新で改称・別の分類群へ移動・削除されたため）。記録には選択した当時の名前が表示されます。追随するかどうかはご判断ください。",
     "regionPacks": "地域種リスト",
-    "regionPacksDesc": "台湾・日本およびダウンロードした国別リストを個別にオン／オフできます"
+    "regionPacksDesc": "台湾・日本およびダウンロードした国別リストを個別にオン／オフできます",
+    "integrityOrphan_other": "{{table}}：孤立データ {{count}} 件",
+    "integrityProject_other": "{{table}}：削除済みプロジェクトを参照する {{count}} 件",
+    "integrityFk_other": "外部キー違反 {{count}} 件",
+    "integrityAdopted_other": "{{table}}：{{count}} 件の採用名が現行の種リストと一致しません（リストの更新で改称・別の分類群へ移動・削除されたため）。記録には選択した当時の名前が表示されます。追随するかどうかはご判断ください。",
+    "nDupGroups_other": "occurrenceID の重複 {{count}} 組",
+    "nRows_other": "計 {{count}} 件"
   },
   "taxonomy": {
     "loadingTree": "分類ツリーを読み込み中...",
@@ -620,8 +630,10 @@
   },
   "projects": {
     "deleteTitle": "プロジェクトを削除しますか？",
-    "deleteMsg": "「{{name}}」を削除します。このプロジェクトに属していた {{sessions}} 件の種リストと {{plots}} 件の調査区は「未分類」に戻ります。",
-    "stats": "種リスト {{sessions}} · 調査区 {{plots}}"
+    "deleteMsg": "「{{name}}」を削除します。このプロジェクトに属していた {{sessions}}と {{plots}}は「未分類」に戻ります。",
+    "stats": "種リスト {{sessions}} · 調査区 {{plots}}",
+    "nChecklists_other": "{{count}} 件の種リスト",
+    "nPlots_other": "{{count}} 件の調査区"
   },
   "sites": {
     "typePoint": "ポイント",
@@ -635,12 +647,12 @@
     "deleted": "削除しました",
     "noExport": "エクスポートできるサイトがありません",
     "shareUnavailable": "システムの共有機能が使えません",
-    "exportTitle": "サイト {{count}} 件をエクスポート",
     "title": "サイト管理",
     "empty": "サイトがまだありません",
     "emptyHint": "「地図」タブ → ツール ⋮ → サイトを描画 から作成できます",
     "goToMap": "地図へ",
-    "projectStats": "サイト {{count}} 件"
+    "exportTitle_other": "サイト {{count}} 件をエクスポート",
+    "projectStats_other": "サイト {{count}} 件"
   },
   "map": {
     "basemapStandard": "標準",
@@ -673,7 +685,6 @@
     "pickSegTitle": "編集する軌跡セグメントを選択",
     "segLabel": "セグメント {{n}}（{{count}} 点）",
     "manyPointsTitle": "軌跡点が多いです",
-    "manyPointsMsg": "このセグメントは {{count}} 点あり、編集中に地図の動作が重くなる場合があります。編集しますか？",
     "dragVertexHint": "頂点をドラッグして調整、タップで削除、完了したら保存",
     "noPlotCoord": "座標がありません",
     "noPlotCoordMsg": "この調査区は GPS 座標を取得しておらず、位置を編集できません",
@@ -688,8 +699,6 @@
     "sessionMarkerTitle": "種リスト #{{id}}",
     "notFound": "「{{q}}」が見つかりません",
     "searchFailed": "検索に失敗しました：{{error}}",
-    "plotDesc": "{{type}} · 種 {{count}} 件",
-    "sessionDesc": "種リスト · 種 {{count}} 件",
     "editPointTitle": "ポイントを編集",
     "pointN": "{{n}} 番目の点",
     "deletePoint": "この点を削除",
@@ -707,10 +716,13 @@
     "nlsc": "NLSC（台湾）",
     "sinica": "中央研究院",
     "overlaid": "重ね合わせ中",
-    "imported": "サイト {{count}} 件をインポートしました",
-    "plotSubtitle": "{{type}} · 種 {{count}} 件 · {{project}}",
-    "sessionSubtitle": "種リスト · 種 {{count}} 件 · {{project}}",
-    "noRecordCoord": "この記録にはまだ座標がありません"
+    "noRecordCoord": "この記録にはまだ座標がありません",
+    "manyPointsMsg_other": "このセグメントは {{count}} 点あり、編集中に地図の動作が重くなる場合があります。編集しますか？",
+    "plotDesc_other": "{{type}} · 種 {{count}} 件",
+    "sessionDesc_other": "種リスト · 種 {{count}} 件",
+    "plotSubtitle_other": "{{type}} · 種 {{count}} 件 · {{project}}",
+    "sessionSubtitle_other": "種リスト · 種 {{count}} 件 · {{project}}",
+    "imported_other": "サイト {{count}} 件をインポートしました"
   },
   "keys": {
     "modeDichotomous": "二分岐",
@@ -755,11 +767,8 @@
     "noReachable": "到達できる分類群がありません",
     "tapOutsideClose": "外側をタップで閉じる",
     "notSelected": "未選択",
-    "statesSummary": "{{state}} など {{count}} 項目",
     "features": "形質 ({{count}})",
     "reset": "リセット",
-    "remainingSpecies": "残り {{count}} 種",
-    "selectedConditions": "{{count}} 条件を選択中",
     "clearAll": "クリア",
     "noMatchSpecies": "条件に一致する種がありません",
     "descFields": "説明項目（絞り込みには使いません）",
@@ -776,7 +785,10 @@
     "searchHint": "一般名または学名を入力して検索表を検索{{br}}または下のおすすめから選択",
     "noMatchKeys": "一致する検索表がありません",
     "searchPlaceholder": "検索表を検索（一般名 / 学名）",
-    "needTaiwanRegion": "検索表は台湾（TaiCOL）のコンテンツです。「設定 → 地域種リスト」で台湾を有効にしてからご利用ください。"
+    "needTaiwanRegion": "検索表は台湾（TaiCOL）のコンテンツです。「設定 → 地域種リスト」で台湾を有効にしてからご利用ください。",
+    "statesSummary_other": "{{state}} など {{count}} 項目",
+    "remainingSpecies_other": "残り {{count}} 種",
+    "selectedConditions_other": "{{count}} 条件を選択中"
   },
   "conservation": {
     "invasiveShort": "侵",
@@ -792,7 +804,7 @@
     "individuals": "個体数 (individuals)",
     "cover": "被度 (% cover)",
     "dbh": "胸高直径 (DBH, cm)",
-    "stems": "{{count}} 幹"
+    "stems_other": "{{count}} 幹"
   },
   "plotValue": {
     "layer": "階層 {{layer}}",
@@ -811,11 +823,11 @@
     "quantity": "数量 (organismQuantity)",
     "enterCount": "個体数を入力",
     "dbhPlaceholder": "入力後に Enter または + を押す",
-    "dbhSummary": "計 {{count}} 幹",
     "noStems": "幹がまだ入力されていません",
     "customUnit": "カスタム単位 (organismQuantityType)",
     "customUnitPlaceholder": "例：節数 / 鳴き声の回数 / biomass(g)",
-    "customQtyPlaceholder": "例：3 / 1.2 / abundant"
+    "customQtyPlaceholder": "例：3 / 1.2 / abundant",
+    "dbhSummary_other": "計 {{count}} 幹"
   },
   "clipboard": {
     "copied": "コピーしました：{{label}}",
@@ -835,20 +847,20 @@
     "label": "トランセクト軌跡",
     "stopped": "停止しました",
     "paused": "一時停止中",
-    "summary": "{{segments}} セグメント · {{points}} 点 · {{length}}",
     "notStarted": "軌跡の記録が未開始です（種の入力に必要）",
     "pause": "一時停止",
     "stopSave": "停止して保存",
     "resume": "再開",
     "start": "記録を開始",
-    "preview": "プレビュー"
+    "preview": "プレビュー",
+    "summary_other": "{{count}} セグメント · {{points}} 点 · {{length}}"
   },
   "layerSheet": {
     "title": "WMTS 重ね合わせレイヤー",
     "current": "現在の重ね合わせ：{{title}}",
     "opacity": "不透明度",
-    "searchPlaceholder": "{{count}} 件のレイヤーを検索",
-    "noMatch": "一致するレイヤーがありません"
+    "noMatch": "一致するレイヤーがありません",
+    "searchPlaceholder_other": "{{count}} 件のレイヤーを検索"
   },
   "notes": {
     "placeholder": "備考を入力（行動観察、環境条件など）"
@@ -869,7 +881,6 @@
     "movedTo": "{{layer}} に移動しました",
     "pointCountRecord": "ポイントセンサスの記録",
     "transectRecord": "トランセクトの記録",
-    "recordedCount": " · {{count}} 件記録済み",
     "inputLayer": "入力する階層",
     "emptyHint": "下の検索から種を追加",
     "emptyHintStratified": "階層を選んでから、下の検索で種を追加",
@@ -879,7 +890,8 @@
     "height": "高",
     "changeTaxon": "種を変更",
     "changeTaxonBanner": "「{{name}}」の種を変更：下の検索から選んでください",
-    "taxonChanged": "{{name}} に変更しました"
+    "taxonChanged": "{{name}} に変更しました",
+    "recordedCount_other": " · {{count}} 件記録済み"
   },
   "sheets": {
     "assignSite": "サイトを指定",
@@ -909,9 +921,9 @@
     "locationDesc": "場所の説明",
     "note": "備考",
     "saveSite": "サイトを保存",
-    "siteTypeVertices": "種類：{{type}} · 頂点 {{count}} 個",
     "siteNameEx": "例：サイト A",
-    "siteNotesEx": "場所・標高・植生などを記入"
+    "siteNotesEx": "場所・標高・植生などを記入",
+    "siteTypeVertices_other": "種類：{{type}} · 頂点 {{count}} 個"
   },
   "exportPref": {
     "title": "エクスポート設定",
@@ -941,21 +953,23 @@
     "readFail": "ファイルの読み込みに失敗しました",
     "importN": "{{n}} 件をインポート",
     "partial": "一部のみインポート",
-    "partialMsg": "全 {{total}} 件中 {{added}} 件成功",
+    "partialMsg": "{{total}}中 {{added}}",
     "title": "地理ファイルをインポート",
     "create": "{{n}} 件を作成",
     "supportHint": "GeoJSON / KML / GPX / WKT ファイルに対応します。",
     "multiHint": "MultiPoint / MultiLineString / MultiPolygon の構造は自動的に保持されます。",
     "pickFile": "ファイルを選択",
-    "geomSummary": "ジオメトリ {{count}} 件、サイトを {{count}} 件作成します",
     "namePrefix": "名前の接頭辞",
     "namePrefixEx": "例：浸水営",
     "namePrefixHint": "元ファイルに名前があればそちらを優先します。複数のジオメトリには #1, #2 ... が付きます",
     "geomPreview": "ジオメトリのプレビュー",
     "defaultPrefix": "インポート",
-    "moreNotListed": "（他に {{count}} 件は未表示）",
     "anotherFile": "別のファイルを選ぶ",
-    "targetProject": "対象プロジェクト："
+    "targetProject": "対象プロジェクト：",
+    "geomSummary_other": "ジオメトリ {{count}} 件、サイトを {{count}} 件作成します",
+    "moreNotListed_other": "（他に {{count}} 件は未表示）",
+    "nTotal_other": "全 {{count}} 件",
+    "nSucceeded_other": "{{count}} 件成功"
   },
   "batchImport": {
     "readFail": "読み込みに失敗しました",
@@ -963,16 +977,14 @@
     "noNamesVoice": "種名を句点で区切って読み上げてください",
     "noNamesText": "1行に1つずつ名前を入力または貼り付けてください",
     "done": "インポート完了",
-    "doneMsg": "{{added}} 件を追加、{{skipped}} 件をスキップ（重複または taxon_id なし）",
+    "doneMsg": "{{added}}、{{skipped}}（重複または taxon_id なし）",
     "title": "一括インポート",
-    "previewTitle": "プレビュー（{{count}} 件を追加）",
     "preview": "プレビュー",
     "add": "追加",
     "paste": "貼り付け",
     "voice": "音声",
     "inputHint": "1行に1つの名前（一般名 / 学名 / 科名）。.yml / .zip のエクスポートファイルも読み込めます（種名のみ。記録全体を復元するには ＋ →「記録をインポート」を使ってください）。",
     "readFromFile": "ファイルから読み込む",
-    "fileLoaded": "{{count}} 件の名前を読み込みました",
     "fileHint": "ファイルの内容を解析しました。右上の「プレビュー」で照合を開始します。✕ をタップすると削除して手入力に切り替えられます。",
     "noNamesFile": "このファイルには種名も taxon_id も見つかりません",
     "pickedFileFallback": "選択したファイル",
@@ -987,7 +999,11 @@
     "skipThis": "この項目をスキップ",
     "notFoundTitle": "見つかりません ({{count}})",
     "notFoundHint": "これらの名前は TaiCOL にないため無視されます",
-    "nothingToImport": "インポートできる内容がありません"
+    "nothingToImport": "インポートできる内容がありません",
+    "previewTitle_other": "プレビュー（{{count}} 件を追加）",
+    "fileLoaded_other": "{{count}} 件の名前を読み込みました",
+    "nAdded_other": "{{count}} 件を追加",
+    "nSkipped_other": "{{count}} 件をスキップ"
   },
   "splash": {
     "starting": "起動中...",
@@ -1029,11 +1045,11 @@
     "libPerm": "写真ライブラリへの書き込み権限が必要です"
   },
   "recordsList": {
-    "sessionSubtitle": "{{count}} 件 · {{project}}",
-    "plotSubtitle": "{{count}} 件 · {{protocol}}{{size}}",
-    "collectionSubtitle": "標本 {{count}} 点 · {{project}}",
-    "sessionSubtitleNoProject": "{{count}} 件",
-    "collectionSubtitleNoProject": "標本 {{count}} 点"
+    "sessionSubtitle_other": "{{count}} 件 · {{project}}",
+    "plotSubtitle_other": "{{count}} 件 · {{protocol}}{{size}}",
+    "collectionSubtitle_other": "標本 {{count}} 点 · {{project}}",
+    "sessionSubtitleNoProject_other": "{{count}} 件",
+    "collectionSubtitleNoProject_other": "標本 {{count}} 点"
   },
   "plotImport": {
     "invalidYml": "有効な調査区 yml ではありません（plot ブロックがありません）",
@@ -1064,7 +1080,6 @@
   "collection": {
     "title": "採集記録",
     "missing": "この採集記録が見つかりません",
-    "specimenCount": "{{count}} 点",
     "recordNumber": "採集番号",
     "recordNumberHint": "同じ採集者の採集番号は行程をまたいで通し番号になります。自由に書き換えられ、以降は新しい番号から続きます。",
     "collector": "採集者",
@@ -1104,7 +1119,6 @@
     "sortNumber": "採集番号",
     "sortFamily": "科名",
     "sortName": "学名",
-    "selectedCount": "{{count}} 点を選択中",
     "exportLabels": "ラベルをエクスポート",
     "labelSheetTitle": "標本ラベル",
     "labelSheetDesc": "A4、1ページ 10 枚（2 列 × 5 行）。破線は裁断線です。",
@@ -1112,10 +1126,12 @@
     "labelHeadingPlaceholder": "例：Flora of Taiwan",
     "labelIncludeFamily": "科名を含める",
     "labelIncludeFamilyHint": "「学名 中国語名」の形式で印刷されます。例：Lauraceae 樟科",
-    "labelExportCount": "{{count}} 枚のラベルをエクスポート",
     "labelNoneSelected": "標本を選択してください",
     "determiner": "同定者",
-    "determinerEmpty": "同定者が未設定です"
+    "determinerEmpty": "同定者が未設定です",
+    "specimenCount_other": "{{count}} 点",
+    "selectedCount_other": "{{count}} 点を選択中",
+    "labelExportCount_other": "{{count}} 枚のラベルをエクスポート"
   },
   "areaSpecies": {
     "fab": "範囲内の種を検索",
@@ -1147,18 +1163,13 @@
     "errServer": "サーバーエラー（{{status}}）",
     "errAborted": "検索を中止しました",
     "errParse": "サーバーの応答を解析できません",
-    "found": "{{count}} 種を取得（範囲内に合計 {{total}} 種）",
+    "found": "{{got}}（{{inArea}}）",
     "truncated": "{{max}} 種の上限を超えたため、先頭 {{max}} 種のみ取得しました。範囲を狭めると完全なリストを取得できます。",
     "breakdown": "対応済み {{matched}}・要確認 {{ambiguous}}・種リスト未収録 {{unmatched}}",
-    "obs": "観察 {{count}} 件",
-    "tapToPick": "タップして確定（候補 {{count}} 件）",
     "viaSynonym": "シノニム「{{name}}」で照合",
     "pickMsg": "この学名はローカル種リストの複数の種に対応します。正しいものを選んでください。",
-    "includeUnmatched": "未収録の {{count}} 種も追加",
     "includeUnmatchedHint": "iNaturalist の分類データから外部の種を作成します。オフラインで表示できますが、保全状況などの項目はありません。",
     "folderPlaceholder": "種リスト名。例：陽明山の鳥類",
-    "createFolder": "種リストを作成して {{count}} 種を追加",
-    "imported": "「{{name}}」を作成し、{{count}} 種を追加しました",
     "source": "データ出典",
     "sourceINat": "iNaturalist",
     "sourceGbif": "GBIF",
@@ -1171,10 +1182,9 @@
     "errOffline": "端末がオフラインのようです。電波の届く場所へ移動して再試行してください。",
     "errTimeout": "接続がタイムアウトしました。電波が弱い可能性があります。",
     "errService": "サービスが一時的に応答していません。しばらくしてから再試行してください。",
-    "refine": "未照合の {{count}} 件を GBIF で照合",
     "refining": "照合中⋯（{{done}}/{{of}}）",
     "refineHint": "名前ごとに GBIF へ 1 回問い合わせ、外部の種の作成に必要な識別子を取得します（GBIF の範囲検索では識別子が返りません）。あわせてシノニムをローカル種リストへ解決できるか試みます。",
-    "refineDone": "照合完了：{{keyed}} 件は外部の種として作成可能、{{rescued}} 件はローカル種リストへ解決、{{unknown}} 件は GBIF でも該当なし。",
+    "refineDone": "照合完了：{{keyed}}、{{rescued}}、{{unknown}}。",
     "needRefine": "識別子を得るには、上の GBIF 照合を先に実行してください。",
     "viaGbif": "GBIF の正名：{{name}}",
     "errServerDetail": "サーバーエラー（{{status}}）：{{detail}}",
@@ -1182,14 +1192,25 @@
     "fabVisible": "表示範囲の種を検索",
     "targetTitle": "追加先",
     "targetNew": "お気に入りを新規作成",
-    "addToFolder": "「{{name}}」に {{count}} 種を追加",
     "drawAreaHint": "地図をタップしてこの種リストの範囲を描き直します",
     "areaSaved": "種リストの範囲を更新しました",
     "selfIntersectDraw": "描いた範囲が自己交差しています。描き直してください",
     "simplifiedNote": "描いた範囲をそのまま使えなかったため（頂点不足または自己交差）、外接矩形を使用しました。ポリゴンを使うには描き直してください。",
     "areaSavedBox": "描いた範囲をそのまま使えないため、外接矩形として保存しました",
     "matching": "種リストと照合中⋯（{{done}}/{{of}}）",
-    "errRateLimit": "GBIF へのリクエストが多すぎて一時的に制限されています。数分待つか、検索範囲と分類群を絞ってください。"
+    "errRateLimit": "GBIF へのリクエストが多すぎて一時的に制限されています。数分待つか、検索範囲と分類群を絞ってください。",
+    "obs_other": "観察 {{count}} 件",
+    "tapToPick_other": "タップして確定（候補 {{count}} 件）",
+    "includeUnmatched_other": "未収録の {{count}} 種も追加",
+    "createFolder_other": "種リストを作成して {{count}} 種を追加",
+    "imported_other": "「{{name}}」を作成し、{{count}} 種を追加しました",
+    "refine_other": "未照合の {{count}} 件を GBIF で照合",
+    "addToFolder_other": "「{{name}}」に {{count}} 種を追加",
+    "nGot_other": "{{count}} 種を取得",
+    "nInArea_other": "範囲内に合計 {{count}} 種",
+    "nKeyed_other": "{{count}} 件は外部の種として作成可能",
+    "nRescued_other": "{{count}} 件はローカル種リストへ解決",
+    "nUnknownToGbif_other": "{{count}} 件は GBIF でも該当なし"
   },
   "recordImport": {
     "unsupportedCollection": "採集記録は現在インポートできません。種リストと調査区のみ対応しています。",
@@ -1202,11 +1223,11 @@
     "photoKeepExisting": "既存の写真を使う",
     "photoReimport": "改めてインポート（アルバムに写真が増えます）",
     "doneTitle": "インポート完了",
-    "doneRecords": "{{count}} 件の種の記録をインポートしました",
-    "doneRemapped": "{{count}} 件は学名でローカルの taxon_id に再対応しました",
-    "doneUnresolved": "{{count}} 件はこの端末の種リストに taxon_id が見つかりませんでしたが、インポートしました",
-    "donePhotosSkipped": "{{count}} 枚の写真をインポートできませんでした（権限またはファイルを読めません）",
-    "photoProgress": "写真をインポート中 {{done}}/{{total}}…"
+    "photoProgress": "写真をインポート中 {{done}}/{{total}}…",
+    "doneRecords_other": "{{count}} 件の種の記録をインポートしました",
+    "doneRemapped_other": "{{count}} 件は学名でローカルの taxon_id に再対応しました",
+    "doneUnresolved_other": "{{count}} 件はこの端末の種リストに taxon_id が見つかりませんでしたが、インポートしました",
+    "donePhotosSkipped_other": "{{count}} 枚の写真をインポートできませんでした（権限またはファイルを読めません）"
   },
   "gbifLookup": {
     "title": "GBIF 名前検索",
@@ -1241,8 +1262,12 @@
     "useMineSameTaxonMisapplied": "「{{name}}」を使い、「{{accepted}}」と同一とみなす"
   },
   "projectDetail": {
-    "stats": "種リスト {{sessions}}・調査区 {{plots}}・採集 {{collections}}・調査地 {{sites}}",
-    "empty": "このプロジェクトにはまだ記録がありません"
+    "stats": "{{sessions}}・{{plots}}・{{collections}}・{{sites}}",
+    "empty": "このプロジェクトにはまだ記録がありません",
+    "nChecklists_other": "種リスト {{count}}",
+    "nPlots_other": "調査区 {{count}}",
+    "nCollections_other": "採集 {{count}}",
+    "nSites_other": "調査地 {{count}}"
   },
   "projectExport": {
     "title": "プロジェクトのエクスポート",
@@ -1269,7 +1294,8 @@
     "byLayer": "階層別行列",
     "byLayerHint": "種 × 階層に展開した行列（species_matrix_by_layer.csv）も出力します",
     "prefSection": "プロジェクトのエクスポート（解析データ）",
-    "itemReport": "研究レポート（{{formats}}）"
+    "itemReport": "研究レポート（{{formats}}）",
+    "itemChecklist": "プロジェクト全体の統合種目録（{{formats}}）"
   },
   "regionPacks": {
     "intro": "「国別種リストパック」は GBIF の出現記録を集約したもので（権威ある種リストではありません）、ダウンロードするとその国の種をオフラインで検索できます。GBIF アカウントが必要です",
@@ -1288,7 +1314,6 @@
     "requestFailed": "ダウンロード要求に失敗しました",
     "requested": "送信しました。GBIF がファイルを準備しています⋯",
     "ready": "国別種リストパックの準備ができました",
-    "readyCount": "{{count}} 件の種名",
     "failed": "失敗",
     "pending": "未完了です。「再開」または「再試行」で続けられます",
     "waiting": "GBIF 処理中・{{elapsed}} 経過。このページを離れてもダウンロードは自動で続きます",
@@ -1326,7 +1351,8 @@
     "builtinTwSub": "TaiCOL 台湾種リスト・全生物分類群・約 24 万件",
     "builtinJpSub": "JBIF と YList の種リスト・約 2.6 万件",
     "introRegister": "（未登録はこちら）",
-    "introEnd": "。"
+    "introEnd": "。",
+    "readyCount_other": "{{count}} 件の種名"
   },
   "manualTaxon": {
     "createOwn": "自分で種を作成",
@@ -1365,7 +1391,6 @@
     "richness": "種数 S",
     "shannon": "Shannon H′",
     "simpson": "Simpson 1−D",
-    "effective": "≈ 有効種数 {{n}}",
     "estimateGte": "推定総種数 ≥ {{n}}",
     "completeness": "完全度 約 {{pct}}",
     "completenessShort": "完全度 {{pct}}",
@@ -1386,20 +1411,16 @@
     },
     "crossTitle": "調査努力量（調査区間 Chao2）",
     "crossHint": "各調査区を 1 つの出現単位として、これらの調査区が代表する範囲の種プールを推定します。同じ地域・同じ植生型・同じ方法の調査区だけを選んでください。異なる種プールを混ぜても計算はできますが、解釈に意味はありません。",
-    "sppCount": "{{n}} 種",
-    "crossResult": "{{n}} 調査区・記録済み {{sObs}} 種・推定種プール ≥ {{est}} 種",
     "crossQ": "q1（1 調査区のみに出現）{{q1}}・q2 {{q2}}",
     "crossNeedTwo": "Chao2 を計算するには調査区を 2 つ以上選んでください。",
     "crossEmpty": "選択した調査区にはまだ種の記録がありません。",
     "chipLabel": "Chao2 {{pct}}",
-    "selectedPlots": "選択した {{n}} 個の調査区をサンプリング単位とします",
     "evenness": "均等度 J′",
     "betaTitle": "β 類似度：{{a}} × {{b}}",
     "betaShared": "共通 {{c}} 種",
     "betaOnly": "単独出現 {{a}}／{{b}} 種",
     "betaNeedTwo": "β 類似度（Sørensen／Jaccard）を比較するには調査区をちょうど 2 つ選んでください。",
     "bergerParker": "優占度 d",
-    "hillInf": "≈ 有効優占種 {{n}}",
     "dominantSpecies": "優占種（上位 3）",
     "freqShort": "頻度 {{pct}}",
     "dominantNote": "百分率は現在の基準における相対値です（相対被度／相対密度／相対胸高断面積）。",
@@ -1412,7 +1433,12 @@
       "custom": "カスタム",
       "mixed": "混在",
       "none": "なし"
-    }
+    },
+    "sppCount_other": "{{count}} 種",
+    "crossResult_other": "{{count}} 調査区・記録済み {{sObs}} 種・推定種プール ≥ {{est}} 種",
+    "selectedPlots_other": "選択した {{count}} 個の調査区をサンプリング単位とします",
+    "effective": "≈ 有効種数 {{n}}",
+    "hillInf": "≈ 有効優占種 {{n}}"
   },
   "report": {
     "navTitle": "分析レポート",
@@ -1466,8 +1492,6 @@
     "chartLayers": "階層別の被度",
     "chartComposition": "科別の種数（上位 15）",
     "unitSpecies": "種",
-    "speciesSummary": "本調査区では計 {{count}} 種を記録しました。",
-    "compositionSummary": "計 {{families}} 科。",
     "conservationNote": "集計は種を単位とし、レッドリストと IUCN からは LC/NLC/NE/NA などの非危急カテゴリを除いています。",
     "coverOver100": "地表被度の合計が {{total}}% で 100% を超えています。入力値を確認してください。",
     "samplingUnits": "サンプリング単位数",
@@ -1501,7 +1525,7 @@
     "seriesEstimated": "推定",
     "crossChao2": "調査区間 Chao2",
     "crossChao2Note": "各調査区を 1 つの出現単位として、対象範囲の種プールを推定します。同じ地域・植生型・方法の調査区であることを確認してください。",
-    "projectSpeciesSummary": "プロジェクト全体で {{plots}} 調査区から {{count}} 種を記録しました。",
+    "projectSpeciesSummary": "プロジェクト全体で {{plots}}から {{species}}を記録しました。",
     "similarityNote": "Sørensen = 2C/(A+B)。在・不在に基づき、多度には依存しません。",
     "matrixTruncated": "全 {{total}} 調査区のうち最初の {{shown}} 件を表示しています。",
     "exportFormat": "書き出し形式",
@@ -1560,8 +1584,6 @@
       "cover": "優占度は相対被度であり、胸高断面積ではありません。"
     },
     "individualsPerHa": "ヘクタール当たり個体数",
-    "abundanceDbh": "{{n}} 幹（胸高直径 {{range}} cm）",
-    "abundanceCount": "{{n}} 個体",
     "simpsonLambda": "Simpson 指数",
     "hillE5": "Hill 均等度比",
     "colBasalAreaHa": "胸高断面積 (m²/ha)",
@@ -1603,18 +1625,20 @@
     "dq": {
       "records": "記録数",
       "species": "種数",
-      "noAbundance": "{{records}} 件に数量の記入がありません（出現のみの {{species}} 種）。多様度指数は数量のある記録のみで算出しています。",
-      "genusOnly": "{{n}} 分類群が属までの同定です（例：{{examples}}）。種数を過大にします。",
-      "aboveGenus": "{{n}} 分類群が属より上位の同定です（例：{{examples}}）。種数には含めるべきではありません。",
-      "rankUnknown": "{{n}} 分類群に階級情報がなく、種レベルか判断できません。",
+      "noAbundance": "{{records}}（{{species}}）。多様度指数は数量のある記録のみで算出しています。",
       "mixedUnits": "個体量の単位が混在しています（{{kinds}}）。異なる単位の値は加算できないため、指数は参考値です。",
-      "unparseable": "{{n}} 件の数量を数値として読み取れませんでした（例：{{examples}}）。",
-      "singletons": "{{n}} 種が 1 個体のみの記録（singleton）です。Chao 推定は主にこれらに依存します。",
-      "doubletons": "{{n}} 種が 2 個体のみの記録（doubleton）です。",
-      "noLayer": "{{n}} 件に階層の指定がありません。",
-      "noSubplot": "{{n}} 件に小区画の指定がなく、出現度に基づく計算では除外されます。",
       "clean": "上記の統計に影響するデータ上の問題は検出されませんでした。",
-      "note": "本節は事実の記載であり誤りの指摘ではありません。属までの同定は通常の野外実務ですが、種数に影響するため掲載します。"
+      "note": "本節は事実の記載であり誤りの指摘ではありません。属までの同定は通常の野外実務ですが、種数に影響するため掲載します。",
+      "genusOnly_other": "{{count}} 分類群が属までの同定です（例：{{examples}}）。種数を過大にします。",
+      "aboveGenus_other": "{{count}} 分類群が属より上位の同定です（例：{{examples}}）。種数には含めるべきではありません。",
+      "rankUnknown_other": "{{count}} 分類群に階級情報がなく、種レベルか判断できません。",
+      "unparseable_other": "{{count}} 件の数量を数値として読み取れませんでした（例：{{examples}}）。",
+      "singletons_other": "{{count}} 種が 1 個体のみの記録（singleton）です。Chao 推定は主にこれらに依存します。",
+      "doubletons_other": "{{count}} 種が 2 個体のみの記録（doubleton）です。",
+      "noLayer_other": "{{count}} 件に階層の指定がありません。",
+      "noSubplot_other": "{{count}} 件に小区画の指定がなく、出現度に基づく計算では除外されます。",
+      "nNoQuantity_other": "{{count}} 件に数量の記入がありません",
+      "nPresenceOnly_other": "出現のみの {{count}} 種"
     },
     "methodsSpecIndices": "多様度指数は台湾「植物生態評価技術規範」付属書二の S、λ、H′、N₁=e^H′、N₂=1/λ、E5=[(1/λ)−1]/[e^H′−1]（Ludwig & Reynolds, 1988）に従います。木本データは胸高断面積基準と幹数基準の両方を併記します。",
     "methodsStand": "ヘクタール当たりの幹数と胸高断面積は調査区面積で換算し、断面積は各幹の胸高直径から Σπ(d/2)² で算出します。面積の出所（小区画の合計・点調査の πr²・調査区サイズ欄）は当該節に明記し、単位が判別できない場合は換算せず理由を示します。",
@@ -1628,12 +1652,68 @@
     "axisRelAbundance": "相対優占度 (%)",
     "seriesRelAbundance": "相対優占度",
     "rankAbundanceNote": "縦軸は対数目盛です。急な直線は少数種の優占を、緩やかな長い裾は均等な群集を示します。この形は単一の指数では表せません。",
-    "rankAbundanceDropped": "{{n}} 種は正の個体量がないため曲線に含めていません。",
     "rankAbundanceMixed": "個体量の単位が混在しており、単位の異なる値は順位づけできないため、種—個体数序列は描画しません。",
     "chartProfile": "植生の垂直断面",
     "axisHeightM": "高さ (m)",
-    "profileMissingHeight": "{{n}} 層に高さの記入がなく高さ軸に配置できないため、表のみに掲載します。",
     "profileDegraded": "Word 版では各層を等間隔に配置しています（DrawingML は位置と被度を同時に表現できません）。メートル座標の断面は HTML 版またはアプリをご覧ください。",
-    "profileNoHeights": "いずれの層にも高さの記入がないため、被度の棒グラフで表示します。"
+    "profileNoHeights": "いずれの層にも高さの記入がないため、被度の棒グラフで表示します。",
+    "speciesSummary_other": "本調査区では計 {{count}} 種を記録しました。",
+    "compositionSummary_other": "計 {{count}} 科。",
+    "abundanceDbh_other": "{{count}} 幹（胸高直径 {{range}} cm）",
+    "abundanceCount_other": "{{count}} 個体",
+    "rankAbundanceDropped_other": "{{count}} 種は正の個体量がないため曲線に含めていません。",
+    "profileMissingHeight_other": "{{count}} 層に高さの記入がなく高さ軸に配置できないため、表のみに掲載します。",
+    "nSpeciesRecorded_other": "{{count}} 種",
+    "nPlotsAcross_other": "{{count}} 調査区"
+  },
+  "checklistDoc": {
+    "title": "種目録",
+    "titleWithProject": "{{project}}種目録",
+    "site": "調査地：",
+    "summary": "本目録には {{families}}、{{species}}を収録。「#」は固有種、「*」は帰化種、「†」は栽培種、「‡」は飼育種を表す。",
+    "attributes": "種の属性：{{stats}}。",
+    "conservation": "保全状況の集計：{{stats}}。",
+    "redlist": "台湾レッドリスト：{{parts}}",
+    "iucn": "IUCN：{{parts}}",
+    "cites": "CITES：{{parts}}",
+    "citesAppendix": "附属書{{cat}}",
+    "protectedStat": "保護種：{{parts}}",
+    "culturalHeritageRare": "文化資産保存法の希少種",
+    "listSep": "、",
+    "statSep": "；",
+    "protected": {
+      "I": "絶滅危惧",
+      "II": "貴重希少",
+      "III": "その他保護対象"
+    },
+    "plantGroup": {
+      "mossesLichens": "コケ・地衣類",
+      "lycophytes": "小葉植物",
+      "monilophytes": "シダ植物",
+      "gymnosperms": "裸子植物",
+      "monocots": "単子葉植物",
+      "sisterEudicots": "真正双子葉植物の姉妹群",
+      "eudicots": "真正双子葉植物",
+      "angiosperms": "被子植物"
+    },
+    "group": {
+      "Tracheophyta": "維管束植物",
+      "Bryophyta": "コケ植物",
+      "Aves": "鳥綱",
+      "Insecta": "昆虫綱",
+      "Mammalia": "哺乳綱",
+      "Reptilia": "爬虫綱",
+      "Amphibia": "両生綱",
+      "Actinopteri": "条鰭綱",
+      "Arachnida": "クモ綱",
+      "Gastropoda": "腹足綱",
+      "Bivalvia": "二枚貝綱",
+      "Malacostraca": "軟甲綱",
+      "Ascomycota": "子嚢菌門",
+      "Basidiomycota": "担子菌門",
+      "Mollusca": "軟体動物門"
+    },
+    "familyCount_other": "{{count}} 科",
+    "speciesCount_other": "{{count}} 種"
   }
 }

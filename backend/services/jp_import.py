@@ -88,6 +88,25 @@ def _clean(v) -> str | None:
     return None if s in _NA else s
 
 
+def _jp_family(v) -> str | None:
+    """wamei 的科名欄存語幹（`クスノキ`），YList 那半邊存完整科名（`クスノキ科`）。
+
+    兩種寫法混在同一欄，同一個科在搜尋比對、分類樹的 `MAX(family_c)` 聚合
+    與匯出裡就會呈現兩種面貌 —— 顯示哪一種只取決於字串排序。
+
+    補字尾是安全的：兩種寫法並存的 184 個科中，181 個正好是「語幹 + 科」。
+    其餘 3 個（Adoxaceae ガマズミ／レンプクソウ、Asparagaceae クサスギカズラ／
+    キジカクシ、Phyllanthaceae コミカンソウ／ミカンソウ）是日本兩套命名傳統的
+    同義科名，與字尾無關，不在這裡處理。
+
+    冪等：已以「科」結尾者原樣回傳，所以重跑匯入不會疊成「クスノキ科科」。
+    """
+    s = _clean(v)
+    if not s or s.endswith("科"):
+        return s
+    return s + "科"
+
+
 def _deaccent(s: str) -> str:
     """Isoëtaceae → Isoetaceae。backbone 用無變音符號的拼法。"""
     return "".join(
@@ -158,7 +177,7 @@ def read_wamei(xlsx_path: Path) -> dict[tuple[str, str], dict]:
         if all_name:
             t["names"].add(all_name)
         t["family"] = t["family"] or _clean(row[4])
-        t["family_c"] = t["family_c"] or _clean(row[5])
+        t["family_c"] = t["family_c"] or _jp_family(row[5])
         status = _clean(row[10])
         if status:
             t["status"].add(status)

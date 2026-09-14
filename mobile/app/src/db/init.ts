@@ -92,8 +92,9 @@ export async function initDb(
   //    dangling references. SQLite validates FK on every row it modifies, so
   //    with FK already on, updating such a row would throw instead of healing.
   //  - ON afterwards: this is what finally makes ON DELETE CASCADE / SET NULL
-  //    actually fire. Until now every cascade in the schema was inert, which
-  //    is why the delete helpers all delete children by hand.
+  //    actually fire. Every cascade in the schema was inert before this line
+  //    landed; the delete helpers still remove children explicitly as a
+  //    belt-and-braces, not because the cascades are missing.
   userDb.executeSync('PRAGMA foreign_keys = OFF;');
 
   onProgress?.(i18n.t('splash.migrating'));

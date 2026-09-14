@@ -12,6 +12,7 @@ import {
   type ProjectInput,
   type ProjectWithCounts,
 } from '~/db';
+import { pickExportLanguage } from '~/lib/pickExportLanguage';
 import { confirmExportContent } from '~/components/AnalysisExportOptions';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { ProjectEditModal, type ProjectEditTarget } from '~/components/ProjectEditModal';
@@ -61,6 +62,8 @@ export default function ProjectsScreen() {
       .map((r) => ({ kind: r.kind, id: r.id }));
     const est = await estimateBundleSize(items, { includePhotos });
     if (!(await confirmIfLarge(est.totalBytes))) return;
+    const lang = await pickExportLanguage(t, 'export.language');
+    if (!lang) return;
     await shareBundle(() =>
       bundleProject(project.id, {
         geoFormats,
@@ -68,6 +71,7 @@ export default function ProjectsScreen() {
         includeDocx,
         levels,
         conservationFields,
+        lang,
         matrixValue,
         analysisFormats,
         matrixByLayer,
@@ -92,7 +96,11 @@ export default function ProjectsScreen() {
     if (project.id === 0) return;
     Alert.alert(
       t('projects.deleteTitle'),
-      t('projects.deleteMsg', { name: project.name, sessions: project.session_count, plots: project.plot_count }),
+      t('projects.deleteMsg', {
+        name: project.name,
+        sessions: t('projects.nChecklists', { count: project.session_count }),
+        plots: t('projects.nPlots', { count: project.plot_count }),
+      }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {

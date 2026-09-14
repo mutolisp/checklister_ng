@@ -4,6 +4,7 @@ import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { strToU8 } from 'fflate';
+import { pickExportLanguage } from '~/lib/pickExportLanguage';
 import { DOCX_MIME } from '~/lib/docx';
 import { buildFavoritesCsv, buildFavoritesDocx } from '~/lib/favoritesExport';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -242,7 +243,13 @@ export default function FavoritesScreen() {
       skipped += r.skipped;
       unresolved += r.unresolved;
     }
-    toast(t('favorites.importDone', { added, skipped, unresolved }));
+    toast(
+      t('favorites.importDone', {
+        added: t('favorites.nImported', { count: added }),
+        skipped: t('favorites.nDuplicate', { count: skipped }),
+        unresolved: t('favorites.nUnresolvedNames', { count: unresolved }),
+      }),
+    );
   };
 
   const handleImportMenu = async () => {
@@ -308,7 +315,10 @@ export default function FavoritesScreen() {
     const species = targets.reduce((n, f) => n + f.species_count, 0);
     Alert.alert(
       t('favorites.deleteFolder'),
-      t('favorites.deleteFoldersConfirm', { count: targets.length, species }),
+      t('favorites.deleteFoldersConfirm', {
+        folders: t('favorites.nFolders', { count: targets.length }),
+        species: t('favorites.nSpeciesInThem', { count: species }),
+      }),
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -344,8 +354,12 @@ export default function FavoritesScreen() {
     }
     try {
       const docx = idx === 0;
+      // Only the docx carries prose; the CSV is DwC terms, which never
+      // localise, so asking for a language there would be a pointless tap.
+      const lang = docx ? await pickExportLanguage(t, 'export.language') : null;
+      if (docx && !lang) return;
       const bytes = docx
-        ? buildFavoritesDocx(folderLabel(f), rows)
+        ? buildFavoritesDocx(folderLabel(f), rows, lang ?? undefined)
         : strToU8(buildFavoritesCsv(rows));
       // Date + count basename: the existing filename sanitiser strips CJK, so a
       // Chinese list name would become a row of underscores.

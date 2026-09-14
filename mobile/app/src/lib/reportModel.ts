@@ -176,7 +176,7 @@ function layerChart(profile: LayerProfileRow[], t: Translate): ReportSection['ch
       bands: bands.reverse(),
       valueAxisTitle: t('plotValue.coverPct'),
       heightAxisTitle: t('report.axisHeightM'),
-      note: missing > 0 ? t('report.profileMissingHeight', { n: missing }) : undefined,
+      note: missing > 0 ? t('report.profileMissingHeight', { count: missing }) : undefined,
       degradedNote: t('report.profileDegraded'),
     };
   }
@@ -704,7 +704,12 @@ export function buildProjectReport(input: ProjectReportInput, t: Translate): Rep
     sections.push({
       id: 'species',
       heading: t('report.secSpecies'),
-      paras: [t('report.projectSpeciesSummary', { count: speciesRows.length, plots: plots.length })],
+      paras: [
+        t('report.projectSpeciesSummary', {
+          species: t('report.nSpeciesRecorded', { count: speciesRows.length }),
+          plots: t('report.nPlotsAcross', { count: plots.length }),
+        }),
+      ],
       table: {
         columns: [
           t('report.colScientific'),

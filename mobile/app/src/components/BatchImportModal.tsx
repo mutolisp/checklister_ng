@@ -200,7 +200,10 @@ export function BatchImportModal({ visible, target, onClose, onCommitted }: Prop
     if (skipped > 0) {
       Alert.alert(
         t('batchImport.done'),
-        t('batchImport.doneMsg', { added, skipped }),
+        t('batchImport.doneMsg', {
+          added: t('batchImport.nAdded', { count: added }),
+          skipped: t('batchImport.nSkipped', { count: skipped }),
+        }),
       );
     }
     handleClose();

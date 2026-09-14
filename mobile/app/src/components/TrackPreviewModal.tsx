@@ -89,7 +89,7 @@ export function TrackPreviewModal({ visible, segments, title, onClose }: Props) 
               {title}
             </Text>
             <Text className="text-xs text-gray-300">
-              {t('transect.summary', { segments: segments.length, points: totalPoints, length: lengthStr })}
+              {t('transect.summary', { count: segments.length, points: totalPoints, length: lengthStr })}
             </Text>
           </View>
           <View style={{ width: 44 }} />

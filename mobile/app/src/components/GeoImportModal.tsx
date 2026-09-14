@@ -109,7 +109,10 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
     }
     onCommitted(added);
     if (added < imported.length) {
-      Alert.alert(t('geoImport.partial'), t('geoImport.partialMsg', { total: imported.length, added }));
+      Alert.alert(t('geoImport.partial'), t('geoImport.partialMsg', {
+        total: t('geoImport.nTotal', { count: imported.length }),
+        added: t('geoImport.nSucceeded', { count: added }),
+      }));
     }
     handleClose();
   };

@@ -1,8 +1,18 @@
 /**
  * Markdown exporter — port of backend/api/export.py _generate_markdown.
  * Goal: byte-level compatibility with web version where feasible.
+ *
+ * Localisation is INJECTED as `t`, never imported: this module stays pure (no
+ * DB / expo / `~/i18n`), which is what lets a caller render the checklist in a
+ * language other than the UI's with `i18n.getFixedT(lang)`. Same contract the
+ * report renderers already follow.
+ *
+ * What `t` must NOT touch: scientific names, vernacular names, DwC values, and
+ * the `source` / `rank` / conservation codes that arrive from the DB. Those are
+ * data. Only the surrounding prose and the group headings are translated.
  */
 
+import type { Translate } from './reportTypes';
 import { formatScientificNameMarkdown } from './scientificNameMarkdown';
 
 export type MarkdownItem = {
@@ -71,12 +81,57 @@ const DEFAULT_HIERARCHIES: Record<string, string[]> = {
   _default: ['class_name', 'family'],
 };
 
-const PLANT_CLASS_NAMES: Record<string, string> = {
-  Lycopodiopsida: '石松類植物 Lycophytes',
-  Polypodiopsida: '蕨類植物 Monilophytes',
-  Cycadopsida: '裸子植物 Gymnosperms',
-  Ginkgoopsida: '裸子植物 Gymnosperms',
-  Pinopsida: '裸子植物 Gymnosperms',
+/**
+ * Language-neutral keys for the vascular-plant groups.
+ *
+ * These used to BE the display strings — `PT_NAME_ORDER` was keyed by
+ * `'蕨類植物 Monilophytes'` and `getFieldSortKey` returned the rendered label,
+ * so the ordering silently depended on the text. Translating the label would
+ * therefore have broken the mandated 石松→蕨→裸子→單子葉→姊妹群→真雙子葉
+ * sequence without any error: every key would miss and fall to the `?? 99`
+ * default. Same shape of bug as the taxonomy tree's baked-in rank labels —
+ * keep the key language-neutral, translate only at render time.
+ */
+type PlantGroupKey =
+  | 'mossesLichens'
+  | 'lycophytes'
+  | 'monilophytes'
+  | 'gymnosperms'
+  | 'monocots'
+  | 'sisterEudicots'
+  | 'eudicots'
+  | 'angiosperms';
+
+const PLANT_GROUP_ORDER: Record<PlantGroupKey, number> = {
+  mossesLichens: 0,
+  lycophytes: 1,
+  monilophytes: 2,
+  gymnosperms: 3,
+  monocots: 4,
+  sisterEudicots: 5,
+  eudicots: 6,
+  angiosperms: 7,
+};
+
+const PLANT_CLASS_GROUPS: Record<string, PlantGroupKey> = {
+  Lycopodiopsida: 'lycophytes',
+  Polypodiopsida: 'monilophytes',
+  Cycadopsida: 'gymnosperms',
+  Ginkgoopsida: 'gymnosperms',
+  Pinopsida: 'gymnosperms',
+};
+
+/** Legacy `pt_name` values still sitting in exported/imported data, mapped onto
+ *  the neutral keys so old rows keep their place in the ordering. */
+const LEGACY_PT_NAMES: Record<string, PlantGroupKey> = {
+  '苔蘚地衣類植物 Mosses and Lichens': 'mossesLichens',
+  '石松類植物 Lycophytes': 'lycophytes',
+  '蕨類植物 Monilophytes': 'monilophytes',
+  '裸子植物 Gymnosperms': 'gymnosperms',
+  '單子葉植物 Monocots': 'monocots',
+  '真雙子葉植物姊妹群 Sister groups of Eudicots': 'sisterEudicots',
+  '真雙子葉植物 Eudicots': 'eudicots',
+  '被子植物 Angiosperms': 'angiosperms',
 };
 
 const MONOCOT_ORDERS = new Set([
@@ -86,22 +141,15 @@ const MONOCOT_ORDERS = new Set([
 ]);
 const SISTER_EUDICOT_ORDERS = new Set(['Ceratophyllales']);
 
-function resolveAngiospermGroup(order: string): string {
-  if (MONOCOT_ORDERS.has(order)) return '單子葉植物 Monocots';
-  if (SISTER_EUDICOT_ORDERS.has(order)) return '真雙子葉植物姊妹群 Sister groups of Eudicots';
-  return '真雙子葉植物 Eudicots';
+function resolveAngiospermGroup(order: string): PlantGroupKey {
+  if (MONOCOT_ORDERS.has(order)) return 'monocots';
+  if (SISTER_EUDICOT_ORDERS.has(order)) return 'sisterEudicots';
+  return 'eudicots';
 }
 
-const PT_NAME_ORDER: Record<string, number> = {
-  '苔蘚地衣類植物 Mosses and Lichens': 0,
-  '石松類植物 Lycophytes': 1,
-  '蕨類植物 Monilophytes': 2,
-  '裸子植物 Gymnosperms': 3,
-  '單子葉植物 Monocots': 4,
-  '真雙子葉植物姊妹群 Sister groups of Eudicots': 5,
-  '真雙子葉植物 Eudicots': 6,
-  '被子植物 Angiosperms': 7,
-};
+function plantGroupLabel(key: PlantGroupKey, t: Translate): string {
+  return t(`checklistDoc.plantGroup.${key}`);
+}
 
 const GROUP_ORDER = [
   'Tracheophyta', 'Bryophyta',
@@ -111,23 +159,24 @@ const GROUP_ORDER = [
   'Gastropoda', 'Bivalvia',
 ];
 
-const GROUP_NAMES: Record<string, string> = {
-  Tracheophyta: '維管束植物',
-  Bryophyta: '苔蘚植物',
-  Aves: '鳥綱',
-  Insecta: '昆蟲綱',
-  Mammalia: '哺乳綱',
-  Reptilia: '爬行綱',
-  Amphibia: '兩生綱',
-  Actinopteri: '輻鰭魚綱',
-  Arachnida: '蛛形綱',
-  Gastropoda: '腹足綱',
-  Bivalvia: '雙殼綱',
-  Malacostraca: '軟甲綱',
-  Ascomycota: '子囊菌門',
-  Basidiomycota: '擔子菌門',
-  Mollusca: '軟體動物門',
-};
+/** Groups that have a translated heading. Anything else falls back to the Latin
+ *  name — i18next echoes the key when it is missing, which would put
+ *  `checklistDoc.group.Foo` into the document, so the membership test is the
+ *  guard rather than `??`.
+ *
+ *  Deliberately its own namespace rather than reusing `taxonGroup.*`: those are
+ *  vernacular filter labels (鳥類 / Birds) while a checklist heading names the
+ *  rank (鳥綱 / Class Aves), and they do not cover Bryophyta, Gastropoda,
+ *  Bivalvia, Malacostraca, Ascomycota or Basidiomycota at all. */
+const GROUP_NAME_KEYS = new Set([
+  'Tracheophyta', 'Bryophyta', 'Aves', 'Insecta', 'Mammalia', 'Reptilia',
+  'Amphibia', 'Actinopteri', 'Arachnida', 'Gastropoda', 'Bivalvia',
+  'Malacostraca', 'Ascomycota', 'Basidiomycota', 'Mollusca',
+]);
+
+function groupLabel(groupKey: string, t: Translate): string {
+  return GROUP_NAME_KEYS.has(groupKey) ? t(`checklistDoc.group.${groupKey}`) : groupKey;
+}
 
 function detectGroup(item: MarkdownItem): string {
   const cls = item.class_name || '';
@@ -138,7 +187,22 @@ function detectGroup(item: MarkdownItem): string {
   return '_default';
 }
 
-function getFieldDisplay(item: MarkdownItem, field: string): string {
+/** The vascular-plant group an item belongs to, or null when it is not one.
+ *  Shared by the display and the sort key so the two can never disagree. */
+function plantGroupKeyOf(item: MarkdownItem): PlantGroupKey | null {
+  const isVascular =
+    item.phylum === 'Tracheophyta' || (item.pt_name || '').includes('Tracheophyta');
+  if (isVascular) {
+    const cls = item.class_name || '';
+    if (PLANT_CLASS_GROUPS[cls]) return PLANT_CLASS_GROUPS[cls];
+    if (cls === 'Magnoliopsida') return resolveAngiospermGroup(item.order || '');
+  }
+  const pt = item.pt_name || '';
+  if (pt && !pt.startsWith('Tracheophyta')) return LEGACY_PT_NAMES[pt] ?? null;
+  return null;
+}
+
+function getFieldDisplay(item: MarkdownItem, field: string, t: Translate): string {
   switch (field) {
     case 'family': {
       const fc = item.family_cname || item.family_c || '';
@@ -146,13 +210,8 @@ function getFieldDisplay(item: MarkdownItem, field: string): string {
       return fc ? `${fc} (${fl})` : fl;
     }
     case 'pt_name': {
-      const isVascular =
-        item.phylum === 'Tracheophyta' || (item.pt_name || '').includes('Tracheophyta');
-      if (isVascular) {
-        const cls = item.class_name || '';
-        if (PLANT_CLASS_NAMES[cls]) return PLANT_CLASS_NAMES[cls];
-        if (cls === 'Magnoliopsida') return resolveAngiospermGroup(item.order || '');
-      }
+      const key = plantGroupKeyOf(item);
+      if (key) return plantGroupLabel(key, t);
       const pt = item.pt_name || '';
       if (pt && !pt.startsWith('Tracheophyta')) return pt;
       return item.class_name || '';
@@ -160,7 +219,9 @@ function getFieldDisplay(item: MarkdownItem, field: string): string {
     case 'class_name': {
       const cls = item.class_name || '';
       const clsC = item.class_c || '';
-      if (item.phylum === 'Tracheophyta' && PLANT_CLASS_NAMES[cls]) return PLANT_CLASS_NAMES[cls];
+      if (item.phylum === 'Tracheophyta' && PLANT_CLASS_GROUPS[cls]) {
+        return plantGroupLabel(PLANT_CLASS_GROUPS[cls], t);
+      }
       return clsC ? `${clsC} (${cls})` : cls;
     }
     case 'order': {
@@ -190,7 +251,17 @@ function getFieldDisplay(item: MarkdownItem, field: string): string {
 
 function getFieldSortKey(item: MarkdownItem, field: string): string {
   if (field === 'family') return item.family || '';
-  if (field === 'pt_name') return getFieldDisplay(item, field);
+  // Language-neutral on purpose — this key drives PLANT_GROUP_ORDER, and a
+  // translated one would miss every entry and collapse the mandated ordering.
+  if (field === 'pt_name') {
+    const key = plantGroupKeyOf(item);
+    if (key) return key;
+    // Mirrors getFieldDisplay's fallbacks exactly, so grouping and heading can
+    // never disagree about which bucket a row belongs to.
+    const pt = item.pt_name || '';
+    if (pt && !pt.startsWith('Tracheophyta')) return pt;
+    return item.class_name || '';
+  }
   return ((item as Record<string, unknown>)[field] as string) || '';
 }
 
@@ -211,6 +282,7 @@ function renderGroup(
   state: RenderState,
   singleGroup: boolean,
   conservationFields: ConservationField[],
+  t: Translate,
 ): void {
   if (depth >= levels.length) {
     const sortedItems = [...items].sort((a, b) => (a.fullname || '').localeCompare(b.fullname || ''));
@@ -252,8 +324,12 @@ function renderGroup(
         statusParts.push(`IUCN:${item.iucn_category}`);
       if (conservationFields.includes('cites') && item.cites) statusParts.push(`CITES:${item.cites}`);
       if (conservationFields.includes('protected') && item.protected) {
+        // `item.protected` is the DB code (I / II / III / 1) and stays verbatim;
+        // only the word in front of it is translated.
         const p = item.protected;
-        statusParts.push(p === '1' ? '文資法珍稀' : `保育類:${p}`);
+        statusParts.push(
+          p === '1' ? t('checklistDoc.culturalHeritageRare') : `${t('species.protected')}:${p}`,
+        );
       }
       if (statusParts.length > 0) parts.push(statusParts.join('; '));
       // Append observer remarks / abundance inline so user-entered notes are
@@ -279,13 +355,15 @@ function renderGroup(
   }
 
   const sortFn = field === 'pt_name'
-    ? (a: string, b: string) => (PT_NAME_ORDER[a] ?? 99) - (PT_NAME_ORDER[b] ?? 99)
+    ? (a: string, b: string) =>
+        (PLANT_GROUP_ORDER[a as PlantGroupKey] ?? 99) -
+        (PLANT_GROUP_ORDER[b as PlantGroupKey] ?? 99)
     : (a: string, b: string) => a.localeCompare(b);
   const sortedKeys = [...grouped.keys()].sort(sortFn);
 
   for (const key of sortedKeys) {
     const groupItems = grouped.get(key)!;
-    const display = getFieldDisplay(groupItems[0], field);
+    const display = getFieldDisplay(groupItems[0], field, t);
     const speciesCount = groupItems.filter((it) =>
       ['Species', 'Subspecies', 'Variety', 'Form', ''].includes(it.rank || 'Species'),
     ).length;
@@ -293,24 +371,37 @@ function renderGroup(
     if (depth === 0 && !isLastGroupLevel) {
       const heading = singleGroup ? `## ${display}` : `### ${display}`;
       lines.push('', heading, '');
-      renderGroup(lines, groupItems, levels, depth + 1, state, singleGroup, conservationFields);
+      renderGroup(lines, groupItems, levels, depth + 1, state, singleGroup, conservationFields, t);
     } else if (isLastGroupLevel || (depth > 0 && depth === levels.length - 1)) {
       lines.push('', `**${state.counter}. ${display}** (${speciesCount})`, '');
       state.counter += 1;
-      renderGroup(lines, groupItems, levels, depth + 1, state, singleGroup, conservationFields);
+      renderGroup(lines, groupItems, levels, depth + 1, state, singleGroup, conservationFields, t);
     } else {
       const hashes = '#'.repeat(Math.min(depth + 2, 4));
       lines.push('', `${hashes} ${display}`, '');
-      renderGroup(lines, groupItems, levels, depth + 1, state, singleGroup, conservationFields);
+      renderGroup(lines, groupItems, levels, depth + 1, state, singleGroup, conservationFields, t);
     }
   }
 }
 
+/** DB `source` value → label key. The Chinese literals are stored data, not
+ *  display text, so they stay as the lookup and only the label is translated. */
+const SOURCE_LABEL_KEYS: Record<string, string> = {
+  原生: 'alien.native',
+  歸化: 'alien.naturalized',
+  栽培: 'alien.cultivated',
+  圈養: 'alien.captive',
+};
+
 export function generateMarkdown(
   checklist: MarkdownItem[],
+  t: Translate,
   metadata: MarkdownMetadata = {},
   options: MarkdownOptions = {},
 ): string {
+  // Separators differ by script: 、／； in CJK, ", " / "; " elsewhere.
+  const listSep = t('checklistDoc.listSep');
+  const statSep = t('checklistDoc.statSep');
   const conservationFields = options.conservationFields ?? ['redlist'];
 
   const groups = new Map<string, MarkdownItem[]>();
@@ -348,21 +439,30 @@ export function generateMarkdown(
     : new Map<string, number>();
 
   const lines: string[] = [];
-  const title = metadata.project ? `${metadata.project}物種名錄` : '物種名錄';
+  const title = metadata.project
+    ? t('checklistDoc.titleWithProject', { project: metadata.project })
+    : t('checklistDoc.title');
   lines.push(`# ${title}`);
-  if (metadata.site) lines.push(`**樣區：** ${metadata.site}`);
+  if (metadata.site) lines.push(`**${t('checklistDoc.site')}** ${metadata.site}`);
   lines.push('');
+  // Each count renders through its own plural key: one string cannot pluralise
+  // two numbers, and "1 families" is exactly what that costs.
   lines.push(
-    `本名錄共有 ${totalFamilies} 科、${totalSpecies} 種。"#" 代表特有種，"*" 代表歸化種，"†" 代表栽培種，"‡" 代表圈養種。`,
+    t('checklistDoc.summary', {
+      families: t('checklistDoc.familyCount', { count: totalFamilies }),
+      species: t('checklistDoc.speciesCount', { count: totalSpecies }),
+    }),
   );
 
   const statParts: string[] = [];
-  if (endemicCount) statParts.push(`特有種 ${endemicCount}`);
+  if (endemicCount) statParts.push(`${t('species.endemic')} ${endemicCount}`);
   for (const src of ['原生', '歸化', '栽培', '圈養']) {
     const c = sourceCounts.get(src);
-    if (c) statParts.push(`${src} ${c}`);
+    if (c) statParts.push(`${t(SOURCE_LABEL_KEYS[src])} ${c}`);
   }
-  if (statParts.length > 0) lines.push(`物種屬性：${statParts.join('、')}。`);
+  if (statParts.length > 0) {
+    lines.push(t('checklistDoc.attributes', { stats: statParts.join(listSep) }));
+  }
 
   const skipCats = new Set(['LC', 'NLC', 'NE', 'NA', '']);
   const conservationStats: string[] = [];
@@ -371,36 +471,46 @@ export function generateMarkdown(
       .filter(([cat]) => !skipCats.has(cat))
       .sort()
       .map(([cat, cnt]) => `${cat} ${cnt}`);
-    if (parts.length > 0) conservationStats.push(`臺灣紅皮書：${parts.join('、')}`);
+    if (parts.length > 0) {
+      conservationStats.push(t('checklistDoc.redlist', { parts: parts.join(listSep) }));
+    }
   }
   if (iucnCounts.size > 0) {
     const parts = [...iucnCounts.entries()]
       .filter(([cat]) => !skipCats.has(cat))
       .sort()
       .map(([cat, cnt]) => `${cat} ${cnt}`);
-    if (parts.length > 0) conservationStats.push(`IUCN：${parts.join('、')}`);
+    if (parts.length > 0) {
+      conservationStats.push(t('checklistDoc.iucn', { parts: parts.join(listSep) }));
+    }
   }
   if (citesCounts.size > 0) {
     const parts = [...citesCounts.entries()]
       .filter(([cat]) => cat)
       .sort()
-      .map(([cat, cnt]) => `附錄${cat} ${cnt}`);
-    if (parts.length > 0) conservationStats.push(`CITES：${parts.join('、')}`);
+      .map(([cat, cnt]) => `${t('checklistDoc.citesAppendix', { cat })} ${cnt}`);
+    if (parts.length > 0) {
+      conservationStats.push(t('checklistDoc.cites', { parts: parts.join(listSep) }));
+    }
   }
   if (protectedCounts.size > 0) {
     const protMap: Record<string, string> = {
-      I: '瀕臨絕種',
-      II: '珍貴稀有',
-      III: '其他應予保育',
-      '1': '文資法珍稀',
+      I: t('checklistDoc.protected.I'),
+      II: t('checklistDoc.protected.II'),
+      III: t('checklistDoc.protected.III'),
+      '1': t('checklistDoc.culturalHeritageRare'),
     };
     const parts = [...protectedCounts.entries()]
       .filter(([cat]) => cat)
       .sort()
       .map(([cat, cnt]) => `${protMap[cat] ?? cat} ${cnt}`);
-    if (parts.length > 0) conservationStats.push(`保育類：${parts.join('、')}`);
+    if (parts.length > 0) {
+      conservationStats.push(t('checklistDoc.protectedStat', { parts: parts.join(listSep) }));
+    }
   }
-  if (conservationStats.length > 0) lines.push(`保育統計：${conservationStats.join('；')}。`);
+  if (conservationStats.length > 0) {
+    lines.push(t('checklistDoc.conservation', { stats: conservationStats.join(statSep) }));
+  }
 
   lines.push('');
 
@@ -408,14 +518,17 @@ export function generateMarkdown(
 
   for (const groupKey of sortedGroups) {
     const groupItems = groups.get(groupKey)!;
-    const groupName = GROUP_NAMES[groupKey] ?? groupKey;
+    const groupName = groupLabel(groupKey, t);
 
     let levels = options.levelsOverride
       ? [...options.levelsOverride]
       : DEFAULT_HIERARCHIES[groupKey] ?? DEFAULT_HIERARCHIES._default;
 
     if (sortedGroups.length > 1) {
-      lines.push('', `## ${groupName} ${groupKey}`, '');
+      // Spanish's vernacular for Aves IS "Aves"; printing "Aves Aves" would be
+      // the only visible sign of it, so collapse the pair whenever they match.
+      const heading = groupName === groupKey ? groupKey : `${groupName} ${groupKey}`;
+      lines.push('', `## ${heading}`, '');
 
       const phylumGrouped = ['Tracheophyta', 'Bryophyta', 'Ascomycota', 'Basidiomycota'];
       const classGrouped = !phylumGrouped.includes(groupKey) && groupKey !== 'Mollusca';
@@ -427,7 +540,9 @@ export function generateMarkdown(
       }
     }
 
-    renderGroup(lines, groupItems, levels, 0, state, sortedGroups.length === 1, conservationFields);
+    renderGroup(
+      lines, groupItems, levels, 0, state, sortedGroups.length === 1, conservationFields, t,
+    );
   }
 
   return lines.join('\n');

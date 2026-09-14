@@ -116,7 +116,7 @@ export function abundanceText(
       const lo = Math.min(...stems);
       const hi = Math.max(...stems);
       return t('report.abundanceDbh', {
-        n: stems.length,
+        count: stems.length,
         range: lo === hi ? num(lo, 1) : `${num(lo, 1)}–${num(hi, 1)}`,
       });
     }
@@ -125,7 +125,7 @@ export function abundanceText(
     case 'percent':
       return `${quantity}%`;
     case 'count':
-      return t('report.abundanceCount', { n: quantity });
+      return t('report.abundanceCount', { count: quantity });
     default:
       // A user-defined type: show the value and name the unit, since nothing
       // else in the report can tell the reader what it measures.

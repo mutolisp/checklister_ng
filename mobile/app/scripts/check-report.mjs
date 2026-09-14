@@ -1204,10 +1204,10 @@ const speciesB = [
   // A DBH record stores a JSON array; printing it verbatim put
   // "[12,18,25,31,44]" in the species table and made the reader decode it.
   eq('DBH renders as stems and a range',
-     abundanceText('[12,18,25,44]', 'DBH (cm)', (k, v) => `${k}:${v.n}:${v.range}`),
+     abundanceText('[12,18,25,44]', 'DBH (cm)', (k, v) => `${k}:${v.count}:${v.range}`),
      'report.abundanceDbh:4:12.0–44.0');
   eq('a single stem has no range',
-     abundanceText('[30]', 'DBH (cm)', (k, v) => `${k}:${v.n}:${v.range}`),
+     abundanceText('[30]', 'DBH (cm)', (k, v) => `${k}:${v.count}:${v.range}`),
      'report.abundanceDbh:1:30.0');
   // A bare "4" is indistinguishable from a count of four without its scale.
   eq('BB names its scale', abundanceText('4', 'Braun-Blanquet Scale', t), 'Br.-Bq. 4');

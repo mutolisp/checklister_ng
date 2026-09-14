@@ -49,7 +49,9 @@ import {
   recordToYamlItem,
   type PhotoNames,
 } from './bundleYaml';
+import i18n from '~/i18n';
 import { generateMarkdown, type ConservationField } from './markdown';
+import type { Translate } from './reportTypes';
 import { markdownToDocx } from './docx';
 import { geoJsonToGpx, geoJsonToKml } from './geoSerializers';
 
@@ -72,6 +74,10 @@ export type BundleOptions = {
   levels: string[];
   /** Conservation-status columns to include in the checklist. */
   conservationFields: ConservationField[];
+  /** Language for the checklist's prose and group headings. Omitted =
+   *  current UI language. Species names, DwC terms and conservation codes
+   *  are data and never follow it. */
+  lang?: string;
   /** Reports export progress (stage + optional done/total). */
   onProgress?: (p: ExportProgress) => void;
 };
@@ -80,8 +86,15 @@ export type BundleOptions = {
  *  LEVEL_ORDER). The picker stores tap order; we reorder here so the grouping
  *  is always taxonomically sensible regardless of how the user clicked. */
 const LEVEL_ORDER = ['kingdom', 'phylum', 'class_name', 'order', 'family', 'genus'];
-function orderLevels(sel: string[]): string[] {
+export function orderLevels(sel: string[]): string[] {
   return LEVEL_ORDER.filter((l) => sel.includes(l));
+}
+
+/** Translator for the checklist document. Resolving it here rather than inside
+ *  `markdown.ts` is what keeps that module pure and therefore able to render any
+ *  language — same split the report renderers use. */
+export function checklistT(lang?: string): Translate {
+  return i18n.getFixedT(lang ?? i18n.language) as unknown as Translate;
 }
 
 export type ExportFile = {
@@ -210,7 +223,7 @@ function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
   return item;
 }
 
-function specimenToMarkdownItem(
+export function specimenToMarkdownItem(
   sp: SpecimenWithTaxon,
 ): Parameters<typeof generateMarkdown>[0][number] {
   const fullname = sp.name_author ? `${sp.simple_name} ${sp.name_author}` : sp.simple_name;
@@ -295,13 +308,13 @@ export function taxonToMarkdownItem(
   };
 }
 
-function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMarkdown>[0][number] {
+export function recordToMarkdownItem(r: RecordWithTaxon): Parameters<typeof generateMarkdown>[0][number] {
   return { ...taxonToMarkdownItem(r.taxon_id, r), notes: r.notes };
 }
 
 /** Map a plot species record to a checklist MarkdownItem (mirrors
  *  recordToMarkdownItem). Used for the deduped `_checklist.md` per plot. */
-function plotSpeciesToMarkdownItem(
+export function plotSpeciesToMarkdownItem(
   r: PlotSpeciesRecordWithTaxon,
 ): Parameters<typeof generateMarkdown>[0][number] {
   const fullname = r.name_author ? `${r.simple_name} ${r.name_author}` : r.simple_name;
@@ -572,6 +585,7 @@ export async function buildSessionEntries(
   // Markdown
   const md = generateMarkdown(
     records.map(recordToMarkdownItem),
+    checklistT(opts.lang),
     { project: project?.id !== 0 ? project?.name : '', site: '' },
     {
       levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,
@@ -699,6 +713,7 @@ export async function buildPlotEntries(
   ];
   const checklistMd = generateMarkdown(
     uniqueSpecies.map(plotSpeciesToMarkdownItem),
+    checklistT(opts.lang),
     { project: project && project.id !== 0 ? project.name : '', site: plot.plotid },
     {
       levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,
@@ -909,6 +924,7 @@ export async function buildCollectionEntries(
   }
   const md = generateMarkdown(
     mdItems,
+    checklistT(opts.lang),
     { project: project?.id !== 0 ? project?.name : '', site: trip.locality ?? '' },
     {
       levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,

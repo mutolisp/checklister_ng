@@ -114,7 +114,7 @@ export function CrossPlotChao2Card({ plots }: { plots: PlotRef[] }) {
                     {plot.title}
                   </Text>
                   <Text className="text-xs text-gray-500 dark:text-gray-400">
-                    {t('plotStats.sppCount', { n: speciesCount })}
+                    {t('plotStats.sppCount', { count: speciesCount })}
                   </Text>
                 </Pressable>
               );
@@ -154,7 +154,7 @@ export function Chao2ResultBlock({ result }: { result: Extract<Chao2Result, { ap
     <View className="mt-2 rounded-lg bg-white dark:bg-gray-900 px-3 py-2">
       <Text className="text-sm font-medium text-gray-900 dark:text-gray-100" style={{ fontVariant: ['tabular-nums'] }}>
         {t('plotStats.crossResult', {
-          n: result.unitCount,
+          count: result.unitCount,
           sObs: result.sObs,
           est: result.estimate.toFixed(1),
         })}

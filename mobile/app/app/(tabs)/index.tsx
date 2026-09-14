@@ -29,6 +29,7 @@ import {
 import { confirmExportContent } from '~/components/AnalysisExportOptions';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { showActionSheet } from '~/components/ActionSheet';
+import { pickExportLanguage } from '~/lib/pickExportLanguage';
 import {
   DuplicateRecordModal,
   type DuplicateRequest,
@@ -502,7 +503,10 @@ export default function RecordsListScreen() {
     const proceed = await confirmIfLarge(est.totalBytes);
     if (!proceed) return;
 
-    const bundleOpts = { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress };
+    const lang = await pickExportLanguage(t, 'export.language');
+    if (!lang) return;
+
+    const bundleOpts = { geoFormats, includePhotos, includeDocx, levels, conservationFields, lang, onProgress };
     await shareBundle(() => {
       if (item.kind === 'session') return bundleSession(item.id, bundleOpts);
       if (item.kind === 'collection') return bundleCollection(item.id, bundleOpts);
@@ -530,6 +534,8 @@ export default function RecordsListScreen() {
       { includePhotos },
     );
     if (!(await confirmIfLarge(est.totalBytes))) return;
+    const lang = await pickExportLanguage(t, 'export.language');
+    if (!lang) return;
     await shareBundle(() =>
       bundleProject(group.projectId, {
         geoFormats,
@@ -537,6 +543,7 @@ export default function RecordsListScreen() {
         includeDocx,
         levels,
         conservationFields,
+        lang,
         matrixValue,
         analysisFormats,
         matrixByLayer,
@@ -569,8 +576,13 @@ export default function RecordsListScreen() {
     const proceed = await confirmIfLarge(est.totalBytes);
     if (!proceed) return;
 
+    const lang = await pickExportLanguage(t, 'export.language');
+    if (!lang) return;
+
     await shareBundle(() =>
-      bundleMany(bundleItems, { geoFormats, includePhotos, includeDocx, levels, conservationFields, onProgress }),
+      bundleMany(bundleItems, {
+        geoFormats, includePhotos, includeDocx, levels, conservationFields, lang, onProgress,
+      }),
     );
     selectClear();
   };
@@ -636,9 +648,11 @@ export default function RecordsListScreen() {
     selectClear();
     toast(
       t('favorites.importDone', {
-        added,
-        skipped: Math.max(0, distinct.size - added - unresolved),
-        unresolved,
+        added: t('favorites.nImported', { count: added }),
+        skipped: t('favorites.nDuplicate', {
+          count: Math.max(0, distinct.size - added - unresolved),
+        }),
+        unresolved: t('favorites.nUnresolvedNames', { count: unresolved }),
       }),
     );
   };
@@ -994,7 +1008,7 @@ export default function RecordsListScreen() {
             {t('plotStats.crossTitle')}
           </Text>
           <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            {t('plotStats.selectedPlots', { n: chao2SheetData?.count ?? 0 })}
+            {t('plotStats.selectedPlots', { count: chao2SheetData?.count ?? 0 })}
           </Text>
           <Text className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
             {t('plotStats.crossHint')}

@@ -164,7 +164,7 @@ export function compositionSection(records: ReportRecord[], t: Translate): Repor
   return {
     id: 'composition',
     heading: t('report.secComposition'),
-    paras: [t('report.compositionSummary', { families: comp.length })],
+    paras: [t('report.compositionSummary', { count: comp.length })],
     chart: {
       kind: 'bar',
       title: t('report.chartComposition'),
@@ -490,25 +490,28 @@ export function rarefactionSection(
 function issueText(i: QualityIssue, t: Translate): string {
   switch (i.code) {
     case 'no-abundance':
-      return t('report.dq.noAbundance', { records: i.records, species: i.species });
+      return t('report.dq.noAbundance', {
+        records: t('report.dq.nNoQuantity', { count: i.records }),
+        species: t('report.dq.nPresenceOnly', { count: i.species }),
+      });
     case 'genus-only':
-      return t('report.dq.genusOnly', { n: i.species, examples: i.examples.join('、') });
+      return t('report.dq.genusOnly', { count: i.species, examples: i.examples.join('、') });
     case 'above-genus':
-      return t('report.dq.aboveGenus', { n: i.species, examples: i.examples.join('、') });
+      return t('report.dq.aboveGenus', { count: i.species, examples: i.examples.join('、') });
     case 'rank-unknown':
-      return t('report.dq.rankUnknown', { n: i.species });
+      return t('report.dq.rankUnknown', { count: i.species });
     case 'mixed-units':
       return t('report.dq.mixedUnits', { kinds: i.kinds.join(', ') });
     case 'unparseable':
-      return t('report.dq.unparseable', { n: i.records, examples: i.examples.join('、') });
+      return t('report.dq.unparseable', { count: i.records, examples: i.examples.join('、') });
     case 'singletons':
-      return t('report.dq.singletons', { n: i.species });
+      return t('report.dq.singletons', { count: i.species });
     case 'doubletons':
-      return t('report.dq.doubletons', { n: i.species });
+      return t('report.dq.doubletons', { count: i.species });
     case 'no-layer':
-      return t('report.dq.noLayer', { n: i.records });
+      return t('report.dq.noLayer', { count: i.records });
     case 'no-subplot':
-      return t('report.dq.noSubplot', { n: i.records });
+      return t('report.dq.noSubplot', { count: i.records });
     default:
       return '';
   }
@@ -598,7 +601,7 @@ export function rankAbundanceSection(
       ],
       note: [
         t('report.rankAbundanceNote'),
-        dropped > 0 ? t('report.rankAbundanceDropped', { n: dropped }) : '',
+        dropped > 0 ? t('report.rankAbundanceDropped', { count: dropped }) : '',
       ]
         .filter(Boolean)
         .join(' '),

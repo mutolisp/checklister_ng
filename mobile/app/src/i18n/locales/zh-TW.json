@@ -32,7 +32,6 @@
     "sortTitle": "排序方式",
     "notInDb": "此物種已不在名錄資料庫中",
     "addToRecord": "加入記錄",
-    "count": "{{count}} 筆",
     "searchPlaceholder": "在常用名錄內搜尋...",
     "empty": "尚無常用名錄。用下方搜尋框加入,或在物種詳細 / 分類樹 / 記錄中長按加入。",
     "noMatch": "沒有符合的項目",
@@ -44,13 +43,11 @@
     "addedNamed": "已加入常用名錄：{{name}}",
     "defaultFolder": "常用名錄",
     "allFolders": "所有常用名錄",
-    "folderCount": "{{count}} 份常用名錄",
     "newFolder": "新增常用名錄",
     "folderNamePlaceholder": "例:陽明山、鳥類、待確認",
     "folderCreated": "已建立常用名錄「{{name}}」",
     "renameFolder": "重新命名",
     "deleteFolder": "刪除常用名錄",
-    "deleteFolderConfirm": "將刪除常用名錄「{{name}}」及其中的 {{count}} 個物種。此動作無法復原。",
     "folderDeleted": "已刪除常用名錄「{{name}}」",
     "emptyFolders": "尚無常用名錄。點右上角新增,或在物種詳細／分類樹／記錄中長按加入預設名錄。",
     "moveTo": "移動到其他常用名錄",
@@ -60,30 +57,40 @@
     "importPaste": "貼上名字比對加入",
     "importFromRecord": "從既有記錄匯入",
     "noRecordsToImport": "沒有含物種的既有記錄可匯入",
-    "importDone": "已加入 {{added}} 種（重複 {{skipped}}、無法解析 {{unresolved}}）",
-    "importedCount": "已加入 {{count}} 種",
+    "importDone": "{{added}}（{{skipped}}、{{unresolved}}）",
     "kindSession": "名錄",
     "kindPlot": "樣區",
     "kindCollection": "標本",
     "selectAll": "全選",
     "deselectAll": "取消全選",
-    "pickerSummary": "已選 {{records}} 筆記錄，共 {{species}} 種",
-    "selectedCount": "已選 {{count}} 種",
+    "pickerSummary": "{{records}}，{{species}}",
     "deleteSelected": "刪除所選",
-    "deleteSelectedConfirm": "將從此名錄移除 {{count}} 種。物種本身與其他名錄不受影響。",
-    "deletedCount": "已移除 {{count}} 種",
     "goToFavorites": "前往",
     "area": "名錄範圍",
     "areaFrom": "名錄範圍(來源:{{source}})",
     "editArea": "編輯範圍",
     "setArea": "設定名錄範圍",
     "fitArea": "回到範圍",
-    "selectedFolders": "已選 {{count}} 份名錄",
-    "deleteFoldersConfirm": "將刪除 {{count}} 份常用名錄及其中的 {{species}} 個物種。此動作無法復原。",
-    "foldersDeleted": "已刪除 {{count}} 份常用名錄",
+    "deleteFoldersConfirm": "將刪除 {{folders}}及{{species}}。此動作無法復原。",
     "exportDocx": "匯出 Word (.docx)",
     "exportCsv": "匯出試算表 (.csv)",
-    "exportEmpty": "此名錄內沒有物種"
+    "exportEmpty": "此名錄內沒有物種",
+    "count_other": "{{count}} 筆",
+    "folderCount_other": "{{count}} 份常用名錄",
+    "deleteFolderConfirm_other": "將刪除常用名錄「{{name}}」及其中的 {{count}} 個物種。此動作無法復原。",
+    "importedCount_other": "已加入 {{count}} 種",
+    "selectedCount_other": "已選 {{count}} 種",
+    "deleteSelectedConfirm_other": "將從此名錄移除 {{count}} 種。物種本身與其他名錄不受影響。",
+    "deletedCount_other": "已移除 {{count}} 種",
+    "selectedFolders_other": "已選 {{count}} 份名錄",
+    "foldersDeleted_other": "已刪除 {{count}} 份常用名錄",
+    "nImported_other": "已加入 {{count}} 種",
+    "nDuplicate_other": "重複 {{count}}",
+    "nUnresolvedNames_other": "無法解析 {{count}}",
+    "nRecordsSelected_other": "已選 {{count}} 筆記錄",
+    "nSpeciesTotal_other": "共 {{count}} 種",
+    "nFolders_other": "{{count}} 份常用名錄",
+    "nSpeciesInThem_other": "其中的 {{count}} 個物種"
   },
   "gps": {
     "permTitle": "需要定位權限",
@@ -106,7 +113,6 @@
     "removed": "已移除：{{name}}",
     "photoSavedLinked": "已存入相簿並關聯",
     "photoAdded": "已加入照片",
-    "photosAdded": "已加入 {{count}} 張照片",
     "photoFailTitle": "無法加入照片",
     "photoRemoved": "已移除照片",
     "projectUpdated": "已更新專案",
@@ -147,7 +153,8 @@
     "notes": "備註",
     "coordCleared": "已清除座標",
     "coordRecorded": "已記錄此物種座標",
-    "imported": "已匯入 {{count}} 筆"
+    "photosAdded_other": "已加入 {{count}} 張照片",
+    "imported_other": "已匯入 {{count}} 筆"
   },
   "records": {
     "recording": "記錄中",
@@ -157,7 +164,6 @@
     "plotCount": "樣區 {{count}}",
     "noneSelected": "沒有選取任何記錄",
     "noExportable": "沒有可匯出的記錄",
-    "selectedCount": "已選 {{count}}",
     "byProject": "專案",
     "timeline": "時間軸",
     "filterAll": "全部",
@@ -168,8 +174,6 @@
     "emptyHint": "按下方 + 開始新記錄",
     "favorites": "常用名錄",
     "deleteTitle": "刪除{{noun}}？",
-    "deleteMsg": "「{{title}}」與其下 {{count}} 筆紀錄將全部移除，無法復原。",
-    "collectionCount": "採集 {{count}}",
     "duplicate": "複製",
     "duplicateTitle": "複製{{noun}}",
     "duplicateFailTitle": "複製失敗",
@@ -184,7 +188,10 @@
     "startNowHint": "複製完就成為進行中的記錄。若已有其他進行中的記錄，會先問是否結束。",
     "saveToFavorites": "存進常用名錄",
     "includeSpeciesCollection": "標本的採集號是實體標本的編號，無法預先配發，因此不會一併複製。",
-    "emptyCreate": "新增記錄"
+    "emptyCreate": "新增記錄",
+    "selectedCount_other": "已選 {{count}}",
+    "deleteMsg_other": "「{{title}}」與其下 {{count}} 筆紀錄將全部移除，無法復原。",
+    "collectionCount_other": "採集 {{count}}"
   },
   "export": {
     "preparing": "準備中…",
@@ -197,7 +204,8 @@
     "exportAnyway": "仍要匯出",
     "largeTitle": "匯出檔案較大",
     "largeMsg": "預估約 {{size}}。是否繼續？",
-    "exporting": "匯出中…"
+    "exporting": "匯出中…",
+    "language": "名錄語言"
   },
   "nav": {
     "session": "名錄",
@@ -280,7 +288,7 @@
     "Animalia": "其他動物",
     "limitTitle": "搜尋限定類群",
     "limitHint": "可複選，搜尋只會在勾選的類群內查詢",
-    "selectedGroups": "{{count}} 個分類群"
+    "selectedGroups_other": "{{count}} 個分類群"
   },
   "species": {
     "noChineseName": "(無中文名)",
@@ -321,7 +329,6 @@
   },
   "attr": {
     "advanced": "進階（物種屬性）",
-    "filledCount": "{{count}} 項",
     "sexLabel": "性別 (sex)",
     "lifeStageLabel": "生命階段 (lifeStage)",
     "reproLabel": "花/果 (reproductiveCondition，可複選)",
@@ -358,7 +365,8 @@
       "shedding": "落葉",
       "green": "綠葉",
       "colored": "有色葉"
-    }
+    },
+    "filledCount_other": "{{count}} 項"
   },
   "recordCreate": {
     "conflictTitle": "已有{{noun}}記錄中",
@@ -400,12 +408,12 @@
     "endTitle": "結束記錄",
     "emptyMsg": "這個記錄還沒有任何項目。",
     "emptyHint": "按右上「刪除」直接清掉，或按取消回去繼續加入物種。",
-    "summary": "共 {{count}} 筆 · 歷時 {{duration}}",
     "name": "名稱",
     "namePlaceholder": "記錄名稱",
     "notesOptional": "備註（選填）",
     "notesPlaceholder": "此次調查的概況、天氣、人員等",
-    "selectProject": "選擇專案"
+    "selectProject": "選擇專案",
+    "summary_other": "共 {{count}} 筆 · 歷時 {{duration}}"
   },
   "plot": {
     "notFound": "找不到此樣區",
@@ -540,16 +548,18 @@
     "integrityDesc": "唯讀盤點重複識別碼與孤立資料，不會修改任何東西",
     "integrityTitle": "資料檢查結果",
     "integrityClean": "沒有發現問題。",
-    "integrityDup": "{{table}}：{{groups}} 組重複 occurrenceID（共 {{rows}} 筆）",
-    "integrityOrphan": "{{table}}：{{n}} 筆孤立資料",
-    "integrityProject": "{{table}}：{{n}} 筆指向已刪除的計畫",
-    "integrityFk": "外鍵違規 {{n}} 筆",
+    "integrityDup": "{{table}}：{{groups}}（{{rows}}）",
     "integrityFailed": "資料檢查失敗：{{error}}",
     "defaultDeterminer": "預設鑑定者",
     "defaultDeterminerPlaceholder": "例:林政道(Cheng-Tao Lin)",
-    "integrityAdopted": "{{table}}：{{n}} 筆採用名與現行名錄對不上（名錄改版後該名字被更名、移到別的分類群或已移除）。記錄仍顯示你當初選的名字，要不要跟著改由你決定。",
     "regionPacks": "區域名錄",
-    "regionPacksDesc": "臺灣、日本與下載的國家名錄，各自可開關"
+    "regionPacksDesc": "臺灣、日本與下載的國家名錄，各自可開關",
+    "integrityOrphan_other": "{{table}}：{{count}} 筆孤立資料",
+    "integrityProject_other": "{{table}}：{{count}} 筆指向已刪除的計畫",
+    "integrityFk_other": "外鍵違規 {{count}} 筆",
+    "integrityAdopted_other": "{{table}}：{{count}} 筆採用名與現行名錄對不上（名錄改版後該名字被更名、移到別的分類群或已移除）。記錄仍顯示你當初選的名字，要不要跟著改由你決定。",
+    "nDupGroups_other": "{{count}} 組重複 occurrenceID",
+    "nRows_other": "共 {{count}} 筆"
   },
   "taxonomy": {
     "loadingTree": "載入分類樹...",
@@ -620,8 +630,10 @@
   },
   "projects": {
     "deleteTitle": "刪除專案？",
-    "deleteMsg": "「{{name}}」會被刪除。原屬此專案的 {{sessions}} 個名錄與 {{plots}} 個樣區會回到「未分類」。",
-    "stats": "名錄 {{sessions}} · 樣區 {{plots}}"
+    "deleteMsg": "「{{name}}」會被刪除。原屬此專案的 {{sessions}}與 {{plots}}會回到「未分類」。",
+    "stats": "名錄 {{sessions}} · 樣區 {{plots}}",
+    "nChecklists_other": "{{count}} 個名錄",
+    "nPlots_other": "{{count}} 個樣區"
   },
   "sites": {
     "typePoint": "點位",
@@ -635,12 +647,12 @@
     "deleted": "已刪除",
     "noExport": "沒有可匯出的地理樣區",
     "shareUnavailable": "系統中的分享無法使用",
-    "exportTitle": "匯出 {{count}} 個地理樣區",
     "title": "地理樣區管理",
     "empty": "還沒有任何地理樣區",
     "emptyHint": "到「地圖」tab → 工具 ⋮ → 繪製地理樣區 開始建立",
     "goToMap": "前往地圖",
-    "projectStats": "{{count}} 個地理樣區"
+    "exportTitle_other": "匯出 {{count}} 個地理樣區",
+    "projectStats_other": "{{count}} 個地理樣區"
   },
   "map": {
     "basemapStandard": "標準",
@@ -673,7 +685,6 @@
     "pickSegTitle": "選擇要編輯的軌跡段",
     "segLabel": "第 {{n}} 段（{{count}} 點）",
     "manyPointsTitle": "軌跡點較多",
-    "manyPointsMsg": "此段有 {{count}} 個點，編輯時地圖可能較卡。仍要編輯嗎？",
     "dragVertexHint": "拖動頂點調整，點頂點可刪除，完成後按儲存",
     "noPlotCoord": "尚無座標",
     "noPlotCoordMsg": "此樣區尚未取得 GPS 座標，無法編輯位置",
@@ -688,8 +699,6 @@
     "sessionMarkerTitle": "名錄 #{{id}}",
     "notFound": "找不到「{{q}}」",
     "searchFailed": "搜尋失敗：{{error}}",
-    "plotDesc": "{{type}} · 物種 {{count}} 筆",
-    "sessionDesc": "名錄 · 物種 {{count}} 筆",
     "editPointTitle": "編輯點位",
     "pointN": "第 {{n}} 個點",
     "deletePoint": "刪除此點",
@@ -707,10 +716,13 @@
     "nlsc": "國土測繪中心",
     "sinica": "中研院",
     "overlaid": "已疊圖",
-    "imported": "已匯入 {{count}} 個地理樣區",
-    "plotSubtitle": "{{type}} · 物種 {{count}} 筆 · {{project}}",
-    "sessionSubtitle": "名錄 · 物種 {{count}} 筆 · {{project}}",
-    "noRecordCoord": "此記錄尚無座標"
+    "noRecordCoord": "此記錄尚無座標",
+    "manyPointsMsg_other": "此段有 {{count}} 個點，編輯時地圖可能較卡。仍要編輯嗎？",
+    "plotDesc_other": "{{type}} · 物種 {{count}} 筆",
+    "sessionDesc_other": "名錄 · 物種 {{count}} 筆",
+    "plotSubtitle_other": "{{type}} · 物種 {{count}} 筆 · {{project}}",
+    "sessionSubtitle_other": "名錄 · 物種 {{count}} 筆 · {{project}}",
+    "imported_other": "已匯入 {{count}} 個地理樣區"
   },
   "keys": {
     "modeDichotomous": "對偶",
@@ -755,11 +767,8 @@
     "noReachable": "沒有可檢索到之分類群",
     "tapOutsideClose": "點擊外圍關閉",
     "notSelected": "未選",
-    "statesSummary": "{{state}} 等 {{count}} 項",
     "features": "特徵 ({{count}})",
     "reset": "重置",
-    "remainingSpecies": "剩 {{count}} 種",
-    "selectedConditions": "已選 {{count}} 條件",
     "clearAll": "清空",
     "noMatchSpecies": "沒有符合條件的物種",
     "descFields": "說明欄位（不參與篩選）",
@@ -776,7 +785,10 @@
     "searchHint": "輸入俗名或學名搜尋檢索表{{br}}或從下方推薦選擇",
     "noMatchKeys": "沒有符合的檢索表",
     "searchPlaceholder": "搜尋檢索表（俗名 / 學名）",
-    "needTaiwanRegion": "檢索表為臺灣（TaiCOL）內容。請到「設定 → 區域名錄」開啟臺灣後再使用。"
+    "needTaiwanRegion": "檢索表為臺灣（TaiCOL）內容。請到「設定 → 區域名錄」開啟臺灣後再使用。",
+    "statesSummary_other": "{{state}} 等 {{count}} 項",
+    "remainingSpecies_other": "剩 {{count}} 種",
+    "selectedConditions_other": "已選 {{count}} 條件"
   },
   "conservation": {
     "invasiveShort": "侵",
@@ -792,7 +804,7 @@
     "individuals": "個體數 (individuals)",
     "cover": "覆蓋度 (% cover)",
     "dbh": "胸高直徑 (DBH, cm)",
-    "stems": "{{count}} 分枝"
+    "stems_other": "{{count}} 分枝"
   },
   "plotValue": {
     "layer": "分層 {{layer}}",
@@ -811,11 +823,11 @@
     "quantity": "數量 (organismQuantity)",
     "enterCount": "輸入個體數",
     "dbhPlaceholder": "輸入後按 Enter 或 +",
-    "dbhSummary": "共 {{count}} 分枝",
     "noStems": "尚未輸入分枝",
     "customUnit": "自訂單位 (organismQuantityType)",
     "customUnitPlaceholder": "例: 莖節數 / 鳴叫次數 / biomass(g)",
-    "customQtyPlaceholder": "例: 3 或 1.2 或 abundant"
+    "customQtyPlaceholder": "例: 3 或 1.2 或 abundant",
+    "dbhSummary_other": "共 {{count}} 分枝"
   },
   "clipboard": {
     "copied": "已複製：{{label}}",
@@ -835,20 +847,20 @@
     "label": "穿越線軌跡",
     "stopped": "已停止",
     "paused": "已暫停",
-    "summary": "{{segments}} 段 · {{points}} 點 · {{length}}",
     "notStarted": "尚未開始記錄軌跡（物種輸入需此資料）",
     "pause": "暫停",
     "stopSave": "停止並儲存",
     "resume": "繼續",
     "start": "開始記錄",
-    "preview": "預覽"
+    "preview": "預覽",
+    "summary_other": "{{count}} 段 · {{points}} 點 · {{length}}"
   },
   "layerSheet": {
     "title": "WMTS 疊圖圖層",
     "current": "目前疊圖：{{title}}",
     "opacity": "不透明",
-    "searchPlaceholder": "搜尋 {{count}} 個圖層",
-    "noMatch": "沒有符合的圖層"
+    "noMatch": "沒有符合的圖層",
+    "searchPlaceholder_other": "搜尋 {{count}} 個圖層"
   },
   "notes": {
     "placeholder": "輸入備註（觀察行為、環境條件等）"
@@ -869,7 +881,6 @@
     "movedTo": "已移至 {{layer}}",
     "pointCountRecord": "定點計數記錄",
     "transectRecord": "穿越線記錄",
-    "recordedCount": " · 已記 {{count}} 筆",
     "inputLayer": "輸入分層",
     "emptyHint": "從下方搜尋加入物種",
     "emptyHintStratified": "選擇分層後從下方搜尋加入物種",
@@ -879,7 +890,8 @@
     "height": "高",
     "changeTaxon": "更換物種",
     "changeTaxonBanner": "更換「{{name}}」的物種：用下方搜尋選擇",
-    "taxonChanged": "已改為 {{name}}"
+    "taxonChanged": "已改為 {{name}}",
+    "recordedCount_other": " · 已記 {{count}} 筆"
   },
   "sheets": {
     "assignSite": "指定地理樣區",
@@ -909,9 +921,9 @@
     "locationDesc": "位置說明",
     "note": "備註",
     "saveSite": "儲存地理樣區",
-    "siteTypeVertices": "類型：{{type}} · {{count}} 個頂點",
     "siteNameEx": "例：A 地理樣區",
-    "siteNotesEx": "描述地點、海拔、植被等"
+    "siteNotesEx": "描述地點、海拔、植被等",
+    "siteTypeVertices_other": "類型：{{type}} · {{count}} 個頂點"
   },
   "exportPref": {
     "title": "匯出設定",
@@ -941,21 +953,23 @@
     "readFail": "讀檔失敗",
     "importN": "匯入 {{n}}",
     "partial": "部分匯入",
-    "partialMsg": "共 {{total}} 筆，成功 {{added}} 筆",
+    "partialMsg": "{{total}}，{{added}}",
     "title": "匯入地理檔案",
     "create": "建立 {{n}}",
     "supportHint": "支援 GeoJSON / KML / GPX / WKT 檔案。",
     "multiHint": "MultiPoint / MultiLineString / MultiPolygon 自動保留結構。",
     "pickFile": "選擇檔案",
-    "geomSummary": "共 {{count}} 個幾何，將建立 {{count}} 個地理樣區",
     "namePrefix": "名稱前綴",
     "namePrefixEx": "例：浸水營",
     "namePrefixHint": "原始檔內已有名稱會優先使用；多筆幾何會加 #1, #2 ...",
     "geomPreview": "幾何預覽",
     "defaultPrefix": "匯入",
-    "moreNotListed": "（另有 {{count}} 筆未列出）",
     "anotherFile": "換另一個檔案",
-    "targetProject": "目標專案："
+    "targetProject": "目標專案：",
+    "geomSummary_other": "共 {{count}} 個幾何，將建立 {{count}} 個地理樣區",
+    "moreNotListed_other": "（另有 {{count}} 筆未列出）",
+    "nTotal_other": "共 {{count}} 筆",
+    "nSucceeded_other": "成功 {{count}} 筆"
   },
   "batchImport": {
     "readFail": "讀檔失敗",
@@ -963,16 +977,14 @@
     "noNamesVoice": "請用語音唸出物種名，以句號分隔",
     "noNamesText": "請輸入或貼上每行一個名稱",
     "done": "匯入完成",
-    "doneMsg": "已加入 {{added}} 筆，略過 {{skipped}} 筆（重複或缺 taxon_id）",
+    "doneMsg": "{{added}}，{{skipped}}（重複或缺 taxon_id）",
     "title": "批次匯入",
-    "previewTitle": "預覽（將加入 {{count}} 筆）",
     "preview": "預覽",
     "add": "加入",
     "paste": "貼上",
     "voice": "語音",
     "inputHint": "每行一個名稱（俗名 / 學名 / 科）。也可讀入 .yml / .zip 匯出檔（只取物種名單；要還原整筆記錄請用 ＋ →「匯入記錄」）。",
     "readFromFile": "從檔案讀入",
-    "fileLoaded": "已讀取 {{count}} 筆名稱",
     "fileHint": "檔案內容已解析，按右上「預覽」開始比對；點 ✕ 可移除改用手動輸入。",
     "noNamesFile": "這個檔案裡找不到物種名稱或 taxon_id",
     "pickedFileFallback": "已選檔案",
@@ -987,7 +999,11 @@
     "skipThis": "略過此筆",
     "notFoundTitle": "找不到 ({{count}})",
     "notFoundHint": "這些名稱在 TaiCOL 找不到，將被忽略",
-    "nothingToImport": "沒有可匯入的內容"
+    "nothingToImport": "沒有可匯入的內容",
+    "previewTitle_other": "預覽（將加入 {{count}} 筆）",
+    "fileLoaded_other": "已讀取 {{count}} 筆名稱",
+    "nAdded_other": "已加入 {{count}} 筆",
+    "nSkipped_other": "略過 {{count}} 筆"
   },
   "splash": {
     "starting": "正在啟動...",
@@ -1029,11 +1045,11 @@
     "libPerm": "需要照片庫寫入權限"
   },
   "recordsList": {
-    "sessionSubtitle": "{{count}} 筆 · {{project}}",
-    "plotSubtitle": "{{count}} 筆 · {{protocol}}{{size}}",
-    "collectionSubtitle": "{{count}} 份標本 · {{project}}",
-    "sessionSubtitleNoProject": "{{count}} 筆",
-    "collectionSubtitleNoProject": "{{count}} 份標本"
+    "sessionSubtitle_other": "{{count}} 筆 · {{project}}",
+    "plotSubtitle_other": "{{count}} 筆 · {{protocol}}{{size}}",
+    "collectionSubtitle_other": "{{count}} 份標本 · {{project}}",
+    "sessionSubtitleNoProject_other": "{{count}} 筆",
+    "collectionSubtitleNoProject_other": "{{count}} 份標本"
   },
   "plotImport": {
     "invalidYml": "不是有效的樣區 yml（缺 plot 區塊）",
@@ -1064,7 +1080,6 @@
   "collection": {
     "title": "採集記錄",
     "missing": "找不到這筆採集記錄",
-    "specimenCount": "{{count}} 份",
     "recordNumber": "採集號",
     "recordNumberHint": "同一採集者的採集號為全域連號；可自行改寫，之後的編號會接續新號碼。",
     "collector": "採集者",
@@ -1104,7 +1119,6 @@
     "sortNumber": "採集號",
     "sortFamily": "科名",
     "sortName": "學名",
-    "selectedCount": "已選 {{count}} 份",
     "exportLabels": "匯出標籤",
     "labelSheetTitle": "標本標籤",
     "labelSheetDesc": "A4,每頁 10 張(2 欄 × 5 列),虛線為裁切線。",
@@ -1112,10 +1126,12 @@
     "labelHeadingPlaceholder": "例:Flora of Taiwan",
     "labelIncludeFamily": "包含科名",
     "labelIncludeFamilyHint": "以「學名 中文名」呈現,例:Lauraceae 樟科",
-    "labelExportCount": "匯出 {{count}} 張標籤",
     "labelNoneSelected": "請先選擇標本",
     "determiner": "鑑定者",
-    "determinerEmpty": "尚未指定鑑定者"
+    "determinerEmpty": "尚未指定鑑定者",
+    "specimenCount_other": "{{count}} 份",
+    "selectedCount_other": "已選 {{count}} 份",
+    "labelExportCount_other": "匯出 {{count}} 張標籤"
   },
   "areaSpecies": {
     "fab": "查詢範圍物種",
@@ -1147,18 +1163,13 @@
     "errServer": "伺服器回應錯誤（{{status}}）",
     "errAborted": "已取消查詢",
     "errParse": "無法解析伺服器回應",
-    "found": "取得 {{count}} 種（範圍內共 {{total}} 種）",
+    "found": "{{got}}（{{inArea}}）",
     "truncated": "超過 {{max}} 種上限，僅取前 {{max}} 種。縮小範圍可取得完整名單。",
     "breakdown": "已對應 {{matched}}・待確認 {{ambiguous}}・名錄未收錄 {{unmatched}}",
-    "obs": "{{count}} 筆觀察",
-    "tapToPick": "點選以確認（{{count}} 個候選）",
     "viaSynonym": "以異名「{{name}}」比對",
     "pickMsg": "此學名對應到多筆本地名錄物種，請選擇正確者。",
-    "includeUnmatched": "一併加入未收錄的 {{count}} 種",
     "includeUnmatchedHint": "以 iNaturalist 的分類資料建立外部物種，可離線檢視，但沒有保育狀態等欄位。",
     "folderPlaceholder": "名錄名稱,例:陽明山鳥類",
-    "createFolder": "建立名錄並加入 {{count}} 種",
-    "imported": "已建立「{{name}}」，加入 {{count}} 種",
     "source": "資料來源",
     "sourceINat": "iNaturalist",
     "sourceGbif": "GBIF",
@@ -1171,10 +1182,9 @@
     "errOffline": "裝置似乎沒有網路連線。請移動到有訊號處再試。",
     "errTimeout": "連線逾時,訊號可能太弱。",
     "errService": "服務暫時無法回應,稍後再試。",
-    "refine": "以 GBIF 校正 {{count}} 個未比對名稱",
     "refining": "校正中⋯({{done}}/{{of}})",
     "refineHint": "每個名稱送一次 GBIF 查詢,取得建立外部物種所需的識別碼(GBIF 範圍查詢不會回傳識別碼)。順帶嘗試把同物異名解析回本地名錄。",
-    "refineDone": "校正完成:{{keyed}} 個可建立外部物種、{{rescued}} 個解析回本地名錄、{{unknown}} 個 GBIF 也查無。",
+    "refineDone": "校正完成：{{keyed}}、{{rescued}}、{{unknown}}。",
     "needRefine": "需先執行上方的 GBIF 校正才能取得識別碼。",
     "viaGbif": "GBIF 接受名:{{name}}",
     "errServerDetail": "伺服器回應錯誤({{status}}):{{detail}}",
@@ -1182,14 +1192,25 @@
     "fabVisible": "查詢畫面範圍物種",
     "targetTitle": "加入到",
     "targetNew": "新增常用名錄",
-    "addToFolder": "加入 {{count}} 種到「{{name}}」",
     "drawAreaHint": "點按地圖重畫此名錄的範圍",
     "areaSaved": "已更新名錄範圍",
     "selfIntersectDraw": "所繪範圍自我相交,請重畫",
     "simplifiedNote": "所繪範圍無法直接使用(頂點不足或自我相交),已改用外接矩形。若要用多邊形請重畫。",
     "areaSavedBox": "所繪範圍無法直接使用,已存為外接矩形",
     "matching": "比對名錄中⋯({{done}}/{{of}})",
-    "errRateLimit": "GBIF 請求過於頻繁,已被暫時限制。請稍候幾分鐘再試,或縮小查詢範圍與類群。"
+    "errRateLimit": "GBIF 請求過於頻繁,已被暫時限制。請稍候幾分鐘再試,或縮小查詢範圍與類群。",
+    "obs_other": "{{count}} 筆觀察",
+    "tapToPick_other": "點選以確認（{{count}} 個候選）",
+    "includeUnmatched_other": "一併加入未收錄的 {{count}} 種",
+    "createFolder_other": "建立名錄並加入 {{count}} 種",
+    "imported_other": "已建立「{{name}}」，加入 {{count}} 種",
+    "refine_other": "以 GBIF 校正 {{count}} 個未比對名稱",
+    "addToFolder_other": "加入 {{count}} 種到「{{name}}」",
+    "nGot_other": "取得 {{count}} 種",
+    "nInArea_other": "範圍內共 {{count}} 種",
+    "nKeyed_other": "{{count}} 個可建立外部物種",
+    "nRescued_other": "{{count}} 個解析回本地名錄",
+    "nUnknownToGbif_other": "{{count}} 個 GBIF 也查無"
   },
   "recordImport": {
     "unsupportedCollection": "採集記錄目前無法匯入，僅支援名錄與樣區。",
@@ -1202,11 +1223,11 @@
     "photoKeepExisting": "沿用既有照片",
     "photoReimport": "重新匯入（相簿會多出照片）",
     "doneTitle": "匯入完成",
-    "doneRecords": "已匯入 {{count}} 筆物種記錄",
-    "doneRemapped": "{{count}} 筆以學名重新對應 taxon_id",
-    "doneUnresolved": "{{count}} 筆在本機名錄查無 taxon_id，仍已匯入",
-    "donePhotosSkipped": "{{count}} 張照片未匯入（權限或檔案無法讀取）",
-    "photoProgress": "正在匯入照片 {{done}}/{{total}}…"
+    "photoProgress": "正在匯入照片 {{done}}/{{total}}…",
+    "doneRecords_other": "已匯入 {{count}} 筆物種記錄",
+    "doneRemapped_other": "{{count}} 筆以學名重新對應 taxon_id",
+    "doneUnresolved_other": "{{count}} 筆在本機名錄查無 taxon_id，仍已匯入",
+    "donePhotosSkipped_other": "{{count}} 張照片未匯入（權限或檔案無法讀取）"
   },
   "gbifLookup": {
     "title": "GBIF 查名",
@@ -1241,8 +1262,12 @@
     "useMineSameTaxonMisapplied": "用「{{name}}」，並認定它就是「{{accepted}}」"
   },
   "projectDetail": {
-    "stats": "名錄 {{sessions}} · 樣區 {{plots}} · 採集 {{collections}} · 地理樣區 {{sites}}",
-    "empty": "此專案還沒有任何記錄"
+    "stats": "{{sessions}} · {{plots}} · {{collections}} · {{sites}}",
+    "empty": "此專案還沒有任何記錄",
+    "nChecklists_other": "名錄 {{count}}",
+    "nPlots_other": "樣區 {{count}}",
+    "nCollections_other": "採集 {{count}}",
+    "nSites_other": "地理樣區 {{count}}"
   },
   "projectExport": {
     "title": "專案匯出",
@@ -1269,7 +1294,8 @@
     "byLayer": "分層矩陣",
     "byLayerHint": "另出一份物種×層展開的矩陣（species_matrix_by_layer.csv）",
     "prefSection": "專案匯出（分析資料）",
-    "itemReport": "研究分析報表（{{formats}}）"
+    "itemReport": "研究分析報表（{{formats}}）",
+    "itemChecklist": "全專案合併物種名錄（{{formats}}）"
   },
   "regionPacks": {
     "intro": "「國家名錄包」由 GBIF 出現紀錄彙整而成（非權威名錄），下載後即可離線搜尋該國物種。需要 GBIF 帳號",
@@ -1288,7 +1314,6 @@
     "requestFailed": "下載請求失敗",
     "requested": "已送出，GBIF 正在準備檔案⋯",
     "ready": "國家名錄已就緒",
-    "readyCount": "{{count}} 筆物種名",
     "failed": "失敗",
     "pending": "尚未完成，點「繼續」或「重試」恢復",
     "waiting": "GBIF 處理中・已等候 {{elapsed}}。可離開此頁，下載會自動繼續",
@@ -1326,7 +1351,8 @@
     "builtinTwSub": "TaiCOL 臺灣物種名錄・全生物類群・約 24 萬筆",
     "builtinJpSub": "JBIF 與 YList 名錄・約 2.6 萬筆",
     "introRegister": "（未註冊請按此）",
-    "introEnd": "。"
+    "introEnd": "。",
+    "readyCount_other": "{{count}} 筆物種名"
   },
   "manualTaxon": {
     "createOwn": "自行建立物種",
@@ -1365,7 +1391,6 @@
     "richness": "物種數 S",
     "shannon": "Shannon H′",
     "simpson": "Simpson 1−D",
-    "effective": "≈ {{n}} 有效種",
     "estimateGte": "估計總物種數 ≥ {{n}}",
     "completeness": "完整度約 {{pct}}",
     "completenessShort": "完整度 {{pct}}",
@@ -1386,20 +1411,16 @@
     },
     "crossTitle": "取樣努力量（跨樣區 Chao2）",
     "crossHint": "以整個樣區為取樣單位估計此範圍的物種庫。請只勾選同一地區、同一植群型、同一方法的樣區——混合不同物種庫的樣區在統計上可算，但解讀沒有意義。",
-    "sppCount": "{{n}} 種",
-    "crossResult": "{{n}} 個樣區・已記錄 {{sObs}} 種・估計物種庫 ≥ {{est}} 種",
     "crossQ": "q1（僅 1 樣區出現）{{q1}}・q2 {{q2}}",
     "crossNeedTwo": "至少勾選 2 個樣區才能計算 Chao2。",
     "crossEmpty": "勾選的樣區尚無物種記錄。",
     "chipLabel": "Chao2 {{pct}}",
-    "selectedPlots": "以勾選的 {{n}} 個樣區為取樣單位",
     "evenness": "均勻度 J′",
     "betaTitle": "β 相似度：{{a}} × {{b}}",
     "betaShared": "共同 {{c}} 種",
     "betaOnly": "獨有 {{a}}／{{b}} 種",
     "betaNeedTwo": "勾選恰 2 個樣區可比較 β 相似度（Sørensen／Jaccard）。",
     "bergerParker": "優勢度 d",
-    "hillInf": "≈ {{n}} 有效優勢種",
     "dominantSpecies": "優勢種（前 3）",
     "freqShort": "頻度 {{pct}}",
     "dominantNote": "百分比為該基礎下的相對值（相對覆蓋度／相對密度／相對斷面積）。",
@@ -1412,7 +1433,12 @@
       "custom": "自訂",
       "mixed": "混用",
       "none": "無"
-    }
+    },
+    "sppCount_other": "{{count}} 種",
+    "crossResult_other": "{{count}} 個樣區・已記錄 {{sObs}} 種・估計物種庫 ≥ {{est}} 種",
+    "selectedPlots_other": "以勾選的 {{count}} 個樣區為取樣單位",
+    "effective": "≈ {{n}} 有效種",
+    "hillInf": "≈ {{n}} 有效優勢種"
   },
   "report": {
     "navTitle": "分析報表",
@@ -1466,8 +1492,6 @@
     "chartLayers": "各層覆蓋度",
     "chartComposition": "各科物種數（前 15）",
     "unitSpecies": "種",
-    "speciesSummary": "本樣區共記錄 {{count}} 種。",
-    "compositionSummary": "共 {{families}} 科。",
     "conservationNote": "統計以物種為單位；紅皮書與 IUCN 已排除 LC／NLC／NE／NA 等非受脅等級。",
     "coverOver100": "地表覆蓋合計 {{total}}%，超過 100%，請檢查輸入值。",
     "samplingUnits": "取樣單位數",
@@ -1501,7 +1525,7 @@
     "seriesEstimated": "估計",
     "crossChao2": "跨樣區 Chao2",
     "crossChao2Note": "以整個樣區為取樣單位估計此範圍的物種庫；請確認各樣區屬同一地區、同一植群型、同一方法。",
-    "projectSpeciesSummary": "全專案共記錄 {{count}} 種，來自 {{plots}} 個樣區。",
+    "projectSpeciesSummary": "全專案共記錄 {{species}}，來自 {{plots}}。",
     "similarityNote": "Sørensen = 2C/(A+B)，以物種出現與否計算，與豐度無關。",
     "matrixTruncated": "僅列出前 {{shown}} 個樣區（共 {{total}} 個）。",
     "exportFormat": "匯出格式",
@@ -1560,8 +1584,6 @@
       "cover": "優勢度以相對覆蓋度計，非斷面積。"
     },
     "individualsPerHa": "每公頃個體數",
-    "abundanceDbh": "{{n}} 分枝（DBH {{range}} cm）",
-    "abundanceCount": "{{n}} 個體",
     "simpsonLambda": "Simpson 指數",
     "hillE5": "Hill 均勻度比",
     "colBasalAreaHa": "底面積 (m²/ha)",
@@ -1603,18 +1625,20 @@
     "dq": {
       "records": "記錄筆數",
       "species": "物種數",
-      "noAbundance": "{{records}} 筆記錄未填豐度（涉及 {{species}} 個僅有出現記錄的物種）；多樣性指數僅以有數量者計算。",
-      "genusOnly": "{{n}} 筆鑑定僅到屬（如 {{examples}}）；此類記錄會使物種數偏高。",
-      "aboveGenus": "{{n}} 筆鑑定在屬以上（如 {{examples}}）；不宜計入物種數。",
-      "rankUnknown": "{{n}} 個分類群缺少階層資訊，無法判斷是否為種級。",
+      "noAbundance": "{{records}}（{{species}}）；多樣性指數僅以有數量者計算。",
       "mixedUnits": "豐度單位混用（{{kinds}}）；跨單位的數值不可直接相加，指數僅供參考。",
-      "unparseable": "{{n}} 筆數量無法解析為數值（如 {{examples}}）。",
-      "singletons": "{{n}} 個物種僅記錄到 1 個體（singleton）；Chao 估計主要由此類稀有種決定。",
-      "doubletons": "{{n}} 個物種僅記錄到 2 個體（doubleton）。",
-      "noLayer": "{{n}} 筆記錄未指定分層。",
-      "noSubplot": "{{n}} 筆記錄未指定小區；出現度相關計算會略過這些記錄。",
       "clean": "未偵測到影響上述統計的資料問題。",
-      "note": "本節僅陳述事實，不代表資料有誤——鑑定到屬是常見的野外實務，但會影響物種數，故列出供判讀。"
+      "note": "本節僅陳述事實，不代表資料有誤——鑑定到屬是常見的野外實務，但會影響物種數，故列出供判讀。",
+      "genusOnly_other": "{{count}} 筆鑑定僅到屬（如 {{examples}}）；此類記錄會使物種數偏高。",
+      "aboveGenus_other": "{{count}} 筆鑑定在屬以上（如 {{examples}}）；不宜計入物種數。",
+      "rankUnknown_other": "{{count}} 個分類群缺少階層資訊，無法判斷是否為種級。",
+      "unparseable_other": "{{count}} 筆數量無法解析為數值（如 {{examples}}）。",
+      "singletons_other": "{{count}} 個物種僅記錄到 1 個體（singleton）；Chao 估計主要由此類稀有種決定。",
+      "doubletons_other": "{{count}} 個物種僅記錄到 2 個體（doubleton）。",
+      "noLayer_other": "{{count}} 筆記錄未指定分層。",
+      "noSubplot_other": "{{count}} 筆記錄未指定小區；出現度相關計算會略過這些記錄。",
+      "nNoQuantity_other": "{{count}} 筆記錄未填豐度",
+      "nPresenceOnly_other": "涉及 {{count}} 個僅有出現記錄的物種"
     },
     "methodsSpecIndices": "歧異度指數依「植物生態評估技術規範」附件二所列之 S、λ、H′、N₁=e^H′、N₂=1/λ、E5=[(1/λ)−1]/[e^H′−1]（Ludwig & Reynolds, 1988）。木本資料同時以斷面積與株數兩種基礎計算並列。",
     "methodsStand": "每公頃株數與斷面積以樣區面積換算；斷面積由各分枝胸高直徑計算 Σπ(d/2)²。面積來源（小區長寬相加／點計數 πr²／樣區大小欄位）於該節註記標明；單位無法辨識時不換算並說明原因。",
@@ -1628,12 +1652,68 @@
     "axisRelAbundance": "相對豐度 (%)",
     "seriesRelAbundance": "相對豐度",
     "rankAbundanceNote": "縱軸為對數尺度；曲線陡直代表少數種主導，平緩長尾代表組成均勻。此形態無法由單一指數呈現。",
-    "rankAbundanceDropped": "{{n}} 個物種因無正值豐度未納入曲線。",
     "rankAbundanceMixed": "豐度單位混用，不同單位的數值無法排序比較，故不繪製種—豐度序列。",
     "chartProfile": "植群垂直剖面",
     "axisHeightM": "高度 (m)",
-    "profileMissingHeight": "{{n}} 個分層未填高度，無法置於高度軸上，僅列於表中。",
     "profileDegraded": "Word 版各層等距排列（DrawingML 無法同時編碼位置與覆蓋度），公尺座標剖面請見 HTML 版或 app 內。",
-    "profileNoHeights": "各分層皆未填高度，改以覆蓋度長條呈現。"
+    "profileNoHeights": "各分層皆未填高度，改以覆蓋度長條呈現。",
+    "speciesSummary_other": "本樣區共記錄 {{count}} 種。",
+    "compositionSummary_other": "共 {{count}} 科。",
+    "abundanceDbh_other": "{{count}} 分枝（DBH {{range}} cm）",
+    "abundanceCount_other": "{{count}} 個體",
+    "rankAbundanceDropped_other": "{{count}} 個物種因無正值豐度未納入曲線。",
+    "profileMissingHeight_other": "{{count}} 個分層未填高度，無法置於高度軸上，僅列於表中。",
+    "nSpeciesRecorded_other": "{{count}} 種",
+    "nPlotsAcross_other": "{{count}} 個樣區"
+  },
+  "checklistDoc": {
+    "title": "物種名錄",
+    "titleWithProject": "{{project}}物種名錄",
+    "site": "樣區：",
+    "summary": "本名錄共有 {{families}}、{{species}}。\"#\" 代表特有種，\"*\" 代表歸化種，\"†\" 代表栽培種，\"‡\" 代表圈養種。",
+    "attributes": "物種屬性：{{stats}}。",
+    "conservation": "保育統計：{{stats}}。",
+    "redlist": "臺灣紅皮書：{{parts}}",
+    "iucn": "IUCN：{{parts}}",
+    "cites": "CITES：{{parts}}",
+    "citesAppendix": "附錄{{cat}}",
+    "protectedStat": "保育類：{{parts}}",
+    "culturalHeritageRare": "文資法珍稀",
+    "listSep": "、",
+    "statSep": "；",
+    "protected": {
+      "I": "瀕臨絕種",
+      "II": "珍貴稀有",
+      "III": "其他應予保育"
+    },
+    "plantGroup": {
+      "mossesLichens": "苔蘚地衣類植物 Mosses and Lichens",
+      "lycophytes": "石松類植物 Lycophytes",
+      "monilophytes": "蕨類植物 Monilophytes",
+      "gymnosperms": "裸子植物 Gymnosperms",
+      "monocots": "單子葉植物 Monocots",
+      "sisterEudicots": "真雙子葉植物姊妹群 Sister groups of Eudicots",
+      "eudicots": "真雙子葉植物 Eudicots",
+      "angiosperms": "被子植物 Angiosperms"
+    },
+    "group": {
+      "Tracheophyta": "維管束植物",
+      "Bryophyta": "苔蘚植物",
+      "Aves": "鳥綱",
+      "Insecta": "昆蟲綱",
+      "Mammalia": "哺乳綱",
+      "Reptilia": "爬行綱",
+      "Amphibia": "兩生綱",
+      "Actinopteri": "輻鰭魚綱",
+      "Arachnida": "蛛形綱",
+      "Gastropoda": "腹足綱",
+      "Bivalvia": "雙殼綱",
+      "Malacostraca": "軟甲綱",
+      "Ascomycota": "子囊菌門",
+      "Basidiomycota": "擔子菌門",
+      "Mollusca": "軟體動物門"
+    },
+    "familyCount_other": "{{count}} 科",
+    "speciesCount_other": "{{count}} 種"
   }
 }

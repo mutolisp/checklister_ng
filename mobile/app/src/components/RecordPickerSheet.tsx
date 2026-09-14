@@ -88,7 +88,10 @@ export function RecordPickerSheet({ visible, records, onCancel, onConfirm }: Pro
                   {t('favorites.importFromRecord')}
                 </Text>
                 <Text className="mt-0.5 text-center text-xs text-gray-500 dark:text-gray-400">
-                  {t('favorites.pickerSummary', { records: selected.size, species: totalSpecies })}
+                  {t('favorites.pickerSummary', {
+                    records: t('favorites.nRecordsSelected', { count: selected.size }),
+                    species: t('favorites.nSpeciesTotal', { count: totalSpecies }),
+                  })}
                 </Text>
               </View>
               <Pressable

@@ -148,9 +148,10 @@ export function updateSession(id: number, updates: Partial<Session>): void {
 
 export function deleteSession(id: number): void {
   const db = getUserDb();
-  // ON DELETE CASCADE 在這個 app 是失效的：PRAGMA foreign_keys 從未在連線開啟時
-  // 設定，而 op-sqlite 沒有定義 SQLITE_DEFAULT_FOREIGN_KEYS，所以 SQLite 走預設的
-  // OFF。子列必須自己刪，否則會變成看不見卻仍佔用編號的孤兒列。
+  // 子列在 schema 裡都宣告了 ON DELETE CASCADE，而 FK 強制已於 initDb() 末尾開啟
+  // （src/db/init.ts，per-connection、整個 session 有效），所以那些 cascade 現在確實
+  // 會觸發，以下手動刪除在正常路徑上是冗餘的。保留是刻意的 belt-and-braces：delete
+  // helper 不該依賴呼叫當下的 PRAGMA 狀態，漏刪的下場是看不見卻仍佔用編號的孤兒列。
   db.executeSync(`DELETE FROM checklist_records WHERE session_id = ?`, [id]);
   db.executeSync(`DELETE FROM sessions WHERE id = ?`, [id]);
 }

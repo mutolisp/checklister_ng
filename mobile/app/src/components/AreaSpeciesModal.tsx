@@ -254,7 +254,11 @@ export function AreaSpeciesModal({
       );
       setEntries(r.entries);
       setRefineNote(
-        t('areaSpecies.refineDone', { rescued: r.rescued, keyed: r.keyed, unknown: r.unknown }),
+        t('areaSpecies.refineDone', {
+          keyed: t('areaSpecies.nKeyed', { count: r.keyed }),
+          rescued: t('areaSpecies.nRescued', { count: r.rescued }),
+          unknown: t('areaSpecies.nUnknownToGbif', { count: r.unknown }),
+        }),
       );
     } catch (e) {
       setRefineNote(await messageFor(e));
@@ -510,7 +514,10 @@ export function AreaSpeciesModal({
             <>
               <View className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
                 <Text className="text-sm text-gray-900 dark:text-gray-100">
-                  {t('areaSpecies.found', { count: entries.length, total })}
+                  {t('areaSpecies.found', {
+                    got: t('areaSpecies.nGot', { count: entries.length }),
+                    inArea: t('areaSpecies.nInArea', { count: total }),
+                  })}
                 </Text>
                 {truncated ? (
                   <Text className="mt-0.5 text-xs text-amber-600 dark:text-amber-400">

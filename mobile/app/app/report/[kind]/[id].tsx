@@ -14,9 +14,10 @@ import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { showActionSheet } from '~/components/ActionSheet';
+import { pickExportLanguage } from '~/lib/pickExportLanguage';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { ReportView } from '~/components/report/ReportView';
-import i18n, { LANGUAGE_CATALOGUE, type SupportedLanguage } from '~/i18n';
+import i18n from '~/i18n';
 import { sanitizeFilename } from '~/lib/bundleExport';
 import { DOCX_MIME } from '~/lib/docx';
 import { buildReportDocx } from '~/lib/reportDocx';
@@ -69,9 +70,9 @@ export default function ReportScreen() {
 
   /**
    * Export flow: pick a format, then a language (current UI language first, so
-   * the common case is two taps), then render and share. Report language is
-   * deliberately selectable — unlike the checklist exports, which are fixed by
-   * convention.
+   * the common case is two taps), then render and share. Shares the language
+   * sheet with the checklist exports (`pickExportLanguage`), which follow the
+   * same rule: prose and headings translate, names and DwC terms do not.
    */
   const handleShare = async () => {
     if (!report) return;
@@ -85,19 +86,8 @@ export default function ReportScreen() {
     if (fmtIdx < 0) return;
     const docx = fmtIdx === 1;
 
-    const current = i18n.language as SupportedLanguage;
-    const ordered = [
-      ...LANGUAGE_CATALOGUE.filter((l) => l.value === current),
-      ...LANGUAGE_CATALOGUE.filter((l) => l.value !== current),
-    ];
-    const idx = await showActionSheet({
-      title: t('report.exportLanguage'),
-      options: ordered.map((l, i) => ({
-        label: i === 0 ? `${l.native} · ${t('report.currentLanguage')}` : l.native,
-      })),
-    });
-    if (idx < 0) return;
-    const lang = ordered[idx].value;
+    const lang = await pickExportLanguage(t, 'report.exportLanguage');
+    if (!lang) return;
     await shareBundle(async () => {
       // getFixedT gives a translator pinned to `lang` without touching the
       // UI's own language.

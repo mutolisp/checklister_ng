@@ -32,7 +32,6 @@
     "sortTitle": "정렬 방식",
     "notInDb": "이 종은 종명 데이터베이스에 없습니다",
     "addToRecord": "기록에 추가",
-    "count": "{{count}}건",
     "searchPlaceholder": "즐겨찾기에서 검색...",
     "empty": "즐겨찾기가 아직 없습니다. 아래 검색창에서 추가하거나, 종 상세／분류 트리／기록에서 길게 눌러 추가하세요.",
     "noMatch": "일치하는 항목이 없습니다",
@@ -44,13 +43,11 @@
     "addedNamed": "즐겨찾기에 추가했습니다: {{name}}",
     "defaultFolder": "즐겨찾기",
     "allFolders": "모든 목록",
-    "folderCount": "목록 {{count}}개",
     "newFolder": "새 목록",
     "folderNamePlaceholder": "예: 양밍산, 조류, 확인 필요",
     "folderCreated": "목록 \"{{name}}\"을(를) 만들었습니다",
     "renameFolder": "이름 변경",
     "deleteFolder": "목록 삭제",
-    "deleteFolderConfirm": "목록 \"{{name}}\"과(와) 그 안의 {{count}}종을 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
     "folderDeleted": "목록 \"{{name}}\"을(를) 삭제했습니다",
     "emptyFolders": "목록이 아직 없습니다. 오른쪽 위의 새 목록을 누르거나, 종 상세／분류 트리／기록에서 종을 길게 눌러 기본 목록에 추가하세요.",
     "moveTo": "다른 목록으로 이동",
@@ -60,30 +57,40 @@
     "importPaste": "이름을 붙여넣어 대조 후 추가",
     "importFromRecord": "기존 기록에서 가져오기",
     "noRecordsToImport": "종이 포함된 기존 기록이 없습니다",
-    "importDone": "{{added}}종을 추가했습니다 (중복 {{skipped}}, 미해결 {{unresolved}})",
-    "importedCount": "{{count}}종을 추가했습니다",
+    "importDone": "{{added}} ({{skipped}}, {{unresolved}})",
     "kindSession": "종 목록",
     "kindPlot": "조사구",
     "kindCollection": "표본",
     "selectAll": "전체 선택",
     "deselectAll": "전체 선택 해제",
-    "pickerSummary": "기록 {{records}}건, {{species}}종 선택됨",
-    "selectedCount": "{{count}}종 선택됨",
+    "pickerSummary": "{{records}}, {{species}} 선택됨",
     "deleteSelected": "선택 항목 삭제",
-    "deleteSelectedConfirm": "이 목록에서 {{count}}종을 제거합니다. 다른 목록에는 영향이 없습니다.",
-    "deletedCount": "{{count}}종을 제거했습니다",
     "goToFavorites": "이동",
     "area": "목록 범위",
     "areaFrom": "목록 범위 (출처: {{source}})",
     "editArea": "범위 편집",
     "setArea": "이 목록의 범위 설정",
     "fitArea": "범위로 이동",
-    "selectedFolders": "목록 {{count}}개 선택됨",
-    "deleteFoldersConfirm": "목록 {{count}}개와 그 안의 {{species}}종을 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
-    "foldersDeleted": "목록 {{count}}개를 삭제했습니다",
+    "deleteFoldersConfirm": "{{folders}}와 {{species}}을 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
     "exportDocx": "Word(.docx) 내보내기",
     "exportCsv": "스프레드시트(.csv) 내보내기",
-    "exportEmpty": "이 목록에 종이 없습니다"
+    "exportEmpty": "이 목록에 종이 없습니다",
+    "count_other": "{{count}}건",
+    "folderCount_other": "목록 {{count}}개",
+    "deleteFolderConfirm_other": "목록 \"{{name}}\"과(와) 그 안의 {{count}}종을 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+    "importedCount_other": "{{count}}종을 추가했습니다",
+    "selectedCount_other": "{{count}}종 선택됨",
+    "deleteSelectedConfirm_other": "이 목록에서 {{count}}종을 제거합니다. 다른 목록에는 영향이 없습니다.",
+    "deletedCount_other": "{{count}}종을 제거했습니다",
+    "selectedFolders_other": "목록 {{count}}개 선택됨",
+    "foldersDeleted_other": "목록 {{count}}개를 삭제했습니다",
+    "nImported_other": "{{count}}종을 추가했습니다",
+    "nDuplicate_other": "중복 {{count}}",
+    "nUnresolvedNames_other": "미해결 {{count}}",
+    "nRecordsSelected_other": "기록 {{count}}건",
+    "nSpeciesTotal_other": "{{count}}종",
+    "nFolders_other": "목록 {{count}}개",
+    "nSpeciesInThem_other": "그 안의 {{count}}종"
   },
   "gps": {
     "permTitle": "위치 권한이 필요합니다",
@@ -106,7 +113,6 @@
     "removed": "제거함: {{name}}",
     "photoSavedLinked": "앨범에 저장하고 연결했습니다",
     "photoAdded": "사진을 추가했습니다",
-    "photosAdded": "사진 {{count}}장을 추가했습니다",
     "photoFailTitle": "사진을 추가할 수 없습니다",
     "photoRemoved": "사진을 삭제했습니다",
     "projectUpdated": "프로젝트를 업데이트했습니다",
@@ -147,7 +153,8 @@
     "notes": "비고",
     "coordCleared": "좌표를 지웠습니다",
     "coordRecorded": "이 종의 좌표를 기록했습니다",
-    "imported": "{{count}}건을 가져왔습니다"
+    "photosAdded_other": "사진 {{count}}장을 추가했습니다",
+    "imported_other": "{{count}}건을 가져왔습니다"
   },
   "records": {
     "recording": "기록 중",
@@ -157,7 +164,6 @@
     "plotCount": "조사구 {{count}}",
     "noneSelected": "선택된 기록이 없습니다",
     "noExportable": "내보낼 수 있는 기록이 없습니다",
-    "selectedCount": "{{count}}건 선택됨",
     "byProject": "프로젝트",
     "timeline": "타임라인",
     "filterAll": "전체",
@@ -168,8 +174,6 @@
     "emptyHint": "아래 +를 눌러 새 기록을 시작하세요",
     "favorites": "즐겨찾기",
     "deleteTitle": "{{noun}}을(를) 삭제할까요?",
-    "deleteMsg": "\"{{title}}\"과(와) 그 안의 기록 {{count}}건이 모두 삭제됩니다. 되돌릴 수 없습니다.",
-    "collectionCount": "채집 {{count}}",
     "duplicate": "복제",
     "duplicateTitle": "{{noun}} 복제",
     "duplicateFailTitle": "복제 실패",
@@ -184,7 +188,10 @@
     "startNowHint": "복제한 기록이 바로 진행 중인 기록이 됩니다. 다른 진행 중인 기록이 있으면 먼저 종료할지 물어봅니다.",
     "saveToFavorites": "즐겨찾기에 저장",
     "includeSpeciesCollection": "표본의 채집번호는 실물 표본에 부여하는 번호라 미리 발행할 수 없으므로 복제되지 않습니다.",
-    "emptyCreate": "새 기록"
+    "emptyCreate": "새 기록",
+    "selectedCount_other": "{{count}}건 선택됨",
+    "deleteMsg_other": "\"{{title}}\"과(와) 그 안의 기록 {{count}}건이 모두 삭제됩니다. 되돌릴 수 없습니다.",
+    "collectionCount_other": "채집 {{count}}"
   },
   "export": {
     "preparing": "준비 중…",
@@ -197,7 +204,8 @@
     "exportAnyway": "그래도 내보내기",
     "largeTitle": "내보낼 파일이 큽니다",
     "largeMsg": "예상 약 {{size}}입니다. 계속할까요?",
-    "exporting": "내보내는 중…"
+    "exporting": "내보내는 중…",
+    "language": "목록 언어"
   },
   "nav": {
     "session": "종 목록",
@@ -280,7 +288,7 @@
     "Animalia": "기타 동물",
     "limitTitle": "검색 분류군 한정",
     "limitHint": "여러 개 선택할 수 있으며, 체크한 분류군 안에서만 검색합니다",
-    "selectedGroups": "분류군 {{count}}개"
+    "selectedGroups_other": "분류군 {{count}}개"
   },
   "species": {
     "noChineseName": "(중국명 없음)",
@@ -321,7 +329,6 @@
   },
   "attr": {
     "advanced": "고급 (종 속성)",
-    "filledCount": "{{count}}개 입력됨",
     "sexLabel": "성별 (sex)",
     "lifeStageLabel": "생활 단계 (lifeStage)",
     "reproLabel": "꽃·열매 (reproductiveCondition, 다중 선택)",
@@ -358,7 +365,8 @@
       "shedding": "낙엽",
       "green": "녹색 잎",
       "colored": "변색 잎"
-    }
+    },
+    "filledCount_other": "{{count}}개 입력됨"
   },
   "recordCreate": {
     "conflictTitle": "{{noun}}이(가) 이미 진행 중입니다",
@@ -400,12 +408,12 @@
     "endTitle": "기록 종료",
     "emptyMsg": "이 기록에는 아직 항목이 없습니다.",
     "emptyHint": "오른쪽 위 \"삭제\"로 바로 지우거나, 취소를 눌러 돌아가 종을 계속 추가하세요.",
-    "summary": "총 {{count}}건 · 소요 {{duration}}",
     "name": "이름",
     "namePlaceholder": "기록 이름",
     "notesOptional": "비고 (선택)",
     "notesPlaceholder": "이번 조사의 개요, 날씨, 참여자 등",
-    "selectProject": "프로젝트 선택"
+    "selectProject": "프로젝트 선택",
+    "summary_other": "총 {{count}}건 · 소요 {{duration}}"
   },
   "plot": {
     "notFound": "조사구를 찾을 수 없습니다",
@@ -540,16 +548,18 @@
     "integrityDesc": "중복 식별자와 고아 데이터를 읽기 전용으로 점검하며 아무것도 변경하지 않습니다",
     "integrityTitle": "데이터 점검 결과",
     "integrityClean": "문제를 찾지 못했습니다.",
-    "integrityDup": "{{table}}: occurrenceID 중복 {{groups}}개 그룹(총 {{rows}}행)",
-    "integrityOrphan": "{{table}}: 고아 데이터 {{n}}행",
-    "integrityProject": "{{table}}: 삭제된 프로젝트를 가리키는 {{n}}행",
-    "integrityFk": "외래 키 위반 {{n}}건",
+    "integrityDup": "{{table}}: {{groups}}({{rows}})",
     "integrityFailed": "데이터 점검 실패: {{error}}",
     "defaultDeterminer": "기본 동정자",
     "defaultDeterminerPlaceholder": "예: 林政道(Cheng-Tao Lin)",
-    "integrityAdopted": "{{table}}: 채택명 {{n}}건이 현행 목록과 일치하지 않습니다(목록 개정으로 이름이 바뀌었거나 다른 분류군으로 옮겨졌거나 삭제됨). 기록에는 처음 선택한 이름이 그대로 표시되며, 따라 바꿀지는 사용자가 결정합니다.",
     "regionPacks": "지역 종 목록",
-    "regionPacksDesc": "대만, 일본 및 내려받은 국가별 목록을 각각 켜고 끌 수 있습니다"
+    "regionPacksDesc": "대만, 일본 및 내려받은 국가별 목록을 각각 켜고 끌 수 있습니다",
+    "integrityOrphan_other": "{{table}}: 고아 데이터 {{count}}행",
+    "integrityProject_other": "{{table}}: 삭제된 프로젝트를 가리키는 {{count}}행",
+    "integrityFk_other": "외래 키 위반 {{count}}건",
+    "integrityAdopted_other": "{{table}}: 채택명 {{count}}건이 현행 목록과 일치하지 않습니다(목록 개정으로 이름이 바뀌었거나 다른 분류군으로 옮겨졌거나 삭제됨). 기록에는 처음 선택한 이름이 그대로 표시되며, 따라 바꿀지는 사용자가 결정합니다.",
+    "nDupGroups_other": "occurrenceID 중복 {{count}}개 그룹",
+    "nRows_other": "총 {{count}}행"
   },
   "taxonomy": {
     "loadingTree": "분류 트리 불러오는 중...",
@@ -620,8 +630,10 @@
   },
   "projects": {
     "deleteTitle": "프로젝트를 삭제할까요?",
-    "deleteMsg": "「{{name}}」이(가) 삭제됩니다. 이 프로젝트에 속했던 종 목록 {{sessions}}건과 조사구 {{plots}}건은 「미분류」로 돌아갑니다.",
-    "stats": "종 목록 {{sessions}} · 조사구 {{plots}}"
+    "deleteMsg": "「{{name}}」이(가) 삭제됩니다. 이 프로젝트에 속했던 {{sessions}}과 {{plots}}은 「미분류」로 돌아갑니다.",
+    "stats": "종 목록 {{sessions}} · 조사구 {{plots}}",
+    "nChecklists_other": "종 목록 {{count}}건",
+    "nPlots_other": "조사구 {{count}}건"
   },
   "sites": {
     "typePoint": "점",
@@ -635,12 +647,12 @@
     "deleted": "삭제했습니다",
     "noExport": "내보낼 사이트가 없습니다",
     "shareUnavailable": "시스템 공유를 사용할 수 없습니다",
-    "exportTitle": "사이트 {{count}}개 내보내기",
     "title": "사이트 관리",
     "empty": "아직 사이트가 없습니다",
     "emptyHint": "「지도」 탭 → 도구 ⋮ → 사이트 그리기 에서 만들 수 있습니다",
     "goToMap": "지도로 이동",
-    "projectStats": "사이트 {{count}}개"
+    "exportTitle_other": "사이트 {{count}}개 내보내기",
+    "projectStats_other": "사이트 {{count}}개"
   },
   "map": {
     "basemapStandard": "표준",
@@ -673,7 +685,6 @@
     "pickSegTitle": "편집할 이동경로 구간 선택",
     "segLabel": "{{n}}번째 구간({{count}}점)",
     "manyPointsTitle": "이동경로 점이 많습니다",
-    "manyPointsMsg": "이 구간에는 점이 {{count}}개 있어 편집 중 지도가 느려질 수 있습니다. 그래도 편집할까요?",
     "dragVertexHint": "꼭짓점을 끌어 조정하고 누르면 삭제되며, 끝나면 저장하세요",
     "noPlotCoord": "좌표 없음",
     "noPlotCoordMsg": "이 조사구는 GPS 좌표가 없어 위치를 편집할 수 없습니다",
@@ -688,8 +699,6 @@
     "sessionMarkerTitle": "종 목록 #{{id}}",
     "notFound": "「{{q}}」을(를) 찾을 수 없습니다",
     "searchFailed": "검색 실패: {{error}}",
-    "plotDesc": "{{type}} · 종 {{count}}건",
-    "sessionDesc": "종 목록 · 종 {{count}}건",
     "editPointTitle": "점 편집",
     "pointN": "{{n}}번째 점",
     "deletePoint": "이 점 삭제",
@@ -707,10 +716,13 @@
     "nlsc": "NLSC(대만)",
     "sinica": "중앙연구원",
     "overlaid": "중첩 중",
-    "imported": "사이트 {{count}}개를 가져왔습니다",
-    "plotSubtitle": "{{type}} · 종 {{count}}건 · {{project}}",
-    "sessionSubtitle": "종 목록 · 종 {{count}}건 · {{project}}",
-    "noRecordCoord": "이 기록에는 아직 좌표가 없습니다"
+    "noRecordCoord": "이 기록에는 아직 좌표가 없습니다",
+    "manyPointsMsg_other": "이 구간에는 점이 {{count}}개 있어 편집 중 지도가 느려질 수 있습니다. 그래도 편집할까요?",
+    "plotDesc_other": "{{type}} · 종 {{count}}건",
+    "sessionDesc_other": "종 목록 · 종 {{count}}건",
+    "plotSubtitle_other": "{{type}} · 종 {{count}}건 · {{project}}",
+    "sessionSubtitle_other": "종 목록 · 종 {{count}}건 · {{project}}",
+    "imported_other": "사이트 {{count}}개를 가져왔습니다"
   },
   "keys": {
     "modeDichotomous": "이분법",
@@ -755,11 +767,8 @@
     "noReachable": "도달할 수 있는 분류군이 없습니다",
     "tapOutsideClose": "바깥쪽을 누르면 닫힙니다",
     "notSelected": "미선택",
-    "statesSummary": "{{state}} 등 {{count}}개 항목",
     "features": "형질 ({{count}})",
     "reset": "초기화",
-    "remainingSpecies": "{{count}}종 남음",
-    "selectedConditions": "조건 {{count}}개 선택됨",
     "clearAll": "비우기",
     "noMatchSpecies": "조건에 맞는 종이 없습니다",
     "descFields": "설명 항목(필터링에 사용하지 않음)",
@@ -776,7 +785,10 @@
     "searchHint": "일반명 또는 학명을 입력해 검색표를 검색{{br}}또는 아래 추천에서 고르세요",
     "noMatchKeys": "일치하는 검색표가 없습니다",
     "searchPlaceholder": "검색표 검색(일반명 / 학명)",
-    "needTaiwanRegion": "검색표는 대만(TaiCOL) 콘텐츠입니다. 「설정 → 지역 종 목록」에서 대만을 켠 뒤 사용하세요."
+    "needTaiwanRegion": "검색표는 대만(TaiCOL) 콘텐츠입니다. 「설정 → 지역 종 목록」에서 대만을 켠 뒤 사용하세요.",
+    "statesSummary_other": "{{state}} 등 {{count}}개 항목",
+    "remainingSpecies_other": "{{count}}종 남음",
+    "selectedConditions_other": "조건 {{count}}개 선택됨"
   },
   "conservation": {
     "invasiveShort": "침",
@@ -792,7 +804,7 @@
     "individuals": "개체수 (individuals)",
     "cover": "피도 (% cover)",
     "dbh": "흉고직경 (DBH, cm)",
-    "stems": "줄기 {{count}}개"
+    "stems_other": "줄기 {{count}}개"
   },
   "plotValue": {
     "layer": "층위 {{layer}}",
@@ -811,11 +823,11 @@
     "quantity": "수량 (organismQuantity)",
     "enterCount": "개체수 입력",
     "dbhPlaceholder": "입력 후 Enter 또는 + 를 누르세요",
-    "dbhSummary": "총 줄기 {{count}}개",
     "noStems": "아직 입력한 줄기가 없습니다",
     "customUnit": "사용자 지정 단위 (organismQuantityType)",
     "customUnitPlaceholder": "예: 마디 수 / 울음 횟수 / biomass(g)",
-    "customQtyPlaceholder": "예: 3 또는 1.2 또는 abundant"
+    "customQtyPlaceholder": "예: 3 또는 1.2 또는 abundant",
+    "dbhSummary_other": "총 줄기 {{count}}개"
   },
   "clipboard": {
     "copied": "복사했습니다: {{label}}",
@@ -835,20 +847,20 @@
     "label": "트랜섹트 이동경로",
     "stopped": "정지됨",
     "paused": "일시정지됨",
-    "summary": "{{segments}}구간 · {{points}}점 · {{length}}",
     "notStarted": "이동경로 기록을 시작하지 않았습니다(종 입력에 필요)",
     "pause": "일시정지",
     "stopSave": "정지 후 저장",
     "resume": "재개",
     "start": "기록 시작",
-    "preview": "미리보기"
+    "preview": "미리보기",
+    "summary_other": "{{count}}구간 · {{points}}점 · {{length}}"
   },
   "layerSheet": {
     "title": "WMTS 중첩 레이어",
     "current": "현재 중첩: {{title}}",
     "opacity": "불투명도",
-    "searchPlaceholder": "레이어 {{count}}개 검색",
-    "noMatch": "일치하는 레이어가 없습니다"
+    "noMatch": "일치하는 레이어가 없습니다",
+    "searchPlaceholder_other": "레이어 {{count}}개 검색"
   },
   "notes": {
     "placeholder": "비고 입력(행동 관찰, 환경 조건 등)"
@@ -869,7 +881,6 @@
     "movedTo": "{{layer}}(으)로 옮겼습니다",
     "pointCountRecord": "정점 조사 기록",
     "transectRecord": "트랜섹트 기록",
-    "recordedCount": " · {{count}}건 기록됨",
     "inputLayer": "입력 층위",
     "emptyHint": "아래에서 검색해 종을 추가하세요",
     "emptyHintStratified": "층위를 고른 뒤 아래에서 검색해 종을 추가하세요",
@@ -879,7 +890,8 @@
     "height": "높이",
     "changeTaxon": "종 변경",
     "changeTaxonBanner": "「{{name}}」의 종 변경: 아래 검색에서 고르세요",
-    "taxonChanged": "{{name}}(으)로 변경했습니다"
+    "taxonChanged": "{{name}}(으)로 변경했습니다",
+    "recordedCount_other": " · {{count}}건 기록됨"
   },
   "sheets": {
     "assignSite": "사이트 지정",
@@ -909,9 +921,9 @@
     "locationDesc": "위치 설명",
     "note": "비고",
     "saveSite": "사이트 저장",
-    "siteTypeVertices": "유형: {{type}} · 꼭짓점 {{count}}개",
     "siteNameEx": "예: 사이트 A",
-    "siteNotesEx": "장소, 해발고도, 식생 등을 적으세요"
+    "siteNotesEx": "장소, 해발고도, 식생 등을 적으세요",
+    "siteTypeVertices_other": "유형: {{type}} · 꼭짓점 {{count}}개"
   },
   "exportPref": {
     "title": "내보내기 설정",
@@ -941,21 +953,23 @@
     "readFail": "파일 읽기 실패",
     "importN": "{{n}}건 가져오기",
     "partial": "일부만 가져옴",
-    "partialMsg": "총 {{total}}건 중 {{added}}건 성공",
+    "partialMsg": "{{total}} 중 {{added}}",
     "title": "지리 파일 가져오기",
     "create": "{{n}}건 만들기",
     "supportHint": "GeoJSON / KML / GPX / WKT 파일을 지원합니다.",
     "multiHint": "MultiPoint / MultiLineString / MultiPolygon 구조는 자동으로 유지됩니다.",
     "pickFile": "파일 선택",
-    "geomSummary": "지오메트리 {{count}}개, 사이트 {{count}}개를 만듭니다",
     "namePrefix": "이름 접두사",
     "namePrefixEx": "예: Jinshuiying",
     "namePrefixHint": "원본 파일에 이름이 있으면 그것을 우선 사용하며, 여러 지오메트리에는 #1, #2 ... 가 붙습니다",
     "geomPreview": "지오메트리 미리보기",
     "defaultPrefix": "가져오기",
-    "moreNotListed": "(그 외 {{count}}건은 표시하지 않음)",
     "anotherFile": "다른 파일 선택",
-    "targetProject": "대상 프로젝트:"
+    "targetProject": "대상 프로젝트:",
+    "geomSummary_other": "지오메트리 {{count}}개, 사이트 {{count}}개를 만듭니다",
+    "moreNotListed_other": "(그 외 {{count}}건은 표시하지 않음)",
+    "nTotal_other": "총 {{count}}건",
+    "nSucceeded_other": "{{count}}건 성공"
   },
   "batchImport": {
     "readFail": "파일을 읽지 못했습니다",
@@ -963,16 +977,14 @@
     "noNamesVoice": "종명을 마침표로 구분해 말해 주세요",
     "noNamesText": "한 줄에 하나씩 이름을 입력하거나 붙여 넣으세요",
     "done": "가져오기 완료",
-    "doneMsg": "{{added}}건 추가, {{skipped}}건 건너뜀 (중복 또는 taxon_id 없음)",
+    "doneMsg": "{{added}}, {{skipped}} (중복 또는 taxon_id 없음)",
     "title": "일괄 가져오기",
-    "previewTitle": "미리보기 ({{count}}건 추가 예정)",
     "preview": "미리보기",
     "add": "추가",
     "paste": "붙여넣기",
     "voice": "음성",
     "inputHint": "한 줄에 이름 하나 (일반명 / 학명 / 과명). .yml / .zip 내보내기 파일도 읽을 수 있습니다 (종명만 가져옵니다. 기록 전체를 복원하려면 ＋ → 「기록 가져오기」를 사용하세요).",
     "readFromFile": "파일에서 읽기",
-    "fileLoaded": "이름 {{count}}건을 읽었습니다",
     "fileHint": "파일 내용을 해석했습니다. 오른쪽 위 「미리보기」를 눌러 대조를 시작하세요. ✕ 를 누르면 제거하고 직접 입력할 수 있습니다.",
     "noNamesFile": "이 파일에서 종명이나 taxon_id를 찾을 수 없습니다",
     "pickedFileFallback": "선택한 파일",
@@ -987,7 +999,11 @@
     "skipThis": "이 항목 건너뛰기",
     "notFoundTitle": "찾을 수 없음 ({{count}})",
     "notFoundHint": "이 이름들은 TaiCOL에 없어 무시됩니다",
-    "nothingToImport": "가져올 내용이 없습니다"
+    "nothingToImport": "가져올 내용이 없습니다",
+    "previewTitle_other": "미리보기 ({{count}}건 추가 예정)",
+    "fileLoaded_other": "이름 {{count}}건을 읽었습니다",
+    "nAdded_other": "{{count}}건 추가",
+    "nSkipped_other": "{{count}}건 건너뜀"
   },
   "splash": {
     "starting": "시작하는 중...",
@@ -1029,11 +1045,11 @@
     "libPerm": "사진 라이브러리 쓰기 권한이 필요합니다"
   },
   "recordsList": {
-    "sessionSubtitle": "{{count}}건 · {{project}}",
-    "plotSubtitle": "{{count}}건 · {{protocol}}{{size}}",
-    "collectionSubtitle": "표본 {{count}}점 · {{project}}",
-    "sessionSubtitleNoProject": "{{count}}건",
-    "collectionSubtitleNoProject": "표본 {{count}}점"
+    "sessionSubtitle_other": "{{count}}건 · {{project}}",
+    "plotSubtitle_other": "{{count}}건 · {{protocol}}{{size}}",
+    "collectionSubtitle_other": "표본 {{count}}점 · {{project}}",
+    "sessionSubtitleNoProject_other": "{{count}}건",
+    "collectionSubtitleNoProject_other": "표본 {{count}}점"
   },
   "plotImport": {
     "invalidYml": "유효한 조사구 yml이 아닙니다 (plot 블록 없음)",
@@ -1064,7 +1080,6 @@
   "collection": {
     "title": "채집 기록",
     "missing": "이 채집 기록을 찾을 수 없습니다",
-    "specimenCount": "{{count}}점",
     "recordNumber": "채집 번호",
     "recordNumberHint": "같은 채집자의 채집 번호는 행정을 넘어 이어집니다. 자유롭게 수정할 수 있고 이후 번호는 새 번호에서 이어집니다.",
     "collector": "채집자",
@@ -1104,7 +1119,6 @@
     "sortNumber": "채집 번호",
     "sortFamily": "과명",
     "sortName": "학명",
-    "selectedCount": "{{count}}점 선택됨",
     "exportLabels": "라벨 내보내기",
     "labelSheetTitle": "표본 라벨",
     "labelSheetDesc": "A4, 한 장에 10개 (2열 × 5행), 점선은 재단선입니다.",
@@ -1112,10 +1126,12 @@
     "labelHeadingPlaceholder": "예: Flora of Taiwan",
     "labelIncludeFamily": "과명 포함",
     "labelIncludeFamilyHint": "「학명 중국명」 형식으로 인쇄됩니다. 예: Lauraceae 樟科",
-    "labelExportCount": "라벨 {{count}}장 내보내기",
     "labelNoneSelected": "표본을 먼저 선택하세요",
     "determiner": "동정자",
-    "determinerEmpty": "동정자가 지정되지 않았습니다"
+    "determinerEmpty": "동정자가 지정되지 않았습니다",
+    "specimenCount_other": "{{count}}점",
+    "selectedCount_other": "{{count}}점 선택됨",
+    "labelExportCount_other": "라벨 {{count}}장 내보내기"
   },
   "areaSpecies": {
     "fab": "범위 내 종 조회",
@@ -1147,18 +1163,13 @@
     "errServer": "서버 오류 ({{status}})",
     "errAborted": "조회를 취소했습니다",
     "errParse": "서버 응답을 해석할 수 없습니다",
-    "found": "{{count}}종을 가져왔습니다 (범위 내 총 {{total}}종)",
+    "found": "{{got}} ({{inArea}})",
     "truncated": "{{max}}종 상한을 넘어 앞의 {{max}}종만 가져왔습니다. 범위를 좁히면 전체 목록을 받을 수 있습니다.",
     "breakdown": "대응됨 {{matched}} · 확인 필요 {{ambiguous}} · 종 목록 미수록 {{unmatched}}",
-    "obs": "관찰 {{count}}건",
-    "tapToPick": "탭하여 확정 (후보 {{count}}개)",
     "viaSynonym": "이명 “{{name}}”(으)로 대조",
     "pickMsg": "이 학명은 로컬 종 목록의 여러 종에 대응합니다. 올바른 종을 선택하세요.",
-    "includeUnmatched": "미수록된 {{count}}종도 함께 추가",
     "includeUnmatchedHint": "iNaturalist의 분류 정보로 외부 종을 만듭니다. 오프라인으로 볼 수 있지만 보전 등급 같은 항목은 없습니다.",
     "folderPlaceholder": "목록 이름, 예: 양명산 조류",
-    "createFolder": "종 목록을 만들고 {{count}}종 추가",
-    "imported": "“{{name}}”을(를) 만들고 {{count}}종을 추가했습니다",
     "source": "출처",
     "sourceINat": "iNaturalist",
     "sourceGbif": "GBIF",
@@ -1171,10 +1182,9 @@
     "errOffline": "기기가 오프라인인 것 같습니다. 신호가 잡히는 곳으로 이동한 뒤 다시 시도하세요.",
     "errTimeout": "연결 시간이 초과되었습니다. 신호가 약할 수 있습니다.",
     "errService": "서비스가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도하세요.",
-    "refine": "대조되지 않은 이름 {{count}}개를 GBIF로 확인",
     "refining": "확인 중⋯ ({{done}}/{{of}})",
     "refineHint": "이름마다 GBIF에 한 번씩 요청해 외부 종을 만드는 데 필요한 식별자를 가져옵니다(GBIF 범위 조회는 식별자를 돌려주지 않습니다). 아울러 이명을 로컬 종 목록으로 해석해 봅니다.",
-    "refineDone": "확인 완료: {{keyed}}개는 외부 종으로 만들 수 있고, {{rescued}}개는 로컬 종 목록으로 해석되었으며, {{unknown}}개는 GBIF에도 없습니다.",
+    "refineDone": "확인 완료: {{keyed}}, {{rescued}}, {{unknown}}.",
     "needRefine": "식별자를 얻으려면 위의 GBIF 확인을 먼저 실행하세요.",
     "viaGbif": "GBIF 정명: {{name}}",
     "errServerDetail": "서버 오류 ({{status}}): {{detail}}",
@@ -1182,14 +1192,25 @@
     "fabVisible": "화면 범위 종 조회",
     "targetTitle": "추가할 대상",
     "targetNew": "즐겨찾기 새로 만들기",
-    "addToFolder": "“{{name}}”에 {{count}}종 추가",
     "drawAreaHint": "지도를 탭해 이 목록의 범위를 다시 그리세요",
     "areaSaved": "목록 범위를 갱신했습니다",
     "selfIntersectDraw": "그린 범위가 자기교차합니다. 다시 그리세요",
     "simplifiedNote": "그린 범위를 그대로 쓸 수 없어(꼭짓점 부족 또는 자기교차) 외접 사각형을 사용했습니다. 다각형을 쓰려면 다시 그리세요.",
     "areaSavedBox": "그린 범위를 쓸 수 없어 외접 사각형으로 저장했습니다",
     "matching": "종 목록과 대조 중⋯ ({{done}}/{{of}})",
-    "errRateLimit": "GBIF 요청이 너무 잦아 일시적으로 제한되었습니다. 몇 분 뒤에 다시 시도하거나 조회 범위와 분류군을 좁히세요."
+    "errRateLimit": "GBIF 요청이 너무 잦아 일시적으로 제한되었습니다. 몇 분 뒤에 다시 시도하거나 조회 범위와 분류군을 좁히세요.",
+    "obs_other": "관찰 {{count}}건",
+    "tapToPick_other": "탭하여 확정 (후보 {{count}}개)",
+    "includeUnmatched_other": "미수록된 {{count}}종도 함께 추가",
+    "createFolder_other": "종 목록을 만들고 {{count}}종 추가",
+    "imported_other": "“{{name}}”을(를) 만들고 {{count}}종을 추가했습니다",
+    "refine_other": "대조되지 않은 이름 {{count}}개를 GBIF로 확인",
+    "addToFolder_other": "“{{name}}”에 {{count}}종 추가",
+    "nGot_other": "{{count}}종을 가져왔습니다",
+    "nInArea_other": "범위 내 총 {{count}}종",
+    "nKeyed_other": "{{count}}개는 외부 종으로 만들 수 있고",
+    "nRescued_other": "{{count}}개는 로컬 종 목록으로 해석되었으며",
+    "nUnknownToGbif_other": "{{count}}개는 GBIF에도 없습니다"
   },
   "recordImport": {
     "unsupportedCollection": "채집 기록은 아직 가져올 수 없습니다. 종 목록과 조사구만 지원합니다.",
@@ -1202,11 +1223,11 @@
     "photoKeepExisting": "기존 사진 사용",
     "photoReimport": "다시 가져오기 (앨범에 사진이 늘어납니다)",
     "doneTitle": "가져오기 완료",
-    "doneRecords": "종 기록 {{count}}건을 가져왔습니다",
-    "doneRemapped": "{{count}}건은 학명으로 로컬 taxon_id에 다시 대응했습니다",
-    "doneUnresolved": "{{count}}건은 이 기기의 종 목록에서 taxon_id를 찾지 못했지만 그대로 가져왔습니다",
-    "donePhotosSkipped": "사진 {{count}}장을 가져오지 못했습니다 (권한 또는 파일을 읽을 수 없음)",
-    "photoProgress": "사진 가져오는 중 {{done}}/{{total}}…"
+    "photoProgress": "사진 가져오는 중 {{done}}/{{total}}…",
+    "doneRecords_other": "종 기록 {{count}}건을 가져왔습니다",
+    "doneRemapped_other": "{{count}}건은 학명으로 로컬 taxon_id에 다시 대응했습니다",
+    "doneUnresolved_other": "{{count}}건은 이 기기의 종 목록에서 taxon_id를 찾지 못했지만 그대로 가져왔습니다",
+    "donePhotosSkipped_other": "사진 {{count}}장을 가져오지 못했습니다 (권한 또는 파일을 읽을 수 없음)"
   },
   "gbifLookup": {
     "title": "GBIF 이름 조회",
@@ -1241,8 +1262,12 @@
     "useMineSameTaxonMisapplied": "“{{name}}”을(를) 쓰고 “{{accepted}}”과 같은 것으로 간주"
   },
   "projectDetail": {
-    "stats": "종 목록 {{sessions}} · 조사구 {{plots}} · 채집 {{collections}} · 조사지 {{sites}}",
-    "empty": "이 프로젝트에는 아직 기록이 없습니다"
+    "stats": "{{sessions}} · {{plots}} · {{collections}} · {{sites}}",
+    "empty": "이 프로젝트에는 아직 기록이 없습니다",
+    "nChecklists_other": "종 목록 {{count}}",
+    "nPlots_other": "조사구 {{count}}",
+    "nCollections_other": "채집 {{count}}",
+    "nSites_other": "조사지 {{count}}"
   },
   "projectExport": {
     "title": "프로젝트 내보내기",
@@ -1269,7 +1294,8 @@
     "byLayer": "층위별 행렬",
     "byLayerHint": "종 × 층위로 펼친 행렬(species_matrix_by_layer.csv)도 함께 내보냅니다",
     "prefSection": "프로젝트 내보내기 (분석 데이터)",
-    "itemReport": "연구 보고서({{formats}})"
+    "itemReport": "연구 보고서({{formats}})",
+    "itemChecklist": "프로젝트 통합 종 목록({{formats}})"
   },
   "regionPacks": {
     "intro": "「국가 종 목록 팩」은 GBIF 출현 기록을 집계한 것으로(권위 있는 종 목록이 아닙니다), 내려받으면 해당 국가의 종을 오프라인으로 검색할 수 있습니다. GBIF 계정이 필요합니다",
@@ -1288,7 +1314,6 @@
     "requestFailed": "다운로드 요청에 실패했습니다",
     "requested": "요청을 보냈습니다. GBIF가 파일을 준비하고 있습니다⋯",
     "ready": "국가 종 목록 팩이 준비되었습니다",
-    "readyCount": "종명 {{count}}건",
     "failed": "실패",
     "pending": "완료되지 않았습니다. 「계속」 또는 「다시 시도」를 눌러 이어가세요",
     "waiting": "GBIF 처리 중 · {{elapsed}} 기다림. 이 화면을 벗어나도 다운로드는 알아서 계속됩니다.",
@@ -1326,7 +1351,8 @@
     "builtinTwSub": "TaiCOL 대만 종 목록 · 전 분류군 · 약 24만 건",
     "builtinJpSub": "JBIF·YList 종 목록 · 약 2.6만 건",
     "introRegister": " (가입은 여기)",
-    "introEnd": "."
+    "introEnd": ".",
+    "readyCount_other": "종명 {{count}}건"
   },
   "manualTaxon": {
     "createOwn": "직접 만들기",
@@ -1365,7 +1391,6 @@
     "richness": "종풍부도 S",
     "shannon": "Shannon H′",
     "simpson": "Simpson 1−D",
-    "effective": "≈ 유효 종수 {{n}}",
     "estimateGte": "추정 총 종수 ≥ {{n}}",
     "completeness": "완전도 약 {{pct}}",
     "completenessShort": "완전도 {{pct}}",
@@ -1386,20 +1411,16 @@
     },
     "crossTitle": "조사 노력량 (조사구 간 Chao2)",
     "crossHint": "각 조사구를 하나의 출현 단위로 삼아 이 조사구들이 대표하는 범위의 종 풀을 추정합니다. 같은 지역·같은 식생형·같은 방법의 조사구만 선택하세요. 서로 다른 종 풀을 섞으면 계산은 되지만 해석에는 의미가 없습니다.",
-    "sppCount": "{{n}}종",
-    "crossResult": "조사구 {{n}}개 · 기록된 {{sObs}}종 · 추정 종 풀 ≥ {{est}}종",
     "crossQ": "q1(조사구 1개에만 출현) {{q1}} · q2 {{q2}}",
     "crossNeedTwo": "Chao2를 계산하려면 조사구를 2개 이상 선택하세요.",
     "crossEmpty": "선택한 조사구에는 아직 종 기록이 없습니다.",
     "chipLabel": "Chao2 {{pct}}",
-    "selectedPlots": "선택한 조사구 {{n}}개를 표본 단위로 사용",
     "evenness": "균등도 J′",
     "betaTitle": "β 유사도: {{a}} × {{b}}",
     "betaShared": "공통 {{c}}종",
     "betaOnly": "단독 출현 {{a}}/{{b}}종",
     "betaNeedTwo": "β 유사도(Sørensen/Jaccard)를 비교하려면 조사구를 정확히 2개 선택하세요.",
     "bergerParker": "우점도 d",
-    "hillInf": "≈ 유효 우점종 {{n}}",
     "dominantSpecies": "우점종 (상위 3)",
     "freqShort": "빈도 {{pct}}",
     "dominantNote": "백분율은 현재 기준에서의 상대값입니다(상대 피도 / 상대 밀도 / 상대 흉고단면적).",
@@ -1412,7 +1433,12 @@
       "custom": "사용자 지정",
       "mixed": "혼용",
       "none": "없음"
-    }
+    },
+    "sppCount_other": "{{count}}종",
+    "crossResult_other": "조사구 {{count}}개 · 기록된 {{sObs}}종 · 추정 종 풀 ≥ {{est}}종",
+    "selectedPlots_other": "선택한 조사구 {{count}}개를 표본 단위로 사용",
+    "effective": "≈ 유효 종수 {{n}}",
+    "hillInf": "≈ 유효 우점종 {{n}}"
   },
   "report": {
     "navTitle": "분석 보고서",
@@ -1466,8 +1492,6 @@
     "chartLayers": "층위별 피도",
     "chartComposition": "과별 종수 (상위 15)",
     "unitSpecies": "종",
-    "speciesSummary": "이 조사구에서 모두 {{count}}종을 기록했습니다.",
-    "compositionSummary": "모두 {{families}}과.",
     "conservationNote": "집계는 종 단위이며, 적색목록과 IUCN에서는 LC/NLC/NE/NA 등 비위협 등급을 제외했습니다.",
     "coverOver100": "지표 피도 합계가 {{total}}%로 100%를 넘습니다. 입력값을 확인하세요.",
     "samplingUnits": "표본 단위 수",
@@ -1501,7 +1525,7 @@
     "seriesEstimated": "추정",
     "crossChao2": "조사구 간 Chao2",
     "crossChao2Note": "각 조사구를 하나의 출현 단위로 삼아 대상 범위의 종 풀을 추정합니다. 조사구들이 같은 지역·식생형·방법인지 확인하세요.",
-    "projectSpeciesSummary": "프로젝트 전체에서 조사구 {{plots}}개로부터 {{count}}종을 기록했습니다.",
+    "projectSpeciesSummary": "프로젝트 전체에서 {{plots}}로부터 {{species}}을 기록했습니다.",
     "similarityNote": "Sørensen = 2C/(A+B). 출현 여부에 기반하며 다도와는 무관합니다.",
     "matrixTruncated": "전체 {{total}}개 조사구 중 처음 {{shown}}개만 표시합니다.",
     "exportFormat": "내보내기 형식",
@@ -1560,8 +1584,6 @@
       "cover": "우점도는 상대피도이며 흉고단면적이 아닙니다."
     },
     "individualsPerHa": "헥타르당 개체수",
-    "abundanceDbh": "{{n}} 줄기(흉고직경 {{range}} cm)",
-    "abundanceCount": "{{n}} 개체",
     "simpsonLambda": "Simpson 지수",
     "hillE5": "Hill 균등도 비",
     "colBasalAreaHa": "흉고단면적 (m²/ha)",
@@ -1603,18 +1625,20 @@
     "dq": {
       "records": "기록 수",
       "species": "종수",
-      "noAbundance": "{{records}}건에 수량이 없습니다(출현만 기록된 {{species}}종). 다양도 지수는 수량이 있는 기록만으로 산출했습니다.",
-      "genusOnly": "{{n}}개 분류군이 속까지만 동정되었습니다(예: {{examples}}). 종수를 부풀립니다.",
-      "aboveGenus": "{{n}}개 분류군이 속보다 상위로 동정되었습니다(예: {{examples}}). 종수에 포함해서는 안 됩니다.",
-      "rankUnknown": "{{n}}개 분류군에 계급 정보가 없어 종 수준인지 확인할 수 없습니다.",
+      "noAbundance": "{{records}}({{species}}). 다양도 지수는 수량이 있는 기록만으로 산출했습니다.",
       "mixedUnits": "개체량 단위가 혼용되었습니다({{kinds}}). 서로 다른 단위의 값은 더할 수 없으므로 지수는 참고용입니다.",
-      "unparseable": "{{n}}건의 수량을 숫자로 읽을 수 없었습니다(예: {{examples}}).",
-      "singletons": "{{n}}종이 1개체만 기록되었습니다(singleton). Chao 추정은 주로 이들에 의존합니다.",
-      "doubletons": "{{n}}종이 2개체만 기록되었습니다(doubleton).",
-      "noLayer": "{{n}}건에 층 지정이 없습니다.",
-      "noSubplot": "{{n}}건에 소구획 지정이 없어 출현도 기반 계산에서 제외됩니다.",
       "clean": "위 통계에 영향을 주는 자료 문제는 발견되지 않았습니다.",
-      "note": "이 절은 사실을 기술할 뿐 오류를 지적하는 것이 아닙니다. 속까지의 동정은 일반적인 야외 관행이지만 종수에 영향을 주므로 기재합니다."
+      "note": "이 절은 사실을 기술할 뿐 오류를 지적하는 것이 아닙니다. 속까지의 동정은 일반적인 야외 관행이지만 종수에 영향을 주므로 기재합니다.",
+      "genusOnly_other": "{{count}}개 분류군이 속까지만 동정되었습니다(예: {{examples}}). 종수를 부풀립니다.",
+      "aboveGenus_other": "{{count}}개 분류군이 속보다 상위로 동정되었습니다(예: {{examples}}). 종수에 포함해서는 안 됩니다.",
+      "rankUnknown_other": "{{count}}개 분류군에 계급 정보가 없어 종 수준인지 확인할 수 없습니다.",
+      "unparseable_other": "{{count}}건의 수량을 숫자로 읽을 수 없었습니다(예: {{examples}}).",
+      "singletons_other": "{{count}}종이 1개체만 기록되었습니다(singleton). Chao 추정은 주로 이들에 의존합니다.",
+      "doubletons_other": "{{count}}종이 2개체만 기록되었습니다(doubleton).",
+      "noLayer_other": "{{count}}건에 층 지정이 없습니다.",
+      "noSubplot_other": "{{count}}건에 소구획 지정이 없어 출현도 기반 계산에서 제외됩니다.",
+      "nNoQuantity_other": "{{count}}건에 수량이 없습니다",
+      "nPresenceOnly_other": "출현만 기록된 {{count}}종"
     },
     "methodsSpecIndices": "다양도 지수는 대만 「식물생태평가기술규범」 부속서 2의 S, λ, H′, N₁=e^H′, N₂=1/λ, E5=[(1/λ)−1]/[e^H′−1](Ludwig & Reynolds, 1988)을 따릅니다. 목본 자료는 흉고단면적 기준과 줄기수 기준을 함께 제시합니다.",
     "methodsStand": "헥타르당 줄기수와 흉고단면적은 조사구 면적으로 환산하며, 단면적은 각 줄기의 흉고직경으로 Σπ(d/2)²를 계산합니다. 면적 출처(소구획 합·점조사 πr²·조사구 크기 항목)는 해당 절에 명시하고, 단위를 인식할 수 없으면 환산하지 않고 이유를 밝힙니다.",
@@ -1628,12 +1652,68 @@
     "axisRelAbundance": "상대 개체량 (%)",
     "seriesRelAbundance": "상대 개체량",
     "rankAbundanceNote": "세로축은 로그 눈금입니다. 가파른 직선은 소수 종의 우점을, 완만하고 긴 꼬리는 균등한 군집을 뜻합니다. 이 형태는 단일 지수로 나타낼 수 없습니다.",
-    "rankAbundanceDropped": "{{n}}종은 양의 개체량이 없어 곡선에 포함하지 않았습니다.",
     "rankAbundanceMixed": "개체량 단위가 혼용되어 서로 다른 단위의 값을 서열화할 수 없으므로 종—개체량 서열을 그리지 않습니다.",
     "chartProfile": "식생 수직 단면",
     "axisHeightM": "높이 (m)",
-    "profileMissingHeight": "{{n}}개 층에 높이가 없어 높이 축에 배치할 수 없으며 표에만 표시합니다.",
     "profileDegraded": "Word 판은 각 층을 균등 간격으로 배치합니다(DrawingML은 위치와 피도를 동시에 표현할 수 없음). 미터 좌표 단면은 HTML 판 또는 앱에서 확인하세요.",
-    "profileNoHeights": "높이가 기입된 층이 없어 피도 막대로 표시합니다."
+    "profileNoHeights": "높이가 기입된 층이 없어 피도 막대로 표시합니다.",
+    "speciesSummary_other": "이 조사구에서 모두 {{count}}종을 기록했습니다.",
+    "compositionSummary_other": "모두 {{count}}과.",
+    "abundanceDbh_other": "{{count}} 줄기(흉고직경 {{range}} cm)",
+    "abundanceCount_other": "{{count}} 개체",
+    "rankAbundanceDropped_other": "{{count}}종은 양의 개체량이 없어 곡선에 포함하지 않았습니다.",
+    "profileMissingHeight_other": "{{count}}개 층에 높이가 없어 높이 축에 배치할 수 없으며 표에만 표시합니다.",
+    "nSpeciesRecorded_other": "{{count}}종",
+    "nPlotsAcross_other": "조사구 {{count}}개"
+  },
+  "checklistDoc": {
+    "title": "종 목록",
+    "titleWithProject": "{{project}} 종 목록",
+    "site": "조사구:",
+    "summary": "이 목록에는 {{families}}, {{species}}이 수록되어 있습니다. \"#\"은 고유종, \"*\"은 귀화종, \"†\"은 재배종, \"‡\"은 사육종을 나타냅니다.",
+    "attributes": "종 속성: {{stats}}.",
+    "conservation": "보전 현황 집계: {{stats}}.",
+    "redlist": "대만 적색목록: {{parts}}",
+    "iucn": "IUCN: {{parts}}",
+    "cites": "CITES: {{parts}}",
+    "citesAppendix": "부속서 {{cat}}",
+    "protectedStat": "보호종: {{parts}}",
+    "culturalHeritageRare": "문화재보호법 희귀종",
+    "listSep": ", ",
+    "statSep": "; ",
+    "protected": {
+      "I": "멸종위기",
+      "II": "희귀 및 귀중",
+      "III": "기타 보호대상"
+    },
+    "plantGroup": {
+      "mossesLichens": "이끼·지의류",
+      "lycophytes": "석송류",
+      "monilophytes": "양치식물",
+      "gymnosperms": "겉씨식물",
+      "monocots": "외떡잎식물",
+      "sisterEudicots": "진정쌍떡잎식물 자매군",
+      "eudicots": "진정쌍떡잎식물",
+      "angiosperms": "속씨식물"
+    },
+    "group": {
+      "Tracheophyta": "관속식물",
+      "Bryophyta": "선태식물",
+      "Aves": "조강",
+      "Insecta": "곤충강",
+      "Mammalia": "포유강",
+      "Reptilia": "파충강",
+      "Amphibia": "양서강",
+      "Actinopteri": "조기강",
+      "Arachnida": "거미강",
+      "Gastropoda": "복족강",
+      "Bivalvia": "이매패강",
+      "Malacostraca": "연갑강",
+      "Ascomycota": "자낭균문",
+      "Basidiomycota": "담자균문",
+      "Mollusca": "연체동물문"
+    },
+    "familyCount_other": "{{count}}과",
+    "speciesCount_other": "{{count}}종"
   }
 }

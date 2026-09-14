@@ -87,16 +87,20 @@ export default function SettingsScreen() {
       const r = checkIntegrity();
       const lines: string[] = [];
       for (const d of r.duplicateOccurrenceIds) {
-        lines.push(t('settings.integrityDup', { table: d.table, groups: d.groups, rows: d.rows }));
+        lines.push(t('settings.integrityDup', {
+            table: d.table,
+            groups: t('settings.nDupGroups', { count: d.groups }),
+            rows: t('settings.nRows', { count: d.rows }),
+          }));
       }
-      for (const o of r.orphanRows) lines.push(t('settings.integrityOrphan', { table: o.table, n: o.n }));
+      for (const o of r.orphanRows) lines.push(t('settings.integrityOrphan', { table: o.table, count: o.n }));
       for (const d of r.danglingProjectIds) {
-        lines.push(t('settings.integrityProject', { table: d.table, n: d.n }));
+        lines.push(t('settings.integrityProject', { table: d.table, count: d.n }));
       }
       for (const a of r.staleAdoptedNames) {
-        lines.push(t('settings.integrityAdopted', { table: a.table, n: a.n }));
+        lines.push(t('settings.integrityAdopted', { table: a.table, count: a.n }));
       }
-      if (r.fkViolations > 0) lines.push(t('settings.integrityFk', { n: r.fkViolations }));
+      if (r.fkViolations > 0) lines.push(t('settings.integrityFk', { count: r.fkViolations }));
       Alert.alert(
         t('settings.integrityTitle'),
         lines.length === 0 ? t('settings.integrityClean') : lines.join('\n'),

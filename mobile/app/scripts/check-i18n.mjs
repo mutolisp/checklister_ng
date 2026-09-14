@@ -22,6 +22,15 @@
  * RecordPickerSheet's t(KIND_LABEL[item.kind]) was written after this script
  * existed and its three keys were invisible to it.
  *
+ * Plurals (JSON v4: `key_one` / `key_other` / …) are resolved against the same
+ * `Intl.PluralRules` i18next itself uses, per locale. A locale must carry EVERY
+ * category its language can produce — a missing one is not a soft failure:
+ * i18next skips the locale entirely and falls through `fallbackLng`, so a
+ * French screen with a count of 1,000,000 and no `_many` renders the zh-TW
+ * string. That was measured, not assumed. `fr` and `es` therefore need
+ * `_many`; `en` and `de` need `one`/`other`; `zh-TW`/`ja`/`ko` need `other`
+ * alone.
+ *
  * Usage: node scripts/check-i18n.mjs   (exit 1 on violation)
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -106,6 +115,47 @@ function placeholdersOf(value) {
 }
 
 const KEY_SHAPE = /^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$/;
+
+// ── Plurals ─────────────────────────────────────────────────────────────────
+
+const PLURAL_CATS = ['zero', 'one', 'two', 'few', 'many', 'other'];
+const PLURAL_RE = new RegExp(`_(${PLURAL_CATS.join('|')})$`);
+
+const langOf = (file) => /locales\/(.+)\.json$/.exec(file)[1];
+
+/** The plural categories this language can actually ask for. Derived rather
+ *  than hard-coded so the list cannot drift from the runtime: i18next resolves
+ *  through `Intl.PluralRules`, so whatever that returns here is exactly what it
+ *  will look up. Counts in this app are integers, plus the large values a GBIF
+ *  observation total can reach — which is where `fr`/`es` pick up `many`. */
+function requiredCats(lang) {
+  const r = new Intl.PluralRules(lang);
+  const out = new Set();
+  for (let n = 0; n <= 1000; n++) out.add(r.select(n));
+  for (const n of [1e6, 2e6, 1e9]) out.add(r.select(n));
+  return out;
+}
+
+/** `a.b_one` → {base:'a.b', cat:'one'}; `a.b` → {base:'a.b', cat:null}. */
+function splitPlural(key) {
+  const m = PLURAL_RE.exec(key);
+  return m ? { base: key.slice(0, m.index), cat: m[1] } : { base: key, cat: null };
+}
+
+/** Group a locale's raw keys into plain keys and plural families. */
+function pluralIndex(keys) {
+  const plain = new Set();
+  const families = new Map(); // base -> Set(cat)
+  for (const k of keys) {
+    const { base, cat } = splitPlural(k);
+    if (cat === null) plain.add(k);
+    else {
+      if (!families.has(base)) families.set(base, new Set());
+      families.get(base).add(cat);
+    }
+  }
+  return { plain, families };
+}
 
 /** Walk from an opening delimiter to its match, skipping over string and
  *  template literals so a brace or paren inside a quoted string cannot end the
@@ -200,16 +250,58 @@ function* callSites(src) {
 
 const locales = LOCALES.map((f) => {
   const json = JSON.parse(readFileSync(f, 'utf8'));
-  return { file: f, keys: flatten(json), values: flattenValues(json) };
+  const keys = flatten(json);
+  const { plain, families } = pluralIndex(keys);
+  return {
+    file: f,
+    lang: langOf(f),
+    cats: requiredCats(langOf(f)),
+    keys,
+    plain,
+    families,
+    values: flattenValues(json),
+  };
 });
 
-// Structural drift between locales.
 const problems = [];
+
+// A key is plural if ANY locale declares it so — languages differ in how many
+// forms they need, but never in WHETHER a string counts something.
+const pluralBases = new Set();
+for (const loc of locales) for (const b of loc.families.keys()) pluralBases.add(b);
+
+// Structural drift between locales, compared on BASE keys so that `en` having
+// `_one`/`_other` where `ja` has only `_other` is not reported as drift.
 for (const a of locales) {
   for (const b of locales) {
     if (a === b) continue;
-    for (const k of a.keys) {
-      if (!b.keys.has(k)) problems.push(`${b.file}: missing "${k}" (present in ${a.file})`);
+    for (const k of a.plain) {
+      if (!b.plain.has(k)) problems.push(`${b.file}: missing "${k}" (present in ${a.file})`);
+    }
+    for (const base of a.families.keys()) {
+      if (!b.families.has(base)) {
+        problems.push(`${b.file}: missing plural "${base}" (present in ${a.file})`);
+      }
+    }
+  }
+}
+
+// Every plural family must carry exactly the categories its language uses:
+// a missing one silently falls through to `fallbackLng` (measured), an extra
+// one is dead weight that no lookup will ever reach.
+for (const loc of locales) {
+  for (const base of pluralBases) {
+    if (loc.plain.has(base)) {
+      problems.push(`${loc.file}: "${base}" is plural elsewhere but plain here`);
+      continue;
+    }
+    const have = loc.families.get(base);
+    if (!have) continue; // already reported as missing above
+    for (const cat of loc.cats) {
+      if (!have.has(cat)) problems.push(`${loc.file}: "${base}" missing _${cat} (${loc.lang} needs it)`);
+    }
+    for (const cat of have) {
+      if (!loc.cats.has(cat)) problems.push(`${loc.file}: "${base}_${cat}" unused — ${loc.lang} never selects _${cat}`);
     }
   }
 }
@@ -235,6 +327,20 @@ for (const { file, base } of OVERRIDE_LOCALES) {
       problems.push(`${file}: "${k}" is identical to ${base} — drop it from the override`);
     }
   }
+}
+
+/** A referenced key resolves either directly or through its plural family. */
+const hasKey = (loc, key) => loc.plain.has(key) || loc.families.has(key);
+
+/** Any variant's value. Plural forms share their placeholders by construction,
+ *  and the completeness check above already guarantees the family is whole. */
+function valueOf(loc, key) {
+  if (loc.values.has(key)) return loc.values.get(key);
+  for (const cat of loc.cats) {
+    const v = loc.values.get(`${key}_${cat}`);
+    if (v !== undefined) return v;
+  }
+  return undefined;
 }
 
 // Keys referenced in code but absent from a locale.
@@ -268,8 +374,8 @@ for (const root of ROOTS) {
 }
 
 for (const [key, where] of referenced) {
-  for (const { file, keys } of locales) {
-    if (!keys.has(key)) problems.push(`${file}: missing "${key}"  (used at ${where})`);
+  for (const loc of locales) {
+    if (!hasKey(loc, key)) problems.push(`${loc.file}: missing "${key}"  (used at ${where})`);
   }
 }
 
@@ -291,14 +397,19 @@ for (const root of ROOTS) {
     for (const { index, keys, params } of callSites(src)) {
       const where = `${relative('.', file)}:${lineAt(index)}`;
       for (const key of keys) {
-        for (const { file: lf, keys: lk, values } of locales) {
-          if (!lk.has(key)) {
+        for (const loc of locales) {
+          const lf = loc.file;
+          if (!hasKey(loc, key)) {
             problems.push(`${lf}: missing "${key}"  (used at ${where})`);
             continue;
           }
-          const value = values.get(key);
+          const value = valueOf(loc, key);
           if (!value) continue;
           const needed = placeholdersOf(value);
+          // A plural key picks its form from `count` specifically; any other
+          // param name leaves i18next on the default form, so the singular is
+          // simply never reached.
+          if (loc.families.has(key)) needed.add('count');
           if (needed.size === 0) continue;
           if (params === null) {
             unchecked.push(`${where}  t('${key}') — params spread, not checked`);

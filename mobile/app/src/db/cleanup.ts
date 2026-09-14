@@ -123,12 +123,18 @@ export function listSafetyBackups(): { name: string; uri: string; size: number }
 /**
  * Delete child rows whose parent is gone, and null out dangling references.
  *
- * Why these exist: every `ON DELETE CASCADE` in the schema is inert, because
- * `PRAGMA foreign_keys` is never set when the connection opens and op-sqlite
- * does not define `SQLITE_DEFAULT_FOREIGN_KEYS`, so SQLite uses its default of
- * OFF. Deleting a trip / session / plot therefore left every child row behind.
- * The delete helpers now remove children explicitly, but rows stranded by
- * earlier builds are still sitting in existing users' databases.
+ * Why these exist: in earlier builds every `ON DELETE CASCADE` in the schema
+ * was inert, because `PRAGMA foreign_keys` was never set when the connection
+ * opened and op-sqlite does not define `SQLITE_DEFAULT_FOREIGN_KEYS`, so SQLite
+ * used its default of OFF. Deleting a trip / session / plot therefore left
+ * every child row behind. `initDb()` now enables FK enforcement and the delete
+ * helpers also remove children explicitly, but rows stranded by those earlier
+ * builds are still sitting in existing users' databases.
+ *
+ * This pass deliberately runs while enforcement is still OFF: the rows it
+ * repairs are the ones with dangling references, and SQLite validates FK on
+ * every row it modifies, so with FK already on the repair would throw instead
+ * of healing.
  *
  * The visible symptom this fixes: orphaned `collection_specimens` still count
  * toward `maxRecordNumberSeq()` and `isRecordNumberTaken()`, so collection

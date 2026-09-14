@@ -30,15 +30,23 @@ import {
   buildCollectionEntries,
   buildPlotEntries,
   buildSessionEntries,
+  checklistT,
   countPhotosPlotWithEnv,
   countPhotosSession,
   finalizeZip,
+  orderLevels,
+  plotSpeciesToMarkdownItem,
+  recordToMarkdownItem,
   sanitizeFilename,
+  specimenToMarkdownItem,
   type BuiltZipEntry,
   type BundleOptions,
   type ExportFile,
 } from './bundleExport';
-import { localIso, multiToPipe } from './bundleYaml';
+import { csvEscape, localIso, multiToPipe } from './bundleYaml';
+import { convertToDwc } from './dwcMapper';
+import { markdownToDocx } from './docx';
+import { generateMarkdown, type MarkdownItem } from './markdown';
 import {
   buildCoverScaleCsv,
   buildEnvWide,
@@ -127,6 +135,60 @@ export async function bundleProject(
   for (const p of plots) await addRecord('plot', p.id, p.uuid, () => buildPlotEntries(p.id, opts, ctx));
   for (const s of sessions) await addRecord('session', s.id, s.uuid, () => buildSessionEntries(s.id, opts, ctx));
   for (const c of trips) await addRecord('collection', c.id, c.uuid, () => buildCollectionEntries(c.id, opts, ctx));
+
+  // ── Merged checklist across every record in the project ─────────────────
+  // records/ already carries one checklist per record; this is their union,
+  // which is what "what did this project find" actually asks. Scope is all
+  // three record kinds — unlike analysis/ and juice/ above, which are
+  // plots-only — because a project checklist that silently dropped the
+  // sessions and collections would be answering a different question.
+  //
+  // Per-record abundance and remarks are dropped on purpose: one species can
+  // appear in several plots with different values, so carrying any one of them
+  // would be picking a winner. This is a species list, not an observation table.
+  opts.onProgress?.({ label: '合併物種名錄…' });
+  const checklistItems: MarkdownItem[] = [];
+  const seenSpecies = new Set<string>();
+  const addSpecies = (
+    r: { taxon_id: string; used_scientific_name: string | null },
+    toItem: () => MarkdownItem,
+  ) => {
+    // Same composite identity the rest of the export chain uses (v28): the same
+    // taxon recorded under two names is two deliberate taxonomic opinions.
+    const key = `${r.taxon_id}|${r.used_scientific_name ?? ''}`;
+    if (seenSpecies.has(key)) return;
+    seenSpecies.add(key);
+    checklistItems.push({ ...toItem(), abundance: null, notes: null });
+  };
+  for (const p of plots) {
+    for (const r of listPlotSpecies(p.id)) addSpecies(r, () => plotSpeciesToMarkdownItem(r));
+  }
+  for (const sess of sessions) {
+    for (const r of listSessionRecords(sess.id)) addSpecies(r, () => recordToMarkdownItem(r));
+  }
+  for (const c of trips) {
+    for (const sp of listSpecimens(c.id)) addSpecies(sp, () => specimenToMarkdownItem(sp));
+  }
+
+  if (checklistItems.length > 0) {
+    const checklistMd = generateMarkdown(
+      checklistItems,
+      checklistT(opts.lang),
+      { project: project.name },
+      {
+        levelsOverride: opts.levels.length ? orderLevels(opts.levels) : undefined,
+        conservationFields: opts.conservationFields,
+      },
+    );
+    entries.push({ name: 'checklist/checklist.md', bytes: strToU8(checklistMd) });
+    if (opts.includeDocx) {
+      entries.push({ name: 'checklist/checklist.docx', bytes: markdownToDocx(checklistMd) });
+    }
+    entries.push({
+      name: 'checklist/checklist.csv',
+      bytes: strToU8(buildChecklistCsv(checklistItems)),
+    });
+  }
 
   // ── Analysis tables (plots only) ─────────────────────────────────────────
   const readmeNotes: string[] = [];
@@ -231,10 +293,10 @@ export async function bundleProject(
   entries.push({ name: 'project.yml', bytes: strToU8(yaml.dump(projectYml, { lineWidth: -1, noRefs: true })) });
 
   // ── research report ──────────────────────────────────────────────────────
-  // Written in the CURRENT UI language, not the zh-TW every other export is
-  // fixed to. The report is prose and statistics commentary; a French user
-  // handed a Chinese narrative has nothing. That exception is the report's
-  // alone — record files, DwC terms and the checklist Markdown are unchanged.
+  // Prose and statistics commentary, so it follows the export language like the
+  // checklist does — a French user handed a Chinese narrative has nothing.
+  // Still fixed regardless of language: DwC terms, scientific and vernacular
+  // names, and the analysis tables, which are controlled vocabularies and data.
   if (opts.includeReport) {
     opts.onProgress?.({ label: '產生研究報表…' });
     try {
@@ -517,6 +579,8 @@ function buildReadme(
     '## 內容結構',
     '',
     '- `records/` — 逐筆記錄的完整匯出（yml / csv / md / geo / 照片），與單筆匯出格式相同，可個別重新匯入 app',
+    '- `checklist/` — **全專案合併物種名錄**（md / docx / csv）：樣區、名錄、採集三種記錄的物種聯集去重，'
+      + '不含各筆記錄的豐度與備註（同一種可能在多個樣區有不同值）',
     '- `analysis/` — 跨樣區分析資料表（樣方 × 物種矩陣、環境表；**只涵蓋樣區**，名錄與採集不進矩陣）',
     '- `juice/` — JUICE 匯入檔（分號分隔）',
     '- `dwca/` — Darwin Core Archive（Event core + Occurrence + Humboldt extension，GBIF 發布用）',
@@ -577,4 +641,37 @@ function buildReadme(
     ...(notes.length > 0 ? ['## 匯出注意事項', '', ...notes.map((n) => `- ${n}`), ''] : []),
   ];
   return lines.join('\n');
+}
+
+/**
+ * The merged checklist as DwC CSV, one row per species.
+ *
+ * Columns are the union of every row's keys, so a list where only some species
+ * carry a CITES appendix still gets that column. UTF-8 BOM because Excel on
+ * Windows reads a BOM-less UTF-8 CSV as the local codepage and mangles every
+ * CJK name. Rows are ordered taxonomically, matching the per-record `_sp.csv`.
+ *
+ * Unlike the Markdown twin this is never localized: DwC terms are a controlled
+ * vocabulary and a translated header would not be readable by GBIF or R.
+ */
+function buildChecklistCsv(items: MarkdownItem[]): string {
+  const order: (keyof MarkdownItem)[] = [
+    'kingdom', 'phylum', 'class_name', 'order', 'family', 'genus', 'name',
+  ];
+  const rows = [...items]
+    .sort((a, b) => {
+      for (const f of order) {
+        const c = String(a[f] ?? '').localeCompare(String(b[f] ?? ''));
+        if (c !== 0) return c;
+      }
+      return 0;
+    })
+    .map((it) => convertToDwc(it as unknown as Record<string, unknown>));
+
+  const keys: string[] = [];
+  for (const row of rows) for (const k of Object.keys(row)) if (!keys.includes(k)) keys.push(k);
+  return (
+    '\ufeff' +
+    [keys.join(','), ...rows.map((r) => keys.map((k) => csvEscape(r[k])).join(','))].join('\n')
+  );
 }

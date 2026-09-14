@@ -3,6 +3,7 @@
  * the project-level export (records/ + analysis matrices + JUICE + DwC-A).
  */
 import { Ionicons } from '@expo/vector-icons';
+import { pickExportLanguage } from '~/lib/pickExportLanguage';
 import { CrossPlotChao2Card } from '~/components/CrossPlotChao2Card';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
@@ -86,6 +87,8 @@ export default function ProjectDetailScreen() {
       { includePhotos },
     );
     if (!(await confirmIfLarge(est.totalBytes))) return;
+    const lang = await pickExportLanguage(t, 'export.language');
+    if (!lang) return;
     await shareBundle(() =>
       bundleProject(projectId, {
         geoFormats,
@@ -93,6 +96,7 @@ export default function ProjectDetailScreen() {
         includeDocx,
         levels,
         conservationFields,
+        lang,
         matrixValue,
         analysisFormats,
         matrixByLayer,
@@ -190,10 +194,10 @@ export default function ProjectDetailScreen() {
             <View className="px-4 py-2">
               <Text className="text-xs text-gray-500 dark:text-gray-400">
                 {t('projectDetail.stats', {
-                  sessions: counts.session,
-                  plots: counts.plot,
-                  collections: counts.collection,
-                  sites: siteCount,
+                  sessions: t('projectDetail.nChecklists', { count: counts.session }),
+                  plots: t('projectDetail.nPlots', { count: counts.plot }),
+                  collections: t('projectDetail.nCollections', { count: counts.collection }),
+                  sites: t('projectDetail.nSites', { count: siteCount }),
                 })}
               </Text>
             </View>

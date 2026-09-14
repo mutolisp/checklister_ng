@@ -13,7 +13,7 @@
 import { convertToDwc } from './dwcMapper';
 import { markdownToDocx } from './docx';
 import { generateMarkdown } from './markdown';
-import { mapAlienToSource, taxonToMarkdownItem } from './bundleExport';
+import { checklistT, mapAlienToSource, taxonToMarkdownItem } from './bundleExport';
 import { resolveTaxa, EMPTY_TAXON_FIELDS, type FavoriteItem, type TaxonFields } from '~/db';
 
 export type FavoritesExportFormat = 'docx' | 'csv';
@@ -46,9 +46,14 @@ function taxonSort(a: Resolved, b: Resolved): number {
   return 0;
 }
 
-export function buildFavoritesDocx(folderName: string, items: FavoriteItem[]): Uint8Array {
+export function buildFavoritesDocx(
+  folderName: string,
+  items: FavoriteItem[],
+  lang?: string,
+): Uint8Array {
   const md = generateMarkdown(
     resolve(items).map((r) => taxonToMarkdownItem(r.taxon_id, r.fields)),
+    checklistT(lang),
     { project: folderName },
   );
   return markdownToDocx(md);
