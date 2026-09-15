@@ -2135,3 +2135,99 @@ TaiCOL 改版後 `(taxon_id, used_name_id)` 可能不再一致（半年內 527 �
   9. 清除所有資料 → 帳號頁未連結
   10. 樣區：無逐筆 GPS 的記錄座標＝樣區中心、accuracy＝不確定度
   11. 記錄 tab 4 個 swipe action 在 375pt 寬裝置放得下（否則退回列長按 action sheet）
+
+
+---
+
+## Sprint 2026-09-15 — 偏好設定統一：推入式詳細頁 + RNR Select
+
+偏好設定原本有兩套詳細頁慣例：匯出設定是底部 sheet（底下還有一顆只呼叫 `onClose` 的「完成」，和右上角 ✕ 重複，而所有設定本來就即時寫入），其餘是推入式 route。標本採集整段 inline 在 settings 首頁；座標隱私的三段式 segmented control 在 `inaturalist.tsx` 與 `inat-upload.tsx` 各寫一份。
+
+**統一成推入式 route**，不是統一成 sheet：`promptText` / `ActionSheetHost` 掛在 navigation root，iOS 無法在已 present 的 Modal 之上再 present（`ProjectAssignSheet.tsx:26-33`；`regionpacks.tsx` 五處 `setTimeout(…, 450)` 就是代價）。調查者改名、標本採集起始採集號、區域名錄國家選擇、iNat WebView 登入全都靠這類 root-hosted Modal。
+
+要點：
+- `app/settings.tsx` → `app/settings/index.tsx`，新增 `settings/language`、`settings/collection`、`settings/export` 三個 route（目錄無 `_layout.tsx`，攤平進 root Stack；URL `/settings` 不變）。Title 重用既有 key，不新鑄 `nav.*`（`exportPref.title` 的 es-419 override 因此保留）。
+- 新增 `@rn-primitives/select` + `@rn-primitives/portal`（純 JS，**不需重建 native**）。`src/components/ui/select.tsx` 是 RNR 的 Select **改寫版**：專案沒有 shadcn token 層（`tailwind.config.js` 的 `theme.extend` 是空的）也沒有 lucide，故換成既有 gray/blue 色票與 Ionicons；刪掉 web 分支、`FullWindowOverlay`、exiting 動畫、`TextClassContext`、`cn`。
+- `<PortalHost />` 掛在 `_layout.tsx` 包住 `<Stack>` 的 `</View>` 之後、`<ToastHost />` 之前。**必須留在 `<FontScaleProvider>` 內** —— `@rn-primitives/portal` 不是 `React.createPortal`，portal 內容繼承的是 host 位置的 context，掛錯層字級 CSS 變數會靜默失效。
+- 抽出 `src/components/settings/{SettingsPage,rows}.tsx`（`Section` / `RowInput` / `SelectRow` / `LinkRow`）與 `src/components/SearchableOptionList.tsx`。`SettingsPage` 刻意不內建 ScrollView（三個畫面各自用 FlatList / DraggableFlatList / padded ScrollView）。
+- 語言維持搜尋清單、獨立成頁：popover 放不下 `English · en` sublabel，`TextInput` 在 portal 疊層內於 iOS 會和鍵盤搶焦點。
+- `ExportPreferenceSheet.tsx` → `ExportPreferenceOptions.tsx`（無 props、無 chrome），選項群組逐字保留。
+- `settings.defaultCreate`：「＋ 預設建立」→「調查記錄設定」；新增 `settings.collectionDesc`。7 個完整語系；`es-419` 兩個 key 都沒有，未動。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:dock / check:kav / lint（0 error，warning 數與改動前相同）
+- [x] `npx expo export --platform ios --no-bytecode`：bundle 含 `ContentNativeSelect`、不含 `ContentWebSelect`、`@radix-ui` 出現 0 次 —— radix 只在 `dist/select.web.js`，Metro 依平台副檔名解析，原生 bundle 不會拉到（曾懷疑要 vendoring，查證後不需要）
+- [ ] 實機 iOS：
+  1. 主題 select 的 popover 畫在原生 stack header **之上**；點外面關閉；即時套用
+  2. 有 active 記錄（綠色 `ActiveSessionBar`）時開最上面那個 select，popover 不被 bar 遮住
+  3. 字級調「特大」後重開 select，popover 文字要跟著變大（沒變＝`PortalHost` 掛錯層）
+  4. 深色模式切換後 popover 顏色跟著走
+  5. 標本採集 → 起始採集號：`promptText` 直接開，不需 350ms 迂迴；「值太小」「確認」兩個 Alert 分支都要在
+  6. 語言頁搜 `Deut`／`日本` → 選取 → header 即時換語言；介面變陌生文字後返回鍵仍可用
+  7. 匯出設定：改選項 → 返回 → 再進入，狀態持久化且無「完成」鍵
+  8. iNat 座標隱私 select；上傳頁批次執行中該 select 必須 disabled
+  9. 冷啟深連結 `checklister://settings/collection`，返回鍵回首頁而非無反應
+- [ ] 實機 Android：每個新 route 的實體返回鍵，以及 **popover 開啟時**（primitive 的 Content 有註冊 `BackHandler`，應先關 popover）
+- [ ] 回歸（只換外殼）：區域名錄國家選擇 → 類群選擇 → GBIF 密碼提示這串 `setTimeout` 連鎖；調查者 headerRight 新增／滑動刪除／長按拖曳排序
+
+### 附帶清理：孤立 i18n key 與模板殘留
+
+**15 個 i18n key** 已從 7 個完整語系移除（`es-419` 本來就沒有）。全部是重構後遺留的舊文案，功能都還在、只是換了說法；`git log -S` 指出確切來源：
+
+- `8a38771`（inat upload）把三個畫面各自的「拍照／從相簿」action sheet 換成共用的 `PhotoGrid` → 孤立 `plot.addEnvPhoto`、`plot.pickFromAlbum`、`species.addPhoto`、`species.pickFromAlbum`、`species.stopRecording`。現行文案：區塊標題 `plot.envPhotos`、相機鈕 `species.takePhoto`、相簿連結 `collection.fromLibrary`（三份「從相簿選擇」統一成一份）。
+- `0110b15`（GBIF packs）把分層從文字輸入改成 action sheet → 孤立 `plotSpecies.inputLayer`，現行是 `plotSpecies.changeLayer`。
+- 其餘：`settings.on`、`surveyors.title`、`photo.title`、`map.noCoord`、`plotValue.thisSpecies`、`areaSpecies.errNetwork`（`apiErrorMessage.ts` 用的是 `errAborted/errRateLimit/errServer/errServerDetail/errOffline/errTimeout/errService/errParse`，沒有 `errNetwork`）、`areaSpecies.selfIntersect/selfIntersectDraw/simplifiedNote`。
+
+查證不只字面 grep：列出全 codebase 35 處 `t(\`…\`)` template 呼叫點，確認沒有任何一個能動態組出這些 key（唯一涉及 `areaSpecies` 的是 `areaSpecies.iconic.${…}`，只產出 `iconic` 子命名空間）。刪除採逐行編輯保留原格式，每個檔案改完 `json.loads` 比對「原結構 − 15 key」才寫回。**反向掃描現在是 0 孤兒**（1624 keys）。
+
+> `check-i18n` 只做正向檢查（引用→定義），抓不到反向孤兒。要防再犯需要補一段反向掃描 —— 尚未做。
+
+**`expo-symbols` + `expo-web-browser` 移除**，連帶刪掉 9 個 `create-expo-app` 模板殘留檔。這兩個套件當初就是被模板帶進來的；先前的死碼掃描漏看頂層 `components/`／`hooks/`／`constants/`（和 `src/components/` 是兩個目錄，`tailwind.config.js` 的 content glob 同時涵蓋）。
+
+刪除閉包（皆 refs=0，或只被其他死檔引用）：`components/external-link.tsx`（expo-web-browser 唯一消費者）、`components/ui/icon-symbol.tsx`＋`.ios.tsx`（expo-symbols 唯一消費者）、`components/ui/collapsible.tsx`、`components/themed-text.tsx`、`components/themed-view.tsx`、`components/parallax-scroll-view.tsx`、`components/hello-wave.tsx`、`hooks/use-theme-color.ts`。
+
+保留（活的，被 `app/(tabs)/_layout.tsx` 引用）：`components/haptic-tab.tsx`、`hooks/use-color-scheme.ts(.web.ts)`、`constants/theme.ts`。
+
+**兩個套件都有原生程式碼，移除後必須重跑 `cd ios && pod install`**（僅 iOS；Android 的 autolinking 由 Gradle 在 build 時直接讀 `node_modules`，產物落在被 ignore 的 `android/**/build/`，grep 確認無殘留，正常重建即可）。不跑的話 Xcode 會建置失敗而不是安靜略過：`ios/Podfile.lock`、`Pods/Target Support Files/*` 與 `Pods-Checklister/ExpoModulesProvider.swift` 仍留著 `import ExpoSymbols` / `import ExpoWebBrowser`，指向已經不存在的 `node_modules/expo-symbols/ios`。`ios/Podfile.lock` 有納入版控（`ios/Pods/` 被 gitignore），所以這個更新要一起 commit。已執行並確認四處殘留皆歸零。
+
+驗證：`npx expo export --platform ios --no-bytecode` 通過，bundle 內 `expo-symbols` / `expo-web-browser` / `@radix-ui` 各 0 次、`ContentNativeSelect` 1 次。
+
+### 仍未處理
+- `react-native-worklets-core` 只出現在 `babel.config.js` 的 plugin（VisionCamera 用，視覺模型 dormant）—— 等視覺模型去留確定再一起決定。
+
+
+---
+
+## Sprint 2026-09-15（續）— 記錄詳細頁兩處修正
+
+### 1. 空的保育狀態不再佔一行
+
+`SpeciesDetailSheet.tsx`（名錄記錄詳細頁）的 `ConservationRow` / `ConservationBadgeRow` 缺了 `SpeciesDetailPanel.tsx:580,589` 早就有的 `if (!value) return null`，改成渲染 en dash，於是沒有紅皮書等級的物種會看到「紅皮書：–」。空值代表「此分類群無此名錄」，不是「未知」—— 那一行什麼都沒說，還把真正有列名的往下擠。
+
+加上守衛，並比照 `SpeciesDetailPanel.tsx:267` 把整個 `<Section title={t('species.conservation')}>` 也包上條件，四欄全空時連標題都不出現。樣區／採集記錄不顯示保育狀態，不受影響。
+
+### 2. 小地圖誤觸保護 + inline undo
+
+`RecordLocationMap` 的 inline 小地圖點一下就**立即覆寫座標並靜默存檔**（`onChange` 由父層 persist，無 toast），而手動放點的 accuracy 是 null —— GPS 實測值連同不確定度會被誤觸無聲抹掉，事後無法還原。四個呼叫端共用此元件：名錄記錄、樣區物種、採集標本、樣區中心。
+
+- **只在覆寫時攔截**：`lat/lng` 為 null（首次放點）維持原行為，沒東西可失去；已有座標才跳 `Alert` 確認，訊息會說明目前是 GPS 實測（±N m）或手動指定。
+- **用 `Alert` 而非 inline 確認**：它是原生 UIAlertController，不像 RN Modal 會被既有 sheet 擋住。
+- **undo 做成 inline 列，不是 toast**：`ToastHost` 是掛在 navigation root 的絕對定位 View，而四個呼叫端有三個是 RN Modal，iOS 會在自己的 window present，root 橫幅會被蓋在後面 —— undo 會正好在最需要的地方看不見。理由與本檔案既有的座標輸入列 inline 化完全相同（`RecordLocationMap.tsx:60-67` 的註解）。
+- **全螢幕編輯器不套**（決策）：使用者特地點「全螢幕」就是為了精準調位，意圖明確。`guardedCommit` 只給 inline，fullscreen 仍用原本的 `commit`。
+- **undo 會還原 accuracy**，不只經緯度。這需要把 `onChange` 拓寬成 `(lat, lng, accuracy)` 並串過全部四條鏈：`SpeciesDetailSheet` → `app/session/[id].tsx`、`PlotSpeciesValueModal` → `PlotSpeciesTab`、`SpecimenDetailSheet` → `app/collection/[id].tsx`（本來就是三參數）、`app/plot/[id].tsx`。**注意 TS 不會擋**：兩參數的 function 可賦值給三參數型別，漏改的父層會靜默丟掉 accuracy，tsc 照樣過。
+- `undo_duration` 這個偏好設定原本**沒有任何消費端**（只被 store 讀進來、在設定頁被寫），現在是 undo 列的顯示秒數。
+
+i18n：`locMap` 新增 6 個 key（`moveConfirmTitle` / `moveConfirmGps` / `moveConfirmManual` / `move` / `moved` / `undo`），7 個完整語系。反向掃描仍是 0 孤兒（1630 keys）。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:dock / check:kav / check:roundtrip / lint（0 error，150 warning 與改動前相同）/ `expo export --platform ios`
+- [ ] 實機：
+  1. 無座標的記錄點小地圖 → 直接放點，不跳確認（維持原行為）
+  2. 有 GPS 座標的記錄點小地圖 → 確認框要顯示 ±N 公尺 → 取消則座標不動
+  3. 確認移動 → undo 列出現在地圖下方 → 點「復原」→ marker 跳回原位，且**±N 公尺的精度也要回來**（不是只有經緯度）
+  4. 在名錄／採集／樣區物種三個 sheet 內各驗一次 undo 列看得見（這是 toast 會失效的三個地方）
+  5. 拖曳紅色 marker 同樣要跳確認
+  6. 點「全螢幕」進去後點地圖 → 不跳確認、不出現 undo 列
+  7. undo 列在 `undo_duration` 秒後自動消失；期間離開 sheet 不應 crash（timer 有 cleanup）
+  8. 樣區中心（`app/plot/[id].tsx`，唯一不在 Modal 裡的呼叫端）行為一致
+  9. 沒有任何保育欄位的物種（多數昆蟲）詳細頁：不該出現「紅皮書：–」，整個保育區塊連標題都不出現

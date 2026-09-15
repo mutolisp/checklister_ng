@@ -865,12 +865,13 @@ export default function SessionDetailScreen() {
           reload();
           toast(lat === null ? t('session.coordCleared') : t('session.coordRecorded'));
         }}
-        onChangeLocation={(lat, lng) => {
-          // Inline map edit: persist quietly (no toast), accuracy cleared since
-          // a manually-placed point has no GPS-measured accuracy.
+        onChangeLocation={(lat, lng, accuracy) => {
+          // Inline map edit: persist quietly (no toast). A hand-placed point
+          // arrives with accuracy null; an undo restoring a GPS fix carries the
+          // measured value back, so pass it through rather than clearing it.
           if (!activeRecord) return;
-          updateRecordLocation(activeRecord.id, lat, lng, null);
-          setActiveRecord({ ...activeRecord, lat, lng, accuracy: null });
+          updateRecordLocation(activeRecord.id, lat, lng, accuracy);
+          setActiveRecord({ ...activeRecord, lat, lng, accuracy });
           reload();
         }}
         onAddPhoto={handleAddPhoto}

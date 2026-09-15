@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, FlatList, Linking, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ScientificName } from '~/components/ScientificName';
+import { SelectRow } from '~/components/settings/rows';
 import type { RecordKind } from '~/db';
 import { observationWebUrl } from '~/lib/inatApi';
 import { getInatStatus } from '~/lib/inatAuth';
@@ -233,22 +234,15 @@ export default function InatUploadScreen() {
               className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
             />
 
-            <Text className="mt-3 mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('inat.geoprivacy')}</Text>
-            <View className="flex-row overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-              {GEOPRIVACY_VALUES.map((g) => {
-                const active = g === geoprivacy;
-                return (
-                  <Pressable
-                    key={g}
-                    onPress={() => !running && setGeoprivacy(g)}
-                    className={`flex-1 items-center py-1.5 ${active ? 'bg-blue-500' : 'bg-white dark:bg-gray-900'}`}
-                  >
-                    <Text className={`text-sm ${active ? 'font-semibold text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                      {geoLabel[g]}
-                    </Text>
-                  </Pressable>
-                );
-              })}
+            <View className="mt-3">
+              <SelectRow
+                label={t('inat.geoprivacy')}
+                value={geoprivacy}
+                options={GEOPRIVACY_VALUES.map((g) => ({ value: g, label: geoLabel[g] }))}
+                onChange={setGeoprivacy}
+                variant="inline"
+                disabled={running}
+              />
             </View>
             <View className="mt-3 flex-row items-center justify-between">
               <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('inat.recordsHeader')}</Text>

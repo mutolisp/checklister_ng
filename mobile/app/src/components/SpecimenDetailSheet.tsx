@@ -352,8 +352,10 @@ export function SpecimenDetailSheet({
               <RecordLocationMap
                 lat={specimen.lat}
                 lng={specimen.lng}
-                // Placed by hand — there is no measured uncertainty to record.
-                onChange={(lat, lng) => onChangeLocation(lat, lng, null)}
+                accuracy={specimen.accuracy}
+                // A hand-placed point has no measured uncertainty and arrives
+                // with null; an undo hands the previous one back.
+                onChange={onChangeLocation}
               />
             </Field>
 

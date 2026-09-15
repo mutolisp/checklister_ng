@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 import { SystemBars } from 'react-native-edge-to-edge';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { PortalHost } from '@rn-primitives/portal';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import 'react-native-reanimated';
@@ -91,7 +92,13 @@ function ThemedShell() {
             <Stack.Screen name="key/[id]" options={{ title: t('nav.key') }} />
             <Stack.Screen name="projects" options={{ title: t('nav.projects') }} />
             <Stack.Screen name="sites" options={{ title: t('nav.sites') }} />
-            <Stack.Screen name="settings" options={{ title: t('nav.settings') }} />
+            <Stack.Screen name="settings/index" options={{ title: t('nav.settings') }} />
+            {/* Titles reuse the keys the rows already carry, so the header is
+                right before the screen mounts (no flash) and exportPref.title's
+                existing es-419 override keeps working. */}
+            <Stack.Screen name="settings/language" options={{ title: t('settings.language') }} />
+            <Stack.Screen name="settings/collection" options={{ title: t('settings.sectionCollection') }} />
+            <Stack.Screen name="settings/export" options={{ title: t('exportPref.title') }} />
             <Stack.Screen name="surveyors" options={{ title: t('nav.surveyors') }} />
             <Stack.Screen name="about" options={{ title: t('nav.about') }} />
             <Stack.Screen name="favorites" options={{ title: t('nav.favorites') }} />
@@ -102,6 +109,14 @@ function ThemedShell() {
             <Stack.Screen name="report/[kind]/[id]" options={{ title: t('report.navTitle') }} />
           </Stack>
         </View>
+        {/* Select popovers render here, NOT via React.createPortal: the portal
+            stores the element globally and renders it at THIS position, so the
+            popover inherits context from here — which is why it must stay
+            inside <FontScaleProvider> (it needs the --ts-* vars) while sitting
+            outside the <View> that holds <Stack> (so it paints above every
+            screen, its native header, and the ActiveSessionBar). Before
+            <ToastHost> so a toast fired with a popover open still wins. */}
+        <PortalHost />
         <ToastHost />
         <TextPromptHost />
         <GbifLookupHost />

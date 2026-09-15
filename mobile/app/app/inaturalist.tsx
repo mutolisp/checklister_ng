@@ -12,7 +12,8 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Linking, Pressable, ScrollView, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SelectRow } from '~/components/settings/rows';
+import { SettingsPage } from '~/components/settings/SettingsPage';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import {
   INAT_API_TOKEN_URL,
@@ -87,7 +88,7 @@ export default function InaturalistScreen() {
   };
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
+    <SettingsPage>
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <Text className="text-xs text-gray-500 dark:text-gray-400">{t('inat.intro')}</Text>
 
@@ -155,27 +156,20 @@ export default function InaturalistScreen() {
           </Pressable>
         </View>
 
-        <Text className="mt-6 mb-1 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
-          {t('inat.geoprivacy')}
-        </Text>
-        <View className="flex-row overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
-          {GEOPRIVACY_VALUES.map((g) => {
-            const active = g === geoprivacy;
-            return (
-              <Pressable
-                key={g}
-                onPress={() => setSetting('inat_geoprivacy', g)}
-                className={`flex-1 items-center py-2 ${active ? 'bg-blue-500' : 'bg-white dark:bg-gray-900'}`}
-              >
-                <Text className={`text-sm ${active ? 'font-semibold text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                  {geoLabel[g]}
-                </Text>
-              </Pressable>
-            );
-          })}
+        {/* No uppercase section header here: the row labels itself, the way
+            主題 / 卡片密度 do on the 偏好設定 root. The 其他方式 card above
+            keeps its header because its rows carry no labels. */}
+        <View className="mt-6 overflow-hidden rounded-xl">
+          <SelectRow
+            label={t('inat.geoprivacy')}
+            value={geoprivacy}
+            options={GEOPRIVACY_VALUES.map((g) => ({ value: g, label: geoLabel[g] }))}
+            onChange={(v) => setSetting('inat_geoprivacy', v)}
+            divider={false}
+          />
         </View>
         <Text className="mt-1 px-1 text-xs text-gray-500 dark:text-gray-400">{t('inat.geoprivacyHint')}</Text>
       </ScrollView>
-    </SafeAreaView>
+    </SettingsPage>
   );
 }

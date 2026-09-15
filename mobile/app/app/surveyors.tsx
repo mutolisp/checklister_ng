@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
@@ -7,10 +7,9 @@ import DraggableFlatList, {
   ScaleDecorator,
   type RenderItemParams,
 } from 'react-native-draggable-flatlist';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SettingsPage } from '~/components/settings/SettingsPage';
 import { promptText } from '~/components/TextPromptModal';
 import { SwipeRow } from '~/components/SwipeRow';
-import { BackHeaderLeft } from '~/lib/goBack';
 import { useSurveyors } from '~/stores/surveyors';
 import type { Surveyor } from '~/db';
 
@@ -82,18 +81,14 @@ export default function SurveyorsScreen() {
   );
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-      <Stack.Screen
-        options={{
-          title: t('nav.surveyors'),
-          headerLeft: BackHeaderLeft,
-          headerRight: () => (
-            <Pressable onPress={handleAdd} hitSlop={8}>
-              <Ionicons name="add" size={26} color="#2563eb" />
-            </Pressable>
-          ),
-        }}
-      />
+    <SettingsPage
+      title={t('nav.surveyors')}
+      headerRight={() => (
+        <Pressable onPress={handleAdd} hitSlop={8}>
+          <Ionicons name="add" size={26} color="#2563eb" />
+        </Pressable>
+      )}
+    >
       <View className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-2">
         <Text className="text-xs text-gray-500 dark:text-gray-400">
           {t('surveyors.hint')}
@@ -113,6 +108,6 @@ export default function SurveyorsScreen() {
         }
         renderItem={renderItem}
       />
-    </SafeAreaView>
+    </SettingsPage>
   );
 }

@@ -53,7 +53,9 @@ type Props = {
   onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
   /** Live-commit a coordinate edited on the inline map (no toast). Manual map
    *  edits carry no GPS accuracy. Pass alongside onSaveLocation to show the map. */
-  onChangeLocation?: (lat: number, lng: number) => void;
+  /** `accuracy` is null for a hand-placed point; an undo passes the previous
+   *  measured value back so a restored GPS fix keeps its uncertainty. */
+  onChangeLocation?: (lat: number, lng: number, accuracy: number | null) => void;
   /** Capture or pick a photo for the current record. Parent persists the URI. */
   onAddPhoto?: (mode: 'camera' | 'library') => void;
   /** Remove a single photo URI from the current record. */
@@ -297,14 +299,16 @@ export function SpeciesDetailSheet({
                   </View>
                 </Section>
 
-                <Section title={t('species.conservation')}>
-                  <View className="space-y-1">
-                    <ConservationBadgeRow label={t('species.redlist')} value={record.redlist} />
-                    <ConservationBadgeRow label="IUCN" value={record.iucn} />
-                    <ConservationRow label="CITES" value={record.cites} />
-                    <ConservationRow label={t('species.protected')} value={record.protected} />
-                  </View>
-                </Section>
+                {record.redlist || record.iucn || record.cites || record.protected ? (
+                  <Section title={t('species.conservation')}>
+                    <View className="space-y-1">
+                      <ConservationBadgeRow label={t('species.redlist')} value={record.redlist} />
+                      <ConservationBadgeRow label="IUCN" value={record.iucn} />
+                      <ConservationRow label="CITES" value={record.cites} />
+                      <ConservationRow label={t('species.protected')} value={record.protected} />
+                    </View>
+                  </Section>
+                ) : null}
 
                 {(() => {
                   const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
@@ -419,6 +423,7 @@ export function SpeciesDetailSheet({
                     <RecordLocationMap
                       lat={record.lat}
                       lng={record.lng}
+                      accuracy={record.accuracy}
                       onChange={onChangeLocation}
                     />
                   ) : null}
@@ -536,23 +541,24 @@ function Tag({ color, label }: { color: 'emerald' | 'blue' | 'purple' | 'rose'; 
   );
 }
 
+// Empty means "this taxon carries no such listing", which is not the same as
+// "unknown" — a 「紅皮書：–」 row states nothing and pushes the rows that do
+// carry a listing further down. Same guard as SpeciesDetailPanel.
 function ConservationRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
   return (
     <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
-      {label}：<Text className="font-medium">{value || '–'}</Text>
+      {label}：<Text className="font-medium">{value}</Text>
     </Text>
   );
 }
 
 function ConservationBadgeRow({ label, value }: { label: string; value: string }) {
+  if (!value) return null;
   return (
     <View className="flex-row items-center">
       <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{label}：</Text>
-      {value ? (
-        <ConservationBadge code={value} />
-      ) : (
-        <Text className="text-sm text-gray-700 dark:text-gray-300">–</Text>
-      )}
+      <ConservationBadge code={value} />
     </View>
   );
 }

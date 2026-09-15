@@ -15,7 +15,8 @@ import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Linking, Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SettingsPage } from '~/components/settings/SettingsPage';
 import { promptText } from '~/components/TextPromptModal';
 import { SwipeRow } from '~/components/SwipeRow';
 import { ApiError } from '~/lib/apiFetch';
@@ -438,7 +439,7 @@ export default function RegionPacksScreen() {
   };
 
   return (
-    <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
+    <SettingsPage>
       <FlatList
         data={rows}
         keyExtractor={(r) => (r.kind === 'builtin' ? `builtin-${r.code}` : `pack-${r.pack.id}`)}
@@ -500,7 +501,7 @@ export default function RegionPacksScreen() {
         onCancel={() => setGroupCountry(null)}
         onConfirm={confirmGroups}
       />
-    </SafeAreaView>
+    </SettingsPage>
   );
 }
 

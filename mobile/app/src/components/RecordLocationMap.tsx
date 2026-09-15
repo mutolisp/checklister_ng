@@ -4,6 +4,9 @@
  * (`SpeciesDetailSheet`) and the plot species modal (`PlotSpeciesValueModal`).
  *
  * - Tap the map to place / relocate the point; drag the red marker to fine-tune.
+ *   On the INLINE map, relocating an existing coordinate asks first and then
+ *   offers an undo — see `guardedCommit`. The fullscreen editor does neither:
+ *   you got there by deliberately tapping 「全螢幕」 to do precise work.
  * - Zoom in/out buttons (animateToRegion by delta) + basemap toggle
  *   (standard / satellite / hybrid).
  * - Expand button opens the same editor full-screen for precise work.
@@ -11,7 +14,9 @@
  *   blue marker + circle for context (used by the plot flow).
  *
  * `onChange` commits the new coordinate immediately (parent persists it without
- * a toast); manual placement carries no GPS accuracy, so callers pass null.
+ * a toast); manual placement carries no GPS accuracy, hence the `null` third
+ * argument. Undo passes the previous accuracy back so restoring a GPS-measured
+ * fix returns its uncertainty too, not just its latitude and longitude.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -41,18 +46,25 @@ type Reference = { center?: { lat: number; lng: number } | null; radiusM?: numbe
 type Props = {
   lat: number | null;
   lng: number | null;
-  /** Commit a new coordinate (placed by tap or drag). Parent persists quietly. */
-  onChange: (lat: number, lng: number) => void;
+  /** Current GPS uncertainty in metres; null when the point was placed by hand.
+   *  Needed so an undo can put the measured value back, and so the confirm can
+   *  say what is about to be lost. */
+  accuracy?: number | null;
+  /** Commit a new coordinate (placed by tap or drag). Parent persists quietly.
+   *  `accuracy` is null for a hand-placed point and carries the previous
+   *  measured value when an undo restores one. */
+  onChange: (lat: number, lng: number, accuracy: number | null) => void;
   /** Optional plot context drawn as a faint reference (non-editable). */
   reference?: Reference;
 };
 
 const INLINE_HEIGHT = 184;
 
-export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
+export function RecordLocationMap({ lat, lng, accuracy = null, onChange, reference }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const mapView = useSettings((s) => s.map_view);
+  const undoSeconds = useSettings((s) => s.undo_duration);
   const [basemap, setBasemap] = useState<MapBasemap>(
     mapView.basemap === 'terrain' ? 'standard' : mapView.basemap,
   );
@@ -92,9 +104,73 @@ export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
     setPending(null);
   }, [propKey]);
 
-  const commit = (nextLat: number, nextLng: number) => {
+  const commit = (nextLat: number, nextLng: number, nextAccuracy: number | null = null) => {
     setPending({ lat: nextLat, lng: nextLng });
-    onChange(nextLat, nextLng);
+    onChange(nextLat, nextLng, nextAccuracy);
+  };
+
+  /**
+   * The coordinate a confirmed move replaced, offered back as an inline undo.
+   *
+   * Inline, not a toast, for the same reason the coordinate entry above is
+   * inline: `ToastHost` is an absolutely-positioned View at the navigation
+   * root, and three of this component's four call sites (the session, specimen
+   * and plot-species sheets) are RN Modals, which iOS presents in their own
+   * window — a root-level banner renders behind them. The undo would have been
+   * invisible exactly where the risk lives.
+   */
+  const [undoPoint, setUndoPoint] = useState<{ lat: number; lng: number; accuracy: number | null } | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+  }, []);
+
+  const offerUndo = (prev: { lat: number; lng: number; accuracy: number | null }) => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    setUndoPoint(prev);
+    undoTimer.current = setTimeout(() => setUndoPoint(null), undoSeconds * 1000);
+  };
+
+  /**
+   * Tap/drag on the INLINE map, where the finger is often just scrolling the
+   * sheet. Placing the first point is free — there is nothing to lose. Moving
+   * an existing one is destructive and silent (the parent persists with no
+   * toast), and a GPS fix overwritten by hand loses its measured uncertainty as
+   * well as its position, which no later edit can recover. So that case
+   * confirms first, then leaves an undo behind.
+   *
+   * `Alert` rather than an inline confirm: it is a native UIAlertController, so
+   * unlike an RN Modal it does present above the sheets this map lives in.
+   */
+  const guardedCommit = (nextLat: number, nextLng: number) => {
+    if (lat == null || lng == null) {
+      commit(nextLat, nextLng);
+      return;
+    }
+    const prev = { lat, lng, accuracy };
+    Alert.alert(
+      t('locMap.moveConfirmTitle'),
+      accuracy != null
+        ? t('locMap.moveConfirmGps', { m: Math.round(accuracy) })
+        : t('locMap.moveConfirmManual'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('locMap.move'),
+          onPress: () => {
+            commit(nextLat, nextLng);
+            offerUndo(prev);
+          },
+        },
+      ],
+    );
+  };
+
+  const undoMove = () => {
+    if (!undoPoint) return;
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    commit(undoPoint.lat, undoPoint.lng, undoPoint.accuracy);
+    setUndoPoint(null);
   };
 
   const shownLat = pending?.lat ?? lat;
@@ -139,7 +215,7 @@ export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
         lat={shownLat}
         lng={shownLng}
         initialRegion={initialRegion}
-        onChange={commit}
+        onChange={guardedCommit}
         reference={reference}
         basemap={basemap}
         onCycleBasemap={cycleBasemap}
@@ -186,6 +262,15 @@ export function RecordLocationMap({ lat, lng, onChange, reference }: Props) {
           {hasPoint ? t('locMap.dragHint') : t('locMap.tapToPlace')}
         </Text>
       )}
+
+      {undoPoint ? (
+        <View className="mt-2 flex-row items-center rounded-lg bg-gray-900 px-3 py-2 dark:bg-gray-800">
+          <Text className="flex-1 text-xs text-white">{t('locMap.moved')}</Text>
+          <Pressable onPress={undoMove} hitSlop={8}>
+            <Text className="text-xs font-semibold text-blue-300">{t('locMap.undo')}</Text>
+          </Pressable>
+        </View>
+      ) : null}
 
       <Modal visible={fullscreen} animationType="slide" onRequestClose={() => setFullscreen(false)}>
         {/* SafeAreaView from the context lib reports 0 insets inside a Modal

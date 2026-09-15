@@ -377,12 +377,14 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
             <RecordLocationMap
               lat={plot.decimal_latitude}
               lng={plot.decimal_longitude}
-              onChange={(lat, lng) =>
+              accuracy={plot.coord_uncertainty_m}
+              onChange={(lat, lng, accuracy) =>
                 patch({
                   decimal_latitude: lat,
                   decimal_longitude: lng,
-                  // Placed by hand, so there is no measured accuracy to claim.
-                  coord_uncertainty_m: null,
+                  // Hand-placed arrives as null; an undo restores the measured
+                  // value that was there before.
+                  coord_uncertainty_m: accuracy,
                 })
               }
             />

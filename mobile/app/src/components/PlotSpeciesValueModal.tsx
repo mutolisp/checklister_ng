@@ -99,9 +99,10 @@ type Props = {
   accuracy?: number | null;
   /** Persist per-record GPS (edit mode only). Omit to hide the GPS button. */
   onSaveLocation?: (lat: number | null, lng: number | null, accuracy: number | null) => void;
-  /** Live-commit a coordinate edited on the inline map (no toast); manual edits
-   *  carry no GPS accuracy. Pass alongside onSaveLocation to show the map. */
-  onChangeLocation?: (lat: number, lng: number) => void;
+  /** Live-commit a coordinate edited on the inline map (no toast). A manual
+   *  edit carries no GPS accuracy (null); an undo hands the previous measured
+   *  value back. Pass alongside onSaveLocation to show the map. */
+  onChangeLocation?: (lat: number, lng: number, accuracy: number | null) => void;
   /** Plot geographic context for the coordinate map preview (centre / track /
    *  point-count radius). Omit to hide the preview button. */
   plotGeo?: {
@@ -576,6 +577,7 @@ export function PlotSpeciesValueModal({
                     <RecordLocationMap
                       lat={lat ?? null}
                       lng={lng ?? null}
+                      accuracy={accuracy ?? null}
                       onChange={onChangeLocation}
                       reference={
                         plotGeo && plotGeo.lat != null && plotGeo.lng != null

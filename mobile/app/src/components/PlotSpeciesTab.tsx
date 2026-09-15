@@ -465,12 +465,13 @@ export function PlotSpeciesTab({
     onChanged();
   };
 
-  const handleChangeModalLocation = (lat: number, lng: number) => {
-    // Inline map edit: persist quietly (no toast). Manual placement → no GPS accuracy.
+  const handleChangeModalLocation = (lat: number, lng: number, accuracy: number | null) => {
+    // Inline map edit: persist quietly (no toast). Manual placement arrives
+    // with accuracy null; an undo carries the previous measured value back.
     if (!modal || modal.mode !== 'edit') return;
     const record = modal.record;
-    updatePlotSpeciesLocation(record.id, lat, lng, null);
-    setModal({ mode: 'edit', record: { ...record, lat, lng, accuracy: null } });
+    updatePlotSpeciesLocation(record.id, lat, lng, accuracy);
+    setModal({ mode: 'edit', record: { ...record, lat, lng, accuracy } });
     reload();
     onChanged();
   };
