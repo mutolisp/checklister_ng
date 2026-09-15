@@ -69,12 +69,23 @@ const RATE_LIMIT_WAIT_MS = 2500;
 const MAX_RATE_LIMIT_WAIT_MS = 10000;
 const MAX_RATE_LIMIT_RETRIES = 2;
 
+/** 429 → how long to wait before the one bounded retry, or null to give up
+ *  now (no Retry-After we are willing to sit through). */
+function rateLimitWaitMs(res: Response, attempt: number): number | null {
+  const after = Number(res.headers.get('retry-after'));
+  const waitMs = Number.isFinite(after) && after > 0 ? after * 1000 : RATE_LIMIT_WAIT_MS;
+  return attempt < MAX_RATE_LIMIT_RETRIES && waitMs <= MAX_RATE_LIMIT_WAIT_MS ? waitMs : null;
+}
+
 export async function getJson(
   service: 'inat' | 'gbif',
   url: string,
   signal?: AbortSignal,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
   attempt = 0,
+  /** Extra request headers — an `Authorization` JWT for iNaturalist's
+   *  authenticated GETs. Merged over the defaults. */
+  extraHeaders?: Record<string, string>,
 ): Promise<Record<string, unknown>> {
   // A timeout and a caller cancellation are different outcomes, so they get
   // their own flag rather than being read back off one shared signal.
@@ -91,7 +102,7 @@ export async function getJson(
     let res: Response;
     try {
       res = await fetch(url, {
-        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+        headers: { Accept: 'application/json', 'User-Agent': USER_AGENT, ...extraHeaders },
         signal: ctrl.signal,
       });
     } catch (e) {
@@ -111,12 +122,11 @@ export async function getJson(
         // `Too many API requests have been detected from your client`. Retrying
         // after a wait is the documented remedy, so one bounded retry happens
         // here rather than surfacing a failure the user cannot act on.
-        const after = Number(res.headers.get('retry-after'));
-        const waitMs = Number.isFinite(after) && after > 0 ? after * 1000 : RATE_LIMIT_WAIT_MS;
-        if (attempt < MAX_RATE_LIMIT_RETRIES && waitMs <= MAX_RATE_LIMIT_WAIT_MS) {
+        const waitMs = rateLimitWaitMs(res, attempt);
+        if (waitMs !== null) {
           await sleep(waitMs);
           if (signal?.aborted) throw new ApiError(service, 'aborted', 'aborted');
-          return getJson(service, url, signal, timeoutMs, attempt + 1);
+          return getJson(service, url, signal, timeoutMs, attempt + 1, extraHeaders);
         }
         throw new ApiError(service, 'rate_limit', `HTTP 429`, 429, detail);
       }
@@ -124,6 +134,90 @@ export async function getJson(
     }
     try {
       return (await res.json()) as Record<string, unknown>;
+    } catch (e) {
+      throw new ApiError(service, 'parse', String((e as Error)?.message ?? e));
+    }
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+/**
+ * JSON-in, JSON-out POST — the write-side twin of `getJson`, with the same
+ * timeout / abort / error vocabulary and the same single bounded 429 retry.
+ * Only fetch, so this file stays loadable under plain Node (check:gbif).
+ */
+export async function postJson(
+  service: 'inat' | 'gbif',
+  url: string,
+  body: unknown,
+  opts: { headers?: Record<string, string>; signal?: AbortSignal; timeoutMs?: number } = {},
+  attempt = 0,
+): Promise<Record<string, unknown>> {
+  return sendJson(service, 'POST', url, body, opts, attempt);
+}
+
+/** Same as `postJson` for the other JSON verbs (PUT / DELETE). `body` may be
+ *  undefined for a DELETE. */
+export async function sendJson(
+  service: 'inat' | 'gbif',
+  method: 'POST' | 'PUT' | 'DELETE',
+  url: string,
+  body: unknown,
+  opts: { headers?: Record<string, string>; signal?: AbortSignal; timeoutMs?: number } = {},
+  attempt = 0,
+): Promise<Record<string, unknown>> {
+  const { headers, signal, timeoutMs = DEFAULT_TIMEOUT_MS } = opts;
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onAbort = () => ctrl.abort();
+  signal?.addEventListener('abort', onAbort);
+  const timer = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+
+  try {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': USER_AGENT,
+          ...headers,
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      if (timedOut) throw new ApiError(service, 'timeout', `timed out after ${timeoutMs} ms`);
+      if (signal?.aborted) throw new ApiError(service, 'aborted', 'aborted');
+      throw new ApiError(service, 'network', String((e as Error)?.message ?? e));
+    }
+    if (!res.ok) {
+      let detail: string | undefined;
+      try {
+        detail = (await res.text()).trim().slice(0, MAX_DETAIL) || undefined;
+      } catch {
+        // Body unreadable; the status alone still has to be reported.
+      }
+      if (res.status === 429) {
+        const waitMs = rateLimitWaitMs(res, attempt);
+        if (waitMs !== null) {
+          await sleep(waitMs);
+          if (signal?.aborted) throw new ApiError(service, 'aborted', 'aborted');
+          return sendJson(service, method, url, body, opts, attempt + 1);
+        }
+        throw new ApiError(service, 'rate_limit', `HTTP 429`, 429, detail);
+      }
+      throw new ApiError(service, 'http', `HTTP ${res.status}`, res.status, detail);
+    }
+    try {
+      const text = await res.text();
+      return (text ? JSON.parse(text) : {}) as Record<string, unknown>;
     } catch (e) {
       throw new ApiError(service, 'parse', String((e as Error)?.message ?? e));
     }

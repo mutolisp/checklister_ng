@@ -15,6 +15,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { isRecordNumberTaken, nextRecordNumber, type SpecimenWithTaxon } from '~/db';
 import { attributesFromRecord, attributesToColumns, EMPTY_DRAFT } from '~/lib/dwcAttributes';
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
+import { AudioClipList } from './AudioClipList';
+import { InatSyncButton, InatUploadedBadge, type InatSheetState } from './InatUploadedBadge';
 import { RecordLocationMap } from './RecordLocationMap';
 import { ScientificName } from './ScientificName';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
@@ -47,6 +49,11 @@ type Props = {
   onDelete: () => void;
   onAddPhoto: (mode: 'camera' | 'library') => void;
   onRemovePhoto: (uri: string) => void;
+  /** A finished recording (file:// URI, already persisted). Parent writes the DB. */
+  onAddAudio: (uri: string) => void;
+  onRemoveAudio: (uri: string) => void;
+  /** 上傳／同步 iNat row for this specimen. */
+  inat?: InatSheetState;
   /** Hand off to the trip screen's docked SearchBox to re-identify this
    *  specimen. The sheet closes; the collection number is kept. */
   onReplaceTaxon: () => void;
@@ -85,6 +92,9 @@ export function SpecimenDetailSheet({
   onDelete,
   onAddPhoto,
   onRemovePhoto,
+  onAddAudio,
+  onRemoveAudio,
+  inat,
   onReplaceTaxon,
   duplicate,
 }: Props) {
@@ -183,6 +193,11 @@ export function SpecimenDetailSheet({
           <Text className="flex-1 px-3 text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={1}>
             {specimen.record_number}
           </Text>
+          {specimen.inat_uploaded_at != null && specimen.inat_observation_id ? (
+            <View className="mr-3">
+              <InatUploadedBadge observationId={specimen.inat_observation_id} />
+            </View>
+          ) : null}
           <Pressable onPress={onDelete} hitSlop={8} className="active:opacity-60">
             <Ionicons name="trash-outline" size={20} color="#dc2626" />
           </Pressable>
@@ -369,20 +384,20 @@ export function SpecimenDetailSheet({
               <PhotoGrid
                 photos={photos}
                 onAdd={() => onAddPhoto('camera')}
+                onPickLibrary={() => onAddPhoto('library')}
                 onView={(i) => setViewerIndex(i)}
                 onRemove={onRemovePhoto}
               />
-              <Pressable
-                onPress={() => onAddPhoto('library')}
-                hitSlop={8}
-                className="mt-2 flex-row items-center active:opacity-70"
-              >
-                <Ionicons name="images-outline" size={14} color="#2563eb" />
-                <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">
-                  {t('collection.fromLibrary')}
-                </Text>
-              </Pressable>
             </Field>
+
+            <Field label={t('species.audioClips')}>
+              <AudioClipList
+                clips={parsePhotoPaths(specimen?.audio_paths ?? null)}
+                onAdd={onAddAudio}
+                onRemove={onRemoveAudio}
+              />
+            </Field>
+            {inat ? <InatSyncButton state={inat} /> : null}
           </ScrollView>
         </KeyboardAvoidingView>
       </View>

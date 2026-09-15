@@ -35,6 +35,15 @@ export type ChecklistRecord = {
    *  taxon's accepted name. Both NULL = the accepted name (the default). */
   used_name_id: number | null;
   used_scientific_name: string | null;
+  /** Recorded audio clips (v29) — JSON array of file:// URIs under
+   *  documentDirectory/audio/. Same shape as `photo_paths`. */
+  audio_paths: string | null;
+  /** iNaturalist upload state (v30). See migrations.ts v30 for the contract. */
+  inat_observation_id: number | null;
+  inat_media_done: number;
+  inat_uploaded_at: number | null;
+  /** Fingerprint of what iNat last received (v31); see inatPayload.syncFingerprint. */
+  inat_sync_hash: string | null;
 };
 
 export type RecordWithTaxon = ChecklistRecord & AdoptionStatus & {
@@ -184,6 +193,12 @@ export function updateRecordPhotos(id: number, paths: string[]): void {
   db.executeSync(`UPDATE checklist_records SET photo_paths = ? WHERE id = ?`, [value, id]);
 }
 
+export function updateRecordAudio(id: number, paths: string[]): void {
+  const db = getUserDb();
+  const value = paths.length > 0 ? JSON.stringify(paths) : null;
+  db.executeSync(`UPDATE checklist_records SET audio_paths = ? WHERE id = ?`, [value, id]);
+}
+
 export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
   const userDb = getUserDb();
 
@@ -191,7 +206,8 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
     `SELECT id, session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths, lat, lng, accuracy,
             sex, life_stage, reproductive_condition, leaf_phenology,
             organism_quantity, organism_quantity_type,
-            used_name_id, used_scientific_name
+            used_name_id, used_scientific_name,
+            audio_paths, inat_observation_id, inat_media_done, inat_uploaded_at, inat_sync_hash
      FROM checklist_records WHERE session_id = ? ORDER BY observed_at ASC`,
     [sessionId],
   );

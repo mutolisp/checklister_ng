@@ -6,6 +6,7 @@ import { alienBadge } from '~/lib/conservationColors';
 import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 import { SynonymStatusBadge } from './CollapsibleSection';
+import { rebaseAppFileUri } from '~/lib/appFiles';
 
 type Props = {
   record: RecordWithTaxon;
@@ -18,18 +19,20 @@ export function SpeciesCard({ record, onPress, onLongPress }: Props) {
   const isEndemic = record.is_endemic === 'true';
   const ab = alienBadge(record.alien_type, record.kingdom);
   const photos = parsePhotoPaths(record.photo_paths);
+  // Already on iNaturalist → tinted row (see migrations.ts v30).
+  const uploaded = record.inat_uploaded_at != null;
 
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+      className={`flex-row border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${uploaded ? 'bg-lime-50 dark:bg-lime-900/30 active:bg-lime-100 dark:active:bg-lime-900/50' : 'bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800'}`}
     >
       {photos.length > 0 ? (
         <View className="mr-3 h-14 w-14 overflow-hidden rounded-md bg-gray-100 dark:bg-gray-800">
           <Image
-            source={{ uri: photos[0] }}
+            source={{ uri: rebaseAppFileUri(photos[0]) }}
             style={{ width: '100%', height: '100%' }}
             contentFit="cover"
           />

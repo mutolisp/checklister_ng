@@ -9,6 +9,7 @@
  * happen serially with a progress callback so the UI can update.
  */
 import { File, Paths } from 'expo-file-system';
+import { rebaseAppFileUri } from './appFiles';
 import { readAsStringAsync } from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import yaml from 'js-yaml';
@@ -987,7 +988,9 @@ function addGeoEntries(
 }
 
 export async function resolveAssetUri(uri: string): Promise<string | null> {
-  if (uri.startsWith('file://')) return uri;
+  // App-owned files: the stored absolute path may point at a previous iOS
+  // container (see appFiles.ts) — re-anchor before anyone tries to read it.
+  if (uri.startsWith('file://')) return rebaseAppFileUri(uri);
 
   // PHAsset (iOS) and Android MediaStore URIs both need an extra hop to get
   // the underlying file path.

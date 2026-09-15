@@ -23,7 +23,8 @@ import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
-import { showActionSheet } from './ActionSheet';
+import { AudioClipRows, AudioRecordTile } from './AudioClipList';
+import { InatSyncButton, InatUploadedBadge, type InatSheetState } from './InatUploadedBadge';
 import { useColorScheme as useNwColorScheme } from 'nativewind';
 import { useRouter } from 'expo-router';
 import { getKeysForScope, type Layer, type Rank, type IdentificationKey } from '~/db';
@@ -115,6 +116,15 @@ type Props = {
    *  capture flow + DB write; omit to hide the section (create mode). */
   onAddPhoto?: (mode: 'camera' | 'library') => void;
   onRemovePhoto?: (uri: string) => void;
+  /** iNaturalist state of the record (edit mode only): shows the 「已上傳」 badge. */
+  inatObservationId?: number | null;
+  inatUploadedAt?: number | null;
+  /** 上傳／同步 iNat row (edit mode only). */
+  inat?: InatSheetState;
+  /** Audio clips (edit mode only — create mode has no record to attach to). */
+  audioUris?: string[];
+  onAddAudio?: (uri: string) => void;
+  onRemoveAudio?: (uri: string) => void;
   onCancel: () => void;
   onSave: (v: PlotValueDraft) => void;
 };
@@ -138,6 +148,12 @@ export function PlotSpeciesValueModal({
   photoUris,
   onAddPhoto,
   onRemovePhoto,
+  audioUris,
+  onAddAudio,
+  onRemoveAudio,
+  inatObservationId,
+  inatUploadedAt,
+  inat,
   onCancel,
   onSave,
 }: Props) {
@@ -311,9 +327,14 @@ export function PlotSpeciesValueModal({
               bottomOffset={24}
             >
               <View className="mb-3 border-b border-gray-100 dark:border-gray-800 pb-3">
-                <Text className="text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={2}>
-                  {header ? header.cname || t('species.noChineseName') : title}
-                </Text>
+                <View className="flex-row items-start">
+                  <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={2}>
+                    {header ? header.cname || t('species.noChineseName') : title}
+                  </Text>
+                  {inatUploadedAt != null && inatObservationId ? (
+                    <InatUploadedBadge observationId={inatObservationId} />
+                  ) : null}
+                </View>
                 {header ? (
                   <ScientificName
                     name={header.name}
@@ -566,24 +587,39 @@ export function PlotSpeciesValueModal({
                 </View>
               ) : null}
 
-              {onAddPhoto ? (
+              {/* Photos and audio side by side (both plot types share this
+                  modal); audio is edit-mode only, so create mode shows the
+                  photo column alone. */}
+              {onAddPhoto || onAddAudio ? (
                 <View className="mt-4">
-                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.photo')}</Text>
-                  <PhotoGrid
-                    photos={photoUris ?? []}
-                    onView={(idx) => setViewerIndex(idx)}
-                    onAdd={async () => {
-                      const idx = await showActionSheet({
-                        title: t('species.addPhoto'),
-                        options: [{ label: t('species.takePhoto') }, { label: t('species.pickFromAlbum') }],
-                      });
-                      if (idx === 0) onAddPhoto('camera');
-                      else if (idx === 1) onAddPhoto('library');
-                    }}
-                    onRemove={onRemovePhoto}
-                  />
+                  {/* Photo tiles and the square record tile sit shoulder to
+                      shoulder: the photo column shrinks (and its grid wraps)
+                      when there are many thumbnails, the audio column never
+                      does. Recorded clips are listed full-width underneath. */}
+                  <View className="flex-row items-start gap-3">
+                    {onAddPhoto ? (
+                      <View className="shrink">
+                        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.photo')}</Text>
+                        <PhotoGrid
+                          photos={photoUris ?? []}
+                          onView={(idx) => setViewerIndex(idx)}
+                          onAdd={() => onAddPhoto('camera')}
+                          onPickLibrary={() => onAddPhoto('library')}
+                          onRemove={onRemovePhoto}
+                        />
+                      </View>
+                    ) : null}
+                    {onAddAudio ? (
+                      <View className="shrink-0">
+                        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('species.audioClips')}</Text>
+                        <AudioRecordTile onAdd={onAddAudio} />
+                      </View>
+                    ) : null}
+                  </View>
+                  {onAddAudio ? <AudioClipRows clips={audioUris ?? []} onRemove={onRemoveAudio ?? (() => {})} /> : null}
                 </View>
               ) : null}
+              {inat ? <InatSyncButton state={inat} /> : null}
 
               <View className="h-4" />
             </KeyboardAwareScrollView>

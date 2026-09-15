@@ -17,6 +17,7 @@ import { FontScaleProvider } from '~/components/FontScaleProvider';
 import { StalePlotWatcher } from '~/components/StalePlotWatcher';
 import { StaleSessionWatcher } from '~/components/StaleSessionWatcher';
 import { GbifLookupHost } from '~/components/GbifLookupHost';
+import { InatTokenHost } from '~/components/InatTokenHost';
 import { TextPromptHost } from '~/components/TextPromptModal';
 import { ToastHost } from '~/components/ToastHost';
 import { useThemeSync } from '~/hooks/useThemeSync';
@@ -96,12 +97,15 @@ function ThemedShell() {
             <Stack.Screen name="favorites" options={{ title: t('nav.favorites') }} />
             <Stack.Screen name="backup" options={{ title: t('nav.backup') }} />
             <Stack.Screen name="regionpacks" options={{ title: t('nav.regionPacks') }} />
+            <Stack.Screen name="inaturalist" options={{ title: t('nav.inaturalist') }} />
+            <Stack.Screen name="inat-upload" options={{ title: t('nav.inatUpload') }} />
             <Stack.Screen name="report/[kind]/[id]" options={{ title: t('report.navTitle') }} />
           </Stack>
         </View>
         <ToastHost />
         <TextPromptHost />
         <GbifLookupHost />
+        <InatTokenHost />
         <ActionSheetHost />
       </FontScaleProvider>
       {/* Active record → green ActiveSessionBar covers status bar → need

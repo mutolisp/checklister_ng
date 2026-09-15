@@ -909,6 +909,49 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;`);
     },
   },
+  // v29：錄音附件。audio_paths = JSON array of file:// URIs
+  // （documentDirectory/audio/<uuid>.m4a），與 photo_paths 同形。刻意不進
+  // export bundle / 照片備份（第一版只做 錄→播→刪→上傳 iNaturalist）。
+  {
+    version: 29,
+    up: (db) => {
+      for (const t of ['checklist_records', 'plot_species_records', 'collection_specimens']) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN audio_paths TEXT;`);
+      }
+    },
+  },
+  // v30：iNaturalist 上傳狀態。
+  //
+  // inat_observation_id：觀察建立成功即寫（媒體還沒傳完也寫）；非 NULL =
+  //   伺服器上已有這筆，重試時沿用而不再建。
+  // inat_media_done：已確認送達的媒體數（photo_paths 順序在前、audio 在後）。
+  //   重試從這裡接續——v2 的 observation_sounds 沒有 uuid 可以去重，這個游標
+  //   是「不重複上傳聲音」的唯一保證。
+  // inat_uploaded_at：觀察＋全部媒體都成功才寫；NULL 且 id 非 NULL = 半途中斷。
+  //
+  // 只存「我們做過什麼」，不存 iNat 的意見（research grade 等），依 v28 的原則：
+  // 對方會變的狀態一律顯示當下即時查。
+  {
+    version: 30,
+    up: (db) => {
+      for (const t of ['checklist_records', 'plot_species_records', 'collection_specimens']) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_observation_id INTEGER;`);
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_media_done INTEGER NOT NULL DEFAULT 0;`);
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_uploaded_at INTEGER;`);
+      }
+    },
+  },
+  // v31：iNat 同步指紋。上傳／同步成功時寫入當時送出內容的 hash（taxon、時間、
+  // 座標、描述、annotation、媒體數），詳細頁據此顯示「同步 iNat（有變更）」。
+  // NULL = 舊資料或尚未同步過，只顯示一般「同步」。
+  {
+    version: 31,
+    up: (db) => {
+      for (const t of ['checklist_records', 'plot_species_records', 'collection_specimens']) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_sync_hash TEXT;`);
+      }
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

@@ -23,6 +23,7 @@ import {
   nextRecordNumber,
 } from '~/db';
 import { promptText } from '~/components/TextPromptModal';
+import { clearInatTokens } from '~/lib/inatAuth';
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
 
@@ -235,6 +236,20 @@ export default function SettingsScreen() {
             <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
           </Pressable>
         </Section>
+        <Section title={t('settings.sectionInat')}>
+          <Pressable
+            onPress={() => router.push('/inaturalist' as Href)}
+            className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          >
+            <View>
+              <Text className="text-base text-gray-900 dark:text-gray-100">{t('settings.inaturalist')}</Text>
+              <Text className="text-xs text-gray-500 dark:text-gray-400">
+                {settings.inat_login ? t('settings.inaturalistLinked', { login: settings.inat_login }) : t('settings.inaturalistDesc')}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9ca3af" />
+          </Pressable>
+        </Section>
         <Section title={t('settings.sectionCollection')}>
           {/* 預設鑑定者：新增標本時自動帶入，比照採集者從行程繼承的作法。
               留空表示不帶入——標籤上寧可沒有這一行，也不要掛一個沒定過名的人。 */}
@@ -345,6 +360,9 @@ export default function SettingsScreen() {
                           onPress: async () => {
                             try {
                               await clearAllUserData();
+                              // user.db is gone but the token lives in SecureStore —
+                              // same "clear at the call site" rule as gbifCredentials.
+                              await clearInatTokens();
                               reloadSettings();
                               refreshActiveSession();
                               toast(t('settings.allCleared'));

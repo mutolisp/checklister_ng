@@ -18,6 +18,9 @@ import {
 } from 'react-native';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import { showActionSheet } from '~/components/ActionSheet';
+import { deleteAudioFile } from '~/lib/audioCapture';
+import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
+import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import {
@@ -37,6 +40,7 @@ import {
   updateRecordLocation,
   updateRecordNotes,
   updateRecordPhotos,
+  updateRecordAudio,
   parsePhotoPaths,
   updateSession,
   type Project,
@@ -55,7 +59,7 @@ import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { SurveyorAssignSheet } from '~/components/SurveyorAssignSheet';
 import { SiteAssignSheet } from '~/components/SiteAssignSheet';
 import { BatchImportModal } from '~/components/BatchImportModal';
-import { SwipeRow } from '~/components/SwipeRow';
+import { SwipeRowActions } from '~/components/SwipeRowActions';
 import { useSettings, type RecordSort, type SortDirection } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 import { useActiveSession } from '~/stores/activeSession';
@@ -294,6 +298,64 @@ export default function SessionDetailScreen() {
     });
     reload();
     toast(t('session.photoRemoved'));
+  };
+
+  // One record → the upload page with only this row pre-selected. A row with
+  // neither photo nor clip cannot be uploaded at all, so say so here instead
+  // of landing on a page that silently omits it.
+  const handleUploadInat = (record: RecordWithTaxon) => {
+    if (parsePhotoPaths(record.photo_paths).length + parsePhotoPaths(record.audio_paths).length === 0) {
+      toast(t('inat.noMediaRecord'));
+      return;
+    }
+    router.push(`/inat-upload?kind=session&id=${sessionId}&record=${record.id}` as Href);
+  };
+
+  const inatSyncingId = useInatSync((s) => s.runningId);
+  const activeInatChanged = useMemo(
+    () => (activeRecord && activeRecord.inat_uploaded_at != null ? hasInatChanges({ kind: 'session', id: sessionId }, activeRecord.id) : false),
+    [activeRecord, sessionId],
+  );
+  const handleInatSync = async (record: RecordWithTaxon) => {
+    if (record.inat_uploaded_at == null) {
+      // Not on iNat yet → the upload page, with this row pre-selected. The
+      // sheet is a Modal, so it must close before the route push.
+      setActiveRecord(null);
+      handleUploadInat(record);
+      return;
+    }
+    try {
+      const r = await syncRecord({ kind: 'session', id: sessionId }, record.id);
+      toast(
+        r.noop
+          ? t('inat.syncNoChange')
+          : t('inat.syncDone', { added: r.annotationsAdded, removed: r.annotationsRemoved, media: r.mediaSent }),
+      );
+      reload();
+      const fresh = listSessionRecords(sessionId).find((x) => x.id === record.id);
+      if (fresh) setActiveRecord(fresh);
+    } catch (e) {
+      toast(t('inat.syncFailed', { msg: await apiErrorMessage(e) }));
+    }
+  };
+
+  const handleAddAudio = (uri: string) => {
+    if (!activeRecord) return;
+    const next = [...parsePhotoPaths(activeRecord.audio_paths), uri];
+    updateRecordAudio(activeRecord.id, next);
+    setActiveRecord({ ...activeRecord, audio_paths: JSON.stringify(next) });
+    reload();
+    toast(t('session.audioAdded'));
+  };
+
+  const handleRemoveAudio = (uri: string) => {
+    if (!activeRecord) return;
+    const next = parsePhotoPaths(activeRecord.audio_paths).filter((u) => u !== uri);
+    updateRecordAudio(activeRecord.id, next);
+    void deleteAudioFile(uri);
+    setActiveRecord({ ...activeRecord, audio_paths: next.length > 0 ? JSON.stringify(next) : null });
+    reload();
+    toast(t('session.audioRemoved'));
   };
 
   const handleSaveLongPressNotes = (newNotes: string) => {
@@ -745,13 +807,23 @@ export default function SessionDetailScreen() {
             data={filtered}
             keyExtractor={(r) => `${r.id}`}
             renderItem={({ item }) => (
-              <SwipeRow onDelete={() => handleSwipeRemove(item)} label={t('common.remove')}>
+              <SwipeRowActions
+                actions={[
+                  {
+                    label: t('records.uploadInat'),
+                    icon: 'cloud-upload-outline',
+                    color: 'inat',
+                    onPress: () => handleUploadInat(item),
+                  },
+                  { label: t('common.remove'), icon: 'trash', color: 'red', onPress: () => handleSwipeRemove(item) },
+                ]}
+              >
                 <SpeciesCard
                   record={item}
                   onPress={() => setActiveRecord(item)}
                   onLongPress={() => handleLongPressRecord(item)}
                 />
-              </SwipeRow>
+              </SwipeRowActions>
             )}
           />
         )}
@@ -803,6 +875,18 @@ export default function SessionDetailScreen() {
         }}
         onAddPhoto={handleAddPhoto}
         onRemovePhoto={handleRemovePhoto}
+        onAddAudio={handleAddAudio}
+        onRemoveAudio={handleRemoveAudio}
+        inat={
+          activeRecord
+            ? {
+                uploaded: activeRecord.inat_uploaded_at != null,
+                changed: activeInatChanged,
+                syncing: inatSyncingId === activeRecord.id,
+                onPress: () => void handleInatSync(activeRecord),
+              }
+            : undefined
+        }
         onSaveAttributes={(next) => {
           if (!activeRecord) return;
           // SpeciesAttributesDraft holds arrays in-memory; serialize before

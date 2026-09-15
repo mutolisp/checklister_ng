@@ -81,6 +81,15 @@ export type Specimen = {
    *  the taxon's accepted name. */
   used_name_id: number | null;
   used_scientific_name: string | null;
+  /** Recorded audio clips (v29) — JSON array of file:// URIs under
+   *  documentDirectory/audio/. Same shape as `photo_paths`. */
+  audio_paths: string | null;
+  /** iNaturalist upload state (v30). See migrations.ts v30 for the contract. */
+  inat_observation_id: number | null;
+  inat_media_done: number;
+  inat_uploaded_at: number | null;
+  /** Fingerprint of what iNat last received (v31); see inatPayload.syncFingerprint. */
+  inat_sync_hash: string | null;
 };
 
 export type SpecimenWithTaxon = Specimen & TaxonFields & AdoptionStatus;
@@ -88,7 +97,8 @@ export type SpecimenWithTaxon = Specimen & TaxonFields & AdoptionStatus;
 const SPECIMEN_COLS = `id, trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
   collected_at, recorded_by, identified_by, lat, lng, accuracy, locality,
   sex, life_stage, reproductive_condition, leaf_phenology, notes, photo_paths,
-  used_name_id, used_scientific_name`;
+  used_name_id, used_scientific_name,
+  audio_paths, inat_observation_id, inat_media_done, inat_uploaded_at, inat_sync_hash`;
 
 function defaultTripName(now: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -455,6 +465,12 @@ export function updateSpecimenPhotos(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
   db.executeSync(`UPDATE collection_specimens SET photo_paths = ? WHERE id = ?`, [value, id]);
+}
+
+export function updateSpecimenAudio(id: number, paths: string[]): void {
+  const db = getUserDb();
+  const value = paths.length > 0 ? JSON.stringify(paths) : null;
+  db.executeSync(`UPDATE collection_specimens SET audio_paths = ? WHERE id = ?`, [value, id]);
 }
 
 /**

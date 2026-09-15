@@ -30,13 +30,18 @@ import {
   updatePlotSpeciesLayer,
   updatePlotSpeciesTaxon,
   updatePlotSpeciesPhotos,
+  updatePlotSpeciesAudio,
   updatePlotSpeciesValue,
 } from '~/db';
+import { deleteAudioFile } from '~/lib/audioCapture';
+import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
+import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
 import type { AdoptionInput } from '~/db';
 import { ScientificName } from './ScientificName';
 import { SearchBox } from './SearchBox';
-import { SwipeRow } from './SwipeRow';
+import { SwipeRowActions } from './SwipeRowActions';
+import { router, type Href } from 'expo-router';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import { PlotSpeciesValueModal, type PlotValueDraft } from './PlotSpeciesValueModal';
 import { alienBadge } from '~/lib/conservationColors';
@@ -305,6 +310,68 @@ export function PlotSpeciesTab({
       });
     }
     setModal(null);
+    reload();
+    onChanged();
+  };
+
+  // One record → the upload page with only this row pre-selected (see
+  // app/session/[id].tsx handleUploadInat for the media gate rationale).
+  const handleUploadInat = (record: PlotSpeciesRecordWithTaxon) => {
+    if (parsePhotoPaths(record.photo_paths).length + parsePhotoPaths(record.audio_paths).length === 0) {
+      useToast.getState().show(tr('inat.noMediaRecord'));
+      return;
+    }
+    router.push(`/inat-upload?kind=plot&id=${plot.id}&record=${record.id}` as Href);
+  };
+
+  const inatSyncingId = useInatSync((s) => s.runningId);
+  const modalRecord = modal?.mode === 'edit' ? modal.record : null;
+  const modalInatChanged = useMemo(
+    () => (modalRecord && modalRecord.inat_uploaded_at != null ? hasInatChanges({ kind: 'plot', id: plot.id }, modalRecord.id) : false),
+    [modalRecord, plot.id],
+  );
+  const handleInatSync = async (record: PlotSpeciesRecordWithTaxon) => {
+    if (record.inat_uploaded_at == null) {
+      setModal(null);
+      handleUploadInat(record);
+      return;
+    }
+    const toast = useToast.getState().show;
+    try {
+      const r = await syncRecord({ kind: 'plot', id: plot.id }, record.id);
+      toast(
+        r.noop
+          ? tr('inat.syncNoChange')
+          : tr('inat.syncDone', { added: r.annotationsAdded, removed: r.annotationsRemoved, media: r.mediaSent }),
+      );
+      reload();
+      onChanged();
+      const fresh = listPlotSpecies(plot.id).find((x) => x.id === record.id);
+      if (fresh) setModal({ mode: 'edit', record: fresh });
+    } catch (e) {
+      toast(tr('inat.syncFailed', { msg: await apiErrorMessage(e) }));
+    }
+  };
+
+  // Audio exists only in edit mode: a clip needs a record row to hang off,
+  // and unlike photos there is no create-mode buffer (kept deliberately small).
+  const handleAddAudioForModal = (uri: string) => {
+    if (!modal || modal.mode !== 'edit') return;
+    const record = modal.record;
+    const merged = [...parsePhotoPaths(record.audio_paths), uri];
+    updatePlotSpeciesAudio(record.id, merged);
+    setModal({ mode: 'edit', record: { ...record, audio_paths: JSON.stringify(merged) } });
+    reload();
+    onChanged();
+  };
+
+  const handleRemoveAudioForModal = (uri: string) => {
+    if (!modal || modal.mode !== 'edit') return;
+    const record = modal.record;
+    const next = parsePhotoPaths(record.audio_paths).filter((u) => u !== uri);
+    updatePlotSpeciesAudio(record.id, next);
+    void deleteAudioFile(uri);
+    setModal({ mode: 'edit', record: { ...record, audio_paths: next.length > 0 ? JSON.stringify(next) : null } });
     reload();
     onChanged();
   };
@@ -687,12 +754,25 @@ export function PlotSpeciesTab({
             );
           }
           return (
-            <SwipeRow
-              onDelete={() => {
-                deletePlotSpecies(item.record.id);
-                reload();
-                onChanged();
-              }}
+            <SwipeRowActions
+              actions={[
+                {
+                  label: tr('records.uploadInat'),
+                  icon: 'cloud-upload-outline',
+                  color: 'inat',
+                  onPress: () => handleUploadInat(item.record),
+                },
+                {
+                  label: tr('common.delete'),
+                  icon: 'trash',
+                  color: 'red',
+                  onPress: () => {
+                    deletePlotSpecies(item.record.id);
+                    reload();
+                    onChanged();
+                  },
+                },
+              ]}
             >
               <SpeciesRow
                 record={item.record}
@@ -700,7 +780,7 @@ export function PlotSpeciesTab({
                 onLongPress={() => handleLongPressRecord(item.record)}
                 onAdjust={(d) => handleAdjustQuantity(item.record, d)}
               />
-            </SwipeRow>
+            </SwipeRowActions>
           );
         }}
         ListEmptyComponent={
@@ -761,6 +841,21 @@ export function PlotSpeciesTab({
           }
           onAddPhoto={handleAddPhotoForModal}
           onRemovePhoto={handleRemovePhotoForModal}
+          audioUris={modal.mode === 'edit' ? parsePhotoPaths(modal.record.audio_paths) : undefined}
+          inatObservationId={modal.mode === 'edit' ? modal.record.inat_observation_id : null}
+          inatUploadedAt={modal.mode === 'edit' ? modal.record.inat_uploaded_at : null}
+          inat={
+            modal.mode === 'edit'
+              ? {
+                  uploaded: modal.record.inat_uploaded_at != null,
+                  changed: modalInatChanged,
+                  syncing: inatSyncingId === modal.record.id,
+                  onPress: () => void handleInatSync(modal.record),
+                }
+              : undefined
+          }
+          onAddAudio={modal.mode === 'edit' ? handleAddAudioForModal : undefined}
+          onRemoveAudio={modal.mode === 'edit' ? handleRemoveAudioForModal : undefined}
           onCancel={() => {
             setPendingPhotos([]);
             setModal(null);
@@ -785,12 +880,14 @@ function SpeciesRow({
 }) {
   const { t: tr } = useTranslation();
   const ab = alienBadge(record.alien_type, record.kingdom);
+  // Already on iNaturalist → tinted row (see migrations.ts v30).
+  const uploaded = record.inat_uploaded_at != null;
   return (
     <Pressable
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row items-start border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+      className={`flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${uploaded ? 'bg-lime-50 dark:bg-lime-900/30 active:bg-lime-100 dark:active:bg-lime-900/50' : 'bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800'}`}
     >
       <View className="flex-1">
         <View className="flex-row items-center" style={{ flexWrap: 'wrap' }}>

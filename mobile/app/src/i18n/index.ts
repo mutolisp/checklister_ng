@@ -1,3 +1,12 @@
+// Hermes (RN 0.81) ships Intl.NumberFormat / DateTimeFormat but NOT
+// Intl.PluralRules (verified with the bundled hermes binary: `typeof
+// Intl.PluralRules === 'undefined'`). Without it i18next falls back to a
+// built-in one/other rule, so a count of 1 looks up `key_one` — which the
+// zh-TW / ja / ko catalogues correctly do not have (their CLDR category is
+// `other` alone) — and the raw key leaks onto the screen. Seen as
+// 「attr.filledCount」 in the species attributes header. Pure-JS polyfill,
+// must load before i18next initialises.
+import 'intl-pluralrules';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { NativeModules } from 'react-native';

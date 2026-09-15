@@ -2114,3 +2114,24 @@ TaiCOL 改版後 `(taxon_id, used_name_id)` 可能不再一致（半年內 527 �
 ### 驗證狀態
 - [x] check:diversity / tsc / check:i18n / check:vegmatrix / check:roundtrip
 - [ ] 實機：point_count（個體數）看 Chao1＋C%；≥2 小區 fixed 看 Chao2；BB 樣區 Chao 顯示不適用而 H′/D 正常；混合單位警示；收合列即時更新；專案頁跨樣區 Chao2 多選勾選與 <2 提示
+
+---
+
+## Sprint 2026-09-15 — iNaturalist 上傳連動＋錄音附件
+
+詳見 Update_log.md 2026-09-15。要點：WebView 取 `/users/api_token` 24h JWT（不做 OAuth、不存密碼、SecureStore）、v29 `audio_paths` + expo-audio、v30 `inat_*` 三欄與 `inatUpload.ts` 冪等狀態機（uuid=occurrence_id、照片確定性 uuid、聲音靠游標）、1 req/s。新增 `check:inat`。**三個原生模組，雙平台重建。**
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:inat / check:gbif / check:dock / check:kav / check:roundtrip / audit greps
+- [ ] 實機 iOS + Android：
+  1. 舊 DB 升級到 v30，既有含照片記錄仍列出
+  2. 連結：WebView 登入 → 自動取 token 顯示 login／到期；取消 → 未連結無錯誤；Google 帳號 → 走瀏覽器＋貼上
+  3. 清 SecureStore 後「重新取得」靜默成功（cookie 仍在）；「解除連結」後再連結出現登入頁
+  4. 三種 sheet 各錄一段；播放；刪除後 `documentDirectory/audio/` 無檔；重開仍在；bundle／備份 zip 不含音檔
+  5. 名錄上傳：`ph://` HEIC、`content://`（Android）、`file://` 相簿、只有錄音、無座標（預設不勾）、採用異名、`var.` 種下、`gi…` taxon → 到 inaturalist.org 核對 taxon／時間偏移／座標＋accuracy／geoprivacy／description／tag／照片／聲音
+  6. 建立觀察後、照片傳完前殺 app → 「未完成」預設勾 → 再傳 → 無重複觀察、無重複照片、聲音數正確
+  7. 傳到一半飛航 → 停止＋離線提示；恢復後可續
+  8. 在 iNat 改密碼後上傳 → 跳登入 WebView；取消 → auth 停止
+  9. 清除所有資料 → 帳號頁未連結
+  10. 樣區：無逐筆 GPS 的記錄座標＝樣區中心、accuracy＝不確定度
+  11. 記錄 tab 4 個 swipe action 在 375pt 寬裝置放得下（否則退回列長按 action sheet）

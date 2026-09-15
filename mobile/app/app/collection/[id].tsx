@@ -10,8 +10,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import type { AdoptionInput } from '~/db';
 import * as Location from 'expo-location';
-import { Stack, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -32,6 +32,7 @@ import {
   updateSpecimen,
   updateSpecimenLocation,
   updateSpecimenPhotos,
+  updateSpecimenAudio,
   type CollectionTrip,
   type Project,
   type SearchResult,
@@ -39,6 +40,10 @@ import {
 } from '~/db';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import { showActionSheet } from '~/components/ActionSheet';
+import { deleteAudioFile } from '~/lib/audioCapture';
+import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
+import { apiErrorMessage } from '~/lib/apiErrorMessage';
+import { rebaseAppFileUri } from '~/lib/appFiles';
 import { familyLatinFirst } from '~/lib/familyLabel';
 import { LabelExportSheet } from '~/components/LabelExportSheet';
 import { buildLabelSheetDocx } from '~/lib/docxLabels';
@@ -146,10 +151,12 @@ function SpecimenRow({
 }) {
   const photos = parsePhotoPaths(specimen.photo_paths);
   const attributes = attributeSummary(specimen);
+  // Already on iNaturalist → tinted row (see migrations.ts v30).
+  const uploaded = specimen.inat_uploaded_at != null;
   return (
     <Pressable
       onPress={onPress}
-      className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${uploaded ? 'bg-lime-50 dark:bg-lime-900/30 active:bg-lime-100 dark:active:bg-lime-900/50' : 'bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800'}`}
     >
       {selectMode ? (
         <Ionicons
@@ -162,7 +169,7 @@ function SpecimenRow({
       {photos.length > 0 ? (
         <View className="mr-3">
           <Image
-            source={{ uri: photos[0] }}
+            source={{ uri: rebaseAppFileUri(photos[0]) }}
             style={{ width: 44, height: 44, borderRadius: 6 }}
             contentFit="cover"
           />
@@ -235,6 +242,7 @@ export default function CollectionTripScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const toast = useToast((s) => s.show);
+  const router = useRouter();
 
   const [trip, setTrip] = useState<CollectionTrip | null>(null);
   const [project, setProject] = useState<Project | null>(null);
@@ -483,6 +491,53 @@ export default function CollectionTripScreen() {
     refreshActive(active.id);
   };
 
+  // One record → the upload page with only this row pre-selected (see
+  // app/session/[id].tsx handleUploadInat for the media gate rationale).
+  const handleUploadInat = (specimen: SpecimenWithTaxon) => {
+    if (parsePhotoPaths(specimen.photo_paths).length + parsePhotoPaths(specimen.audio_paths).length === 0) {
+      toast(t('inat.noMediaRecord'));
+      return;
+    }
+    router.push(`/inat-upload?kind=collection&id=${tripId}&record=${specimen.id}` as Href);
+  };
+
+  const inatSyncingId = useInatSync((s) => s.runningId);
+  const activeInatChanged = useMemo(
+    () => (active && active.inat_uploaded_at != null ? hasInatChanges({ kind: 'collection', id: tripId }, active.id) : false),
+    [active, tripId],
+  );
+  const handleInatSync = async (specimen: SpecimenWithTaxon) => {
+    if (specimen.inat_uploaded_at == null) {
+      setActive(null);
+      handleUploadInat(specimen);
+      return;
+    }
+    try {
+      const r = await syncRecord({ kind: 'collection', id: tripId }, specimen.id);
+      toast(
+        r.noop
+          ? t('inat.syncNoChange')
+          : t('inat.syncDone', { added: r.annotationsAdded, removed: r.annotationsRemoved, media: r.mediaSent }),
+      );
+      refreshActive(specimen.id);
+    } catch (e) {
+      toast(t('inat.syncFailed', { msg: await apiErrorMessage(e) }));
+    }
+  };
+
+  const handleAddAudio = (uri: string) => {
+    if (!active) return;
+    updateSpecimenAudio(active.id, [...parsePhotoPaths(active.audio_paths), uri]);
+    refreshActive(active.id);
+  };
+
+  const handleRemoveAudio = (uri: string) => {
+    if (!active) return;
+    updateSpecimenAudio(active.id, parsePhotoPaths(active.audio_paths).filter((u) => u !== uri));
+    void deleteAudioFile(uri);
+    refreshActive(active.id);
+  };
+
   if (!trip) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-900">
@@ -668,6 +723,12 @@ export default function CollectionTripScreen() {
                     onPress: () => handleDuplicate(item),
                   },
                   {
+                    label: t('records.uploadInat'),
+                    icon: 'cloud-upload-outline',
+                    color: 'inat',
+                    onPress: () => handleUploadInat(item),
+                  },
+                  {
                     label: t('common.delete'),
                     icon: 'trash-outline',
                     color: 'red',
@@ -730,6 +791,18 @@ export default function CollectionTripScreen() {
         }}
         onAddPhoto={handleAddPhoto}
         onRemovePhoto={handleRemovePhoto}
+        onAddAudio={handleAddAudio}
+        onRemoveAudio={handleRemoveAudio}
+        inat={
+          active
+            ? {
+                uploaded: active.inat_uploaded_at != null,
+                changed: activeInatChanged,
+                syncing: inatSyncingId === active.id,
+                onPress: () => void handleInatSync(active),
+              }
+            : undefined
+        }
       />
       <ProjectAssignSheet
         visible={projectSheetOpen}

@@ -151,7 +151,7 @@ export type ImportedSite = {
 };
 
 /** Flatten any GeoJSON geometry (including Multi*) into a list of [lng, lat] points. */
-function flattenPoints(g: GeoJSONGeometry): PointCoords[] {
+export function flattenPoints(g: GeoJSONGeometry): PointCoords[] {
   switch (g.type) {
     case 'Point':
       return [g.coordinates];

@@ -103,6 +103,13 @@ const config: ExpoConfig = {
         isAccessMediaLocationEnabled: true,
       },
     ],
+    [
+      'expo-audio',
+      {
+        microphonePermission: 'Allow Checklister to record sounds of observed species.',
+      },
+    ],
+    'expo-secure-store',
   ],
   assetBundlePatterns: ['**/*', 'assets/db/*.db'],
   experiments: {

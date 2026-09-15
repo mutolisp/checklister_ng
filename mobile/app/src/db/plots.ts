@@ -188,6 +188,15 @@ export type PlotSpeciesRecord = {
    *  taxon's accepted name. */
   used_name_id: number | null;
   used_scientific_name: string | null;
+  /** Recorded audio clips (v29) — JSON array of file:// URIs under
+   *  documentDirectory/audio/. Same shape as `photo_paths`. */
+  audio_paths: string | null;
+  /** iNaturalist upload state (v30). See migrations.ts v30 for the contract. */
+  inat_observation_id: number | null;
+  inat_media_done: number;
+  inat_uploaded_at: number | null;
+  /** Fingerprint of what iNat last received (v31); see inatPayload.syncFingerprint. */
+  inat_sync_hash: string | null;
 };
 
 export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & AdoptionStatus & {
@@ -930,6 +939,13 @@ export function updatePlotSpeciesPhotos(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
   db.executeSync(`UPDATE plot_species_records SET photo_paths = ? WHERE id = ?`, [value, id]);
+}
+
+/** Same contract as `updatePlotSpeciesPhotos`, for `audio_paths`. */
+export function updatePlotSpeciesAudio(id: number, paths: string[]): void {
+  const db = getUserDb();
+  const value = paths.length > 0 ? JSON.stringify(paths) : null;
+  db.executeSync(`UPDATE plot_species_records SET audio_paths = ? WHERE id = ?`, [value, id]);
 }
 
 /** Last species observation epoch (ms) for the given plot; null if none. */

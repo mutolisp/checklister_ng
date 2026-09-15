@@ -11,6 +11,9 @@ import {
   View,
 } from 'react-native';
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
+import { AudioClipList } from './AudioClipList';
+import { InatSyncButton, InatUploadedBadge, type InatSheetState } from './InatUploadedBadge';
+import { observationWebUrl } from '~/lib/inatApi';
 import { showActionSheet } from './ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
@@ -55,6 +58,11 @@ type Props = {
   onAddPhoto?: (mode: 'camera' | 'library') => void;
   /** Remove a single photo URI from the current record. */
   onRemovePhoto?: (uri: string) => void;
+  /** A finished recording (file:// URI, already persisted). Parent writes the DB. */
+  onAddAudio?: (uri: string) => void;
+  onRemoveAudio?: (uri: string) => void;
+  /** 上傳／同步 iNat row for this record. */
+  inat?: InatSheetState;
   /** Save species attribute changes (sex / lifeStage / reproductive / leaf). */
   onSaveAttributes?: (next: SpeciesAttributesDraft) => void;
 };
@@ -74,6 +82,9 @@ function externalLinks(record: RecordWithTaxon): Array<{ label: string; url: str
   const links: Array<{ label: string; url: string }> = [];
   if (record.taxon_id) {
     links.push({ label: 'TaiCOL', url: `https://taicol.tw/zh-hant/taxon/${record.taxon_id}` });
+  }
+  if (record.inat_uploaded_at != null && record.inat_observation_id) {
+    links.push({ label: `iNaturalist #${record.inat_observation_id}`, url: observationWebUrl(record.inat_observation_id) });
   }
   const sciEnc = encodeURIComponent(record.simple_name);
   links.push({ label: 'GBIF', url: `https://www.gbif.org/species/search?q=${sciEnc}` });
@@ -95,6 +106,9 @@ export function SpeciesDetailSheet({
   onChangeLocation,
   onAddPhoto,
   onRemovePhoto,
+  onAddAudio,
+  onRemoveAudio,
+  inat,
   onSaveAttributes,
 }: Props) {
   const router = useRouter();
@@ -176,6 +190,9 @@ export function SpeciesDetailSheet({
                   selectable
                 />
               </View>
+              {record.inat_uploaded_at != null && record.inat_observation_id ? (
+                <InatUploadedBadge observationId={record.inat_observation_id} />
+              ) : null}
               <Pressable
                 onPress={async () => {
                   const actions = speciesCopyActions(record);
@@ -318,15 +335,16 @@ export function SpeciesDetailSheet({
                     <PhotoGrid
                       photos={parsePhotoPaths(record.photo_paths)}
                       onView={(idx) => setViewerIndex(idx)}
-                      onAdd={async () => {
-                        const idx = await showActionSheet({
-                          title: t('species.addPhoto'),
-                          options: [{ label: t('species.takePhoto') }, { label: t('species.pickFromAlbum') }],
-                        });
-                        if (idx === 0) onAddPhoto('camera');
-                        else if (idx === 1) onAddPhoto('library');
-                      }}
+                      onAdd={() => onAddPhoto('camera')}
+                      onPickLibrary={() => onAddPhoto('library')}
                       onRemove={onRemovePhoto}
+                    />
+                  ) : null}
+                  {onAddAudio ? (
+                    <AudioClipList
+                      clips={parsePhotoPaths(record.audio_paths)}
+                      onAdd={onAddAudio}
+                      onRemove={onRemoveAudio ?? (() => {})}
                     />
                   ) : null}
                   <Pressable
@@ -339,6 +357,7 @@ export function SpeciesDetailSheet({
                     </Text>
                     <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
                   </Pressable>
+                  {inat ? <InatSyncButton state={inat} /> : null}
                   {onSaveLocation ? (
                     <Pressable
                       onPress={async () => {

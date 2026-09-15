@@ -56,7 +56,6 @@ import { isRecordingTarget, pauseIfNot, pauseRecording } from '~/lib/trackRecord
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { captureEnvPhoto, pickPhotos } from '~/lib/photoCapture';
-import { showActionSheet } from '~/components/ActionSheet';
 
 type Tab = 'env' | 'species';
 
@@ -1163,25 +1162,20 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
     onUpdated();
   };
 
-  const handleAdd = async () => {
-    const choice = await showActionSheet({
-      title: t('plot.addEnvPhoto'),
-      options: [{ label: t('plot.takePhoto') }, { label: t('plot.pickFromAlbum') }],
-    });
-    if (choice === 0) {
-      try {
-        const uri = await captureEnvPhoto();
-        if (uri) append([uri]);
-      } catch (e) {
-        Alert.alert(t('plot.takePhotoFail'), e instanceof Error ? e.message : String(e));
-      }
-    } else if (choice === 1) {
-      try {
-        const uris = await pickPhotos();
-        append(uris);
-      } catch (e) {
-        Alert.alert(t('plot.pickPhotoFail'), e instanceof Error ? e.message : String(e));
-      }
+  const handleTake = async () => {
+    try {
+      const uri = await captureEnvPhoto();
+      if (uri) append([uri]);
+    } catch (e) {
+      Alert.alert(t('plot.takePhotoFail'), e instanceof Error ? e.message : String(e));
+    }
+  };
+  const handlePick = async () => {
+    try {
+      const uris = await pickPhotos();
+      append(uris);
+    } catch (e) {
+      Alert.alert(t('plot.pickPhotoFail'), e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -1202,7 +1196,8 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
       </Text>
       <PhotoGrid
         photos={photos}
-        onAdd={handleAdd}
+        onAdd={handleTake}
+        onPickLibrary={handlePick}
         onView={(idx) => setViewerIndex(idx)}
         onRemove={remove}
       />

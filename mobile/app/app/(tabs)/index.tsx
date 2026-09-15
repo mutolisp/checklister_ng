@@ -803,6 +803,12 @@ export default function RecordsListScreen() {
             onPress: () => handleExportOne(item),
           },
           {
+            label: t('records.uploadInat'),
+            icon: 'cloud-upload-outline',
+            color: 'inat',
+            onPress: () => router.push(`/inat-upload?kind=${item.kind}&id=${item.id}` as Href),
+          },
+          {
             label: t('common.delete'),
             icon: 'trash',
             color: 'red',

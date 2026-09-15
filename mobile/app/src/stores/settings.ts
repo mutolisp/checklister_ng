@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { GEOPRIVACY_VALUES, type Geoprivacy } from '~/lib/inatPayload';
 import { getUserDb } from '~/db';
 import type { TaxonGroup } from '~/db/types';
 import type { ConservationField } from '~/lib/markdown';
@@ -112,6 +113,11 @@ type SettingsValues = {
   gbif_username: string;
   /** Email GBIF notifies when a pack download is ready ('' = no email). */
   gbif_notify_email: string;
+  /** iNaturalist login of the linked account, for display only. The token
+   *  itself lives in SecureStore (inatAuth.ts), never here. */
+  inat_login: string;
+  /** Default geoprivacy for iNaturalist uploads; the upload page can override per batch. */
+  inat_geoprivacy: Geoprivacy;
   /** 樣區物種頁的多樣性統計卡展開狀態。 */
   plot_stats_expanded: boolean;
   /** Heading printed at the top of every herbarium label, e.g. "Flora of
@@ -194,6 +200,8 @@ const DEFAULTS: SettingsValues = {
   default_identified_by: '',
   gbif_username: '',
   gbif_notify_email: '',
+  inat_login: '',
+  inat_geoprivacy: 'open',
   plot_stats_expanded: false,
   collection_label_title: '',
   collection_label_family: false,
@@ -288,6 +296,8 @@ function readAll(): SettingsValues {
       map.get('default_identified_by') ?? DEFAULTS.default_identified_by,
     gbif_username: map.get('gbif_username') ?? DEFAULTS.gbif_username,
     gbif_notify_email: map.get('gbif_notify_email') ?? DEFAULTS.gbif_notify_email,
+    inat_login: map.get('inat_login') ?? DEFAULTS.inat_login,
+    inat_geoprivacy: parseGeoprivacy(map.get('inat_geoprivacy')),
     plot_stats_expanded: map.get('plot_stats_expanded') === 'true',
     collection_label_title:
       map.get('collection_label_title') ?? DEFAULTS.collection_label_title,
@@ -365,6 +375,10 @@ function parseLanguage(raw: string | undefined): Language {
 }
 
 const REGION_KEYS = new Set<RegionCode>(['TW', 'JP']);
+function parseGeoprivacy(raw: string | undefined): Geoprivacy {
+  return (GEOPRIVACY_VALUES as string[]).includes(raw ?? '') ? (raw as Geoprivacy) : DEFAULTS.inat_geoprivacy;
+}
+
 function parseRegions(raw: string | undefined): RegionCode[] {
   if (raw == null) return DEFAULTS.enabled_regions;
   try {

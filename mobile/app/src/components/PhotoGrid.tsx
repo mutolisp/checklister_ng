@@ -1,9 +1,13 @@
 /**
  * Photo thumbnail grid + full-screen viewer modal. Used by SpeciesDetailSheet
- * (session record detail) and PlotSpeciesValueModal (plot species detail).
+ * (session record detail), PlotSpeciesValueModal (plot species detail),
+ * SpecimenDetailSheet and the plot's environment photos.
  *
- * `PhotoGrid` renders a 88×88 thumbnail per URI plus a trailing "+ 加照片"
- * tile. Tap → onView(idx); long-press → confirm-remove.
+ * `PhotoGrid` renders a 88×88 thumbnail per URI plus a trailing 「拍照」 tile
+ * that goes straight to the camera (`onAdd`); the library path is the
+ * 「從相簿選擇」 link under the grid (`onPickLibrary`) — one layout for every
+ * place a photo can be added, no chooser sheet in between.
+ * Tap → onView(idx); long-press → confirm-remove.
  * `PhotoViewerModal` is a horizontally pagable full-bleed image viewer.
  */
 import { Ionicons } from '@expo/vector-icons';
@@ -11,49 +15,62 @@ import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, Dimensions, FlatList, Modal, Pressable, Text, View } from 'react-native';
+import { rebaseAppFileUri } from '~/lib/appFiles';
 
 export function PhotoGrid({
   photos,
   onAdd,
+  onPickLibrary,
   onView,
   onRemove,
 }: {
   photos: string[];
+  /** The 「拍照」 tile — opens the camera directly. */
   onAdd: () => void;
+  /** Renders the 「從相簿選擇」 link under the grid when given. */
+  onPickLibrary?: () => void;
   onView?: (index: number) => void;
   onRemove?: (uri: string) => void;
 }) {
   const { t } = useTranslation();
   return (
-    <View className="mt-2 flex-row flex-wrap gap-2">
-      {photos.map((uri, idx) => (
+    <View>
+      <View className="mt-2 flex-row flex-wrap gap-2">
+        {photos.map((uri, idx) => (
+          <Pressable
+            key={uri}
+            onPress={onView ? () => onView(idx) : undefined}
+            onLongPress={
+              onRemove
+                ? () => {
+                    Alert.alert(t('plotValue.photo'), undefined, [
+                      { text: t('common.cancel'), style: 'cancel' },
+                      { text: t('common.remove'), style: 'destructive', onPress: () => onRemove(uri) },
+                    ]);
+                  }
+                : undefined
+            }
+            className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+            style={{ width: 88, height: 88 }}
+          >
+            <Image source={{ uri: rebaseAppFileUri(uri) }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          </Pressable>
+        ))}
         <Pressable
-          key={uri}
-          onPress={onView ? () => onView(idx) : undefined}
-          onLongPress={
-            onRemove
-              ? () => {
-                  Alert.alert(t('plotValue.photo'), undefined, [
-                    { text: t('common.cancel'), style: 'cancel' },
-                    { text: t('common.remove'), style: 'destructive', onPress: () => onRemove(uri) },
-                  ]);
-                }
-              : undefined
-          }
-          className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700"
+          onPress={onAdd}
+          className="items-center justify-center rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-950 active:bg-gray-100 dark:active:bg-gray-700"
           style={{ width: 88, height: 88 }}
         >
-          <Image source={{ uri }} style={{ width: '100%', height: '100%' }} contentFit="cover" />
+          <Ionicons name="camera-outline" size={24} color="#6b7280" />
+          <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400">{t('species.takePhoto')}</Text>
         </Pressable>
-      ))}
-      <Pressable
-        onPress={onAdd}
-        className="items-center justify-center rounded-lg border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-950 active:bg-gray-100 dark:active:bg-gray-700"
-        style={{ width: 88, height: 88 }}
-      >
-        <Ionicons name="camera-outline" size={24} color="#6b7280" />
-        <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400">{t('species.addPhoto')}</Text>
-      </Pressable>
+      </View>
+      {onPickLibrary ? (
+        <Pressable onPress={onPickLibrary} hitSlop={8} className="mt-2 flex-row items-center active:opacity-70">
+          <Ionicons name="images-outline" size={14} color="#2563eb" />
+          <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300">{t('collection.fromLibrary')}</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -98,7 +115,7 @@ export function PhotoViewerModal({
               onPress={onClose}
               style={{ width, height, alignItems: 'center', justifyContent: 'center' }}
             >
-              <Image source={{ uri: item }} style={{ width, height: height * 0.85 }} contentFit="contain" />
+              <Image source={{ uri: rebaseAppFileUri(item) }} style={{ width, height: height * 0.85 }} contentFit="contain" />
             </Pressable>
           )}
         />

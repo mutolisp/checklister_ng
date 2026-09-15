@@ -23,8 +23,10 @@ export type SwipeAction = {
   label: string;
   /** Ionicons glyph. */
   icon: keyof typeof Ionicons.glyphMap;
-  /** Tailwind bg colour class (also used for active state). */
-  color: 'red' | 'blue' | 'emerald' | 'purple' | 'amber';
+  /** Tailwind bg colour class (also used for active state). `inat` is
+   *  iNaturalist's green (#74AB00) — a static literal, which is the one case
+   *  where an arbitrary `bg-[#…]` class is safe for NativeWind's JIT scanner. */
+  color: 'red' | 'blue' | 'emerald' | 'purple' | 'amber' | 'inat';
   onPress: () => void;
 };
 
@@ -34,6 +36,7 @@ const BG: Record<SwipeAction['color'], string> = {
   emerald: 'bg-emerald-600 active:bg-emerald-700',
   purple: 'bg-purple-600 active:bg-purple-700',
   amber: 'bg-amber-600 active:bg-amber-700',
+  inat: 'bg-[#74AB00] active:bg-[#5E8A00]',
 };
 
 type Props = {
@@ -80,7 +83,7 @@ export function SwipeRowActions({ children, actions, disabled = false, teaser = 
                 ref.current?.close();
                 a.onPress();
               }}
-              className={`flex-row items-center justify-center px-5 ${BG[a.color]}`}
+              className={`flex-row items-center justify-center px-4 ${BG[a.color]}`}
             >
               <Ionicons name={a.icon} size={20} color="white" />
               <Text className="ml-1.5 text-sm font-medium text-white">{a.label}</Text>
