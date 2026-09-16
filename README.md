@@ -1,12 +1,13 @@
-# checklister-ng
+# Mitalivana
 
-次世代物種名錄產生器 — A next-generation species checklist generator
+生態調查野帳 Mitalivana
 
-[![Build & Release](https://github.com/mutolisp/checklister_ng/actions/workflows/build.yml/badge.svg)](https://github.com/mutolisp/checklister_ng/actions/workflows/build.yml) 
+
+[![Build & Release](https://github.com/mutolisp/mitalivana/actions/workflows/build.yml/badge.svg)](https://github.com/mutolisp/mitalivana/actions/workflows/build.yml) 
 
 ## 簡介
 
-Checklister-NG 是一套整合臺灣物種名錄資料的名錄產生工具，支援所有生物類群（維管束植物、鳥類、昆蟲、真菌等）。主要功能包括：
+Mitalivana 是一套整合臺灣物種名錄資料的名錄產生工具，支援所有生物類群（維管束植物、鳥類、昆蟲、真菌等）。主要功能包括：
 
 - **物種搜尋**：支援俗名、學名、科名搜尋，含台/臺自動互換、模糊比對（Levenshtein distance）、同物異名自動解析
 - **進階篩選**：高階分類群（14 個類群 icon）、階層篩選（綱/目/科/屬）、特有性、原生/歸化/入侵/栽培
