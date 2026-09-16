@@ -51,6 +51,7 @@ import {
 import { useFavorites } from '~/stores/favorites';
 import type { FavoriteFolder } from '~/db';
 import { setFavoriteFolderArea } from '~/db';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Step = 'filters' | 'loading' | 'result';
 
@@ -393,7 +394,9 @@ export function AreaSpeciesModal({
                     >
                       <Text
                         className={`text-sm font-medium ${
-                          on ? 'text-blue-600 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'
+                          on
+                            ? 'text-blue-600 dark:text-blue-300'
+                            : 'text-gray-700 dark:text-gray-300'
                         }`}
                       >
                         {t(s === 'inat' ? 'areaSpecies.sourceINat' : 'areaSpecies.sourceGbif')}
@@ -482,9 +485,7 @@ export function AreaSpeciesModal({
                 onPress={runQuery}
                 disabled={source === 'gbif' ? !wkt : !bbox}
                 className={`items-center rounded-xl py-3 ${
-                  (source === 'gbif' ? wkt : bbox)
-                    ? 'bg-blue-500 active:bg-blue-600'
-                    : 'bg-gray-300 dark:bg-gray-700'
+                  (source === 'gbif' ? wkt : bbox) ? ACTION_FILL : 'bg-gray-300 dark:bg-gray-700'
                 }`}
               >
                 <Text className="text-base font-semibold text-white">
@@ -588,7 +589,10 @@ export function AreaSpeciesModal({
                           className="text-sm text-gray-900 dark:text-gray-100"
                         />
                         <Text className="text-xs text-gray-500 dark:text-gray-400">
-                          {local?.common_name_c || e.src.commonName || e.src.family || e.src.kingdom}
+                          {local?.common_name_c ||
+                            e.src.commonName ||
+                            e.src.family ||
+                            e.src.kingdom}
                           {' · '}
                           {t('areaSpecies.obs', { count: e.src.count })}
                         </Text>
@@ -685,7 +689,7 @@ export function AreaSpeciesModal({
                   onPress={commit}
                   disabled={!ready}
                   className={`items-center rounded-xl py-3 ${
-                    ready ? 'bg-blue-500 active:bg-blue-600' : 'bg-gray-300 dark:bg-gray-700'
+                    ready ? ACTION_FILL : 'bg-gray-300 dark:bg-gray-700'
                   }`}
                 >
                   <Text className="text-base font-semibold text-white">

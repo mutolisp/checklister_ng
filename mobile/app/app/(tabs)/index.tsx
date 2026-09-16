@@ -75,6 +75,7 @@ import { useActiveSession } from '~/stores/activeSession';
 import { selectionKey, useRecordSelection } from '~/stores/recordSelection';
 import { useSettings, type RecordsLayout } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Filter = 'all' | RecordKind;
 type ViewMode = 'flat' | 'byProject';
@@ -1137,7 +1138,7 @@ export default function RecordsListScreen() {
           </Text>
           <Pressable
             onPress={() => showCreateChooser()}
-            className="mt-5 flex-row items-center rounded-lg bg-emerald-500 px-5 py-2.5 active:bg-emerald-600"
+            className={`mt-5 flex-row items-center rounded-lg px-5 py-2.5 ${ACTION_FILL}`}
           >
             <Ionicons name="add" size={18} color="white" />
             <Text className="ml-1 text-sm font-medium text-white">{t('records.emptyCreate')}</Text>

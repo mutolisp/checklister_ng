@@ -58,6 +58,7 @@ import { useSettings, type PlotTab } from '~/stores/settings';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { captureEnvPhoto, pickPhotos } from '~/lib/photoCapture';
+import { ACTION_FILL } from '~/lib/colors';
 
 export default function PlotDetailScreen() {
   const { t } = useTranslation();
@@ -372,7 +373,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
               </Text>
               <Pressable
                 onPress={captureGps}
-                className="flex-row items-center rounded-md bg-emerald-500 px-3 py-1.5 active:bg-emerald-600"
+                className={`flex-row items-center rounded-md px-3 py-1.5 ${ACTION_FILL}`}
               >
                 <Ionicons name="locate" size={14} color="white" />
                 <Text className="ml-1 text-xs font-medium text-white">

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { Alert, Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createSite, listProjects, type Project } from '~/db';
+import { ACTION_FILL } from '~/lib/colors';
 import {
   detectFormat,
   parseGeoFile,
@@ -109,10 +110,13 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
     }
     onCommitted(added);
     if (added < imported.length) {
-      Alert.alert(t('geoImport.partial'), t('geoImport.partialMsg', {
-        total: t('geoImport.nTotal', { count: imported.length }),
-        added: t('geoImport.nSucceeded', { count: added }),
-      }));
+      Alert.alert(
+        t('geoImport.partial'),
+        t('geoImport.partialMsg', {
+          total: t('geoImport.nTotal', { count: imported.length }),
+          added: t('geoImport.nSucceeded', { count: added }),
+        }),
+      );
     }
     handleClose();
   };
@@ -125,11 +129,13 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
         className="flex-1 bg-white dark:bg-gray-900"
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
-        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+        <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <Pressable onPress={handleClose} hitSlop={8}>
             <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
-          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('geoImport.title')}</Text>
+          <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+            {t('geoImport.title')}
+          </Text>
           <Pressable onPress={handleCommit} hitSlop={8} disabled={imported.length === 0}>
             <Text
               className={`text-base font-semibold ${imported.length === 0 ? 'text-gray-300' : 'text-blue-600 dark:text-blue-400'}`}
@@ -145,19 +151,22 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
               <Ionicons name="cloud-upload-outline" size={56} color="#9ca3af" />
               <Text className="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
                 {t('geoImport.supportHint')}
-                {'\n'}{t('geoImport.multiHint')}
+                {'\n'}
+                {t('geoImport.multiHint')}
               </Text>
               <Pressable
                 onPress={handlePickFile}
-                className="mt-6 flex-row items-center rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600"
+                className={`mt-6 flex-row items-center rounded-full px-4 py-2 ${ACTION_FILL}`}
               >
                 <Ionicons name="folder-open-outline" size={16} color="white" />
-                <Text className="ml-1 text-sm font-medium text-white">{t('geoImport.pickFile')}</Text>
+                <Text className="ml-1 text-sm font-medium text-white">
+                  {t('geoImport.pickFile')}
+                </Text>
               </Pressable>
             </View>
           ) : (
             <>
-              <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3">
+              <View className="border-b border-gray-100 bg-blue-50 px-4 py-3 dark:border-gray-800 dark:bg-blue-950/40">
                 <Text className="text-sm text-blue-900 dark:text-blue-100">
                   <Text className="font-bold">{filename}</Text>
                   {format ? `（${FORMAT_LABEL[format]}）` : ''}
@@ -171,7 +180,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
                 <TextInput
                   value={namePrefix}
                   onChangeText={setNamePrefix}
-                  className="rounded border border-gray-300 dark:border-gray-600 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
+                  className="rounded border border-gray-300 px-3 py-2 text-base text-gray-900 dark:border-gray-600 dark:text-gray-100"
                   placeholder={t('geoImport.namePrefixEx')}
                   placeholderTextColor="#9ca3af"
                 />
@@ -188,7 +197,7 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
                       <Pressable
                         key={p.id}
                         onPress={() => setProjectId(p.id)}
-                        className={`rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+                        className={`rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40' : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'}`}
                       >
                         <Text
                           className={`text-xs ${active ? 'font-semibold text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'} ${p.id === 0 ? 'italic' : ''}`}
@@ -206,11 +215,13 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
                   {t('geoImport.geomPreview')}
                 </Text>
                 {imported.slice(0, 20).map((item, i) => (
-                  <View key={i} className="border-b border-gray-100 dark:border-gray-800 py-2">
+                  <View key={i} className="border-b border-gray-100 py-2 dark:border-gray-800">
                     <Text className="text-sm text-gray-900 dark:text-gray-100">
                       {item.name || `${namePrefix || t('geoImport.defaultPrefix')} #${i + 1}`}
                     </Text>
-                    <Text className="text-xs text-gray-500 dark:text-gray-400">{item.geometry.type}</Text>
+                    <Text className="text-xs text-gray-500 dark:text-gray-400">
+                      {item.geometry.type}
+                    </Text>
                   </View>
                 ))}
                 {imported.length > 20 ? (
@@ -223,10 +234,12 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
               <View className="px-4 py-3">
                 <Pressable
                   onPress={handlePickFile}
-                  className="flex-row items-center self-start rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1.5 active:bg-gray-200 dark:active:bg-gray-700"
+                  className="flex-row items-center self-start rounded-full bg-gray-100 px-3 py-1.5 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
                 >
                   <Ionicons name="folder-open-outline" size={14} color="#374151" />
-                  <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">{t('geoImport.anotherFile')}</Text>
+                  <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {t('geoImport.anotherFile')}
+                  </Text>
                 </Pressable>
               </View>
             </>
@@ -234,9 +247,12 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
         </ScrollView>
 
         {currentProject ? (
-          <View className="border-t border-gray-100 dark:border-gray-800 px-4 py-2">
+          <View className="border-t border-gray-100 px-4 py-2 dark:border-gray-800">
             <Text className="text-xs text-gray-500 dark:text-gray-400">
-              {t('geoImport.targetProject')}<Text className="font-medium text-gray-700 dark:text-gray-300">{currentProject.name}</Text>
+              {t('geoImport.targetProject')}
+              <Text className="font-medium text-gray-700 dark:text-gray-300">
+                {currentProject.name}
+              </Text>
             </Text>
           </View>
         ) : null}
@@ -247,8 +263,10 @@ export function GeoImportModal({ visible, defaultProjectId = 0, onClose, onCommi
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-      <Text className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">{label}</Text>
+    <View className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+      <Text className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        {label}
+      </Text>
       {children}
     </View>
   );

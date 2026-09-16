@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { listSites, type SiteWithProject } from '~/db';
+import { ACTION_FILL } from '~/lib/colors';
 
 const TYPE_LABEL: Record<string, string> = {
   Point: 'sites.typePoint',
@@ -77,36 +78,63 @@ export function SiteAssignSheet({
           }}
         />
         <View
-          style={{ position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: insets.bottom + 8 }}
+          style={{
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            paddingBottom: insets.bottom + 8,
+          }}
           className="rounded-t-2xl bg-white dark:bg-gray-900"
         >
-          <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
-            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('sheets.assignSite')}</Text>
+          <View className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+            <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              {t('sheets.assignSite')}
+            </Text>
             <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               {t('sheets.assignSiteDesc')}
             </Text>
           </View>
 
-          <View className="border-b border-gray-100 dark:border-gray-800 bg-blue-50 dark:bg-blue-950/40">
+          <View className="border-b border-gray-100 bg-blue-50 dark:border-gray-800 dark:bg-blue-950/40">
             <View className="px-4 pb-2 pt-3">
               <Text className="text-xs font-medium uppercase tracking-wide text-blue-700 dark:text-blue-300">
                 {t('sheets.newSite')}
               </Text>
             </View>
             <View className="flex-row gap-2 px-4 pb-3">
-              <NewSiteButton icon="pin-outline" label={t('sheets.btnPoint')} onPress={() => onCreateNew('Point')} />
-              <NewSiteButton icon="analytics-outline" label={t('sheets.btnLine')} onPress={() => onCreateNew('LineString')} />
-              <NewSiteButton icon="shapes-outline" label={t('sheets.btnPolygon')} onPress={() => onCreateNew('Polygon')} />
+              <NewSiteButton
+                icon="pin-outline"
+                label={t('sheets.btnPoint')}
+                onPress={() => onCreateNew('Point')}
+              />
+              <NewSiteButton
+                icon="analytics-outline"
+                label={t('sheets.btnLine')}
+                onPress={() => onCreateNew('LineString')}
+              />
+              <NewSiteButton
+                icon="shapes-outline"
+                label={t('sheets.btnPolygon')}
+                onPress={() => onCreateNew('Polygon')}
+              />
             </View>
           </View>
 
           {currentSiteId !== null ? (
             <Pressable
               onPress={() => onAssign(null)}
-              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-3 active:bg-gray-100 dark:active:bg-gray-700"
+              className="flex-row items-center border-b border-gray-100 bg-gray-50 px-4 py-3 active:bg-gray-100 dark:border-gray-800 dark:bg-gray-950 dark:active:bg-gray-700"
             >
-              <Ionicons name="close-circle-outline" size={20} color="#6b7280" style={{ marginRight: 12 }} />
-              <Text className="flex-1 text-base text-gray-700 dark:text-gray-300">{t('sheets.removeAssign')}</Text>
+              <Ionicons
+                name="close-circle-outline"
+                size={20}
+                color="#6b7280"
+                style={{ marginRight: 12 }}
+              />
+              <Text className="flex-1 text-base text-gray-700 dark:text-gray-300">
+                {t('sheets.removeAssign')}
+              </Text>
             </Pressable>
           ) : null}
 
@@ -124,7 +152,7 @@ export function SiteAssignSheet({
                   <Pressable
                     key={s.id}
                     onPress={() => onAssign(s.id)}
-                    className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
+                    className={`flex-row items-center border-b border-gray-100 px-4 py-3 dark:border-gray-800 ${active ? 'bg-blue-50 dark:bg-blue-950/40' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
                   >
                     <Ionicons
                       name={TYPE_ICON[s.geometry_type] ?? 'pin-outline'}
@@ -167,7 +195,7 @@ function NewSiteButton({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-1 flex-row items-center justify-center rounded-lg bg-blue-500 py-2.5 active:bg-blue-600"
+      className={`flex-1 flex-row items-center justify-center rounded-lg py-2.5 ${ACTION_FILL}`}
     >
       <Ionicons name={icon} size={16} color="white" />
       <Text className="ml-1 text-sm font-semibold text-white">{label}</Text>

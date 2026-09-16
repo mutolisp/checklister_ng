@@ -55,6 +55,7 @@ import {
 } from '~/lib/gbif';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { matchScientificName } from '~/lib/sciMatch';
+import { ACTION_FILL } from '~/lib/colors';
 
 /** What the caller gets back: a taxon that is now usable, plus whether it
  *  turned out to be a LOCAL one GBIF led us to (no external taxon minted). */
@@ -107,7 +108,9 @@ export function manualTaxonEntry(q: string): Promise<GbifLookupOutcome | null> {
  *  updates the same taxon_id (records keep pointing at it). */
 export function editManualTaxon(taxon: ExternalTaxon): Promise<GbifLookupOutcome | null> {
   return new Promise((resolve) => {
-    useLookupStore.getState().open({ query: taxon.simple_name, mode: 'manual', edit: taxon, resolve });
+    useLookupStore
+      .getState()
+      .open({ query: taxon.simple_name, mode: 'manual', edit: taxon, resolve });
   });
 }
 
@@ -377,7 +380,7 @@ export function GbifLookupHost() {
         className="flex-1 bg-white dark:bg-gray-900"
         style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       >
-        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+        <View className="flex-row items-center justify-between border-b border-gray-200 px-4 py-3 dark:border-gray-700">
           <Pressable onPress={onClose} hitSlop={8}>
             <Text className="text-base text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
           </Pressable>
@@ -423,7 +426,7 @@ export function GbifLookupHost() {
         {step === 'list' ? (
           <View className="flex-1">
             {error ? (
-              <View className="border-b border-red-100 dark:border-red-900/40 bg-red-50 dark:bg-red-950/40 px-4 py-3">
+              <View className="border-b border-red-100 bg-red-50 px-4 py-3 dark:border-red-900/40 dark:bg-red-950/40">
                 <Text className="text-sm text-red-700 dark:text-red-300">{error}</Text>
               </View>
             ) : null}
@@ -439,7 +442,7 @@ export function GbifLookupHost() {
                     setManualError(null);
                     setStep('manual');
                   }}
-                  className="mt-4 rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600"
+                  className={`mt-4 rounded-full px-4 py-2 ${ACTION_FILL}`}
                 >
                   <Text className="text-sm font-medium text-white">
                     {t('manualTaxon.createOwn')}
@@ -454,7 +457,7 @@ export function GbifLookupHost() {
               renderItem={({ item }) => (
                 <Pressable
                   onPress={() => handlePick(item)}
-                  className="border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+                  className="border-b border-gray-100 px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:active:bg-gray-800"
                 >
                   <View className="flex-row items-center">
                     <ScientificName
@@ -486,7 +489,7 @@ export function GbifLookupHost() {
                 </Pressable>
               )}
             />
-            <Text className="border-t border-gray-100 dark:border-gray-800 px-4 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+            <Text className="border-t border-gray-100 px-4 py-2 text-[11px] text-gray-500 dark:border-gray-800 dark:text-gray-400">
               {t('areaSpecies.attributionGbif')}
             </Text>
           </View>
@@ -497,7 +500,7 @@ export function GbifLookupHost() {
             <Text className="text-sm text-gray-700 dark:text-gray-300">
               {t('gbifLookup.localHitTitle')}
             </Text>
-            <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-3">
+            <View className="mt-3 rounded-lg border border-gray-200 px-3 py-3 dark:border-gray-700">
               <Text className="text-xs text-gray-500 dark:text-gray-400">
                 {t('gbifLookup.youPicked')}
               </Text>
@@ -538,7 +541,7 @@ export function GbifLookupHost() {
                 setCname(localHit.picked.vernacularName);
                 setStep('confirm');
               }}
-              className="mt-2 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+              className="mt-2 rounded-lg border border-gray-300 px-4 py-3 active:bg-gray-50 dark:border-gray-700 dark:active:bg-gray-800"
             >
               <Text className="text-center text-sm font-medium text-gray-800 dark:text-gray-200">
                 {t('gbifLookup.useMineAnyway')}
@@ -579,7 +582,7 @@ export function GbifLookupHost() {
                   onChangeText={setCname}
                   placeholder={t('gbifLookup.cnamePlaceholder')}
                   placeholderTextColor="#9ca3af"
-                  className="mt-1 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                  className="mt-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 dark:border-gray-700 dark:text-gray-100"
                 />
                 <Text className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
                   {picked.vernacularName
@@ -587,7 +590,7 @@ export function GbifLookupHost() {
                     : t('gbifLookup.cnameMissing')}
                 </Text>
               </View>
-              <View className="mx-4 mt-6 rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-2.5">
+              <View className="mx-4 mt-6 rounded-lg bg-amber-50 px-3 py-2.5 dark:bg-amber-950/40">
                 <Text className="text-xs text-amber-800 dark:text-amber-300">
                   {t('gbifLookup.externalNote')}
                 </Text>
@@ -615,7 +618,7 @@ export function GbifLookupHost() {
                 placeholderTextColor="#9ca3af"
                 autoCapitalize="none"
                 autoCorrect={false}
-                className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                className="mt-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:text-gray-100"
               />
 
               <Text className="mt-3 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -626,7 +629,7 @@ export function GbifLookupHost() {
                 onChangeText={(v) => setManual((prev) => ({ ...prev, cname: v }))}
                 placeholder={t('manualTaxon.cnamePlaceholder')}
                 placeholderTextColor="#9ca3af"
-                className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                className="mt-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:text-gray-100"
               />
 
               <Text className="mt-3 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
@@ -645,7 +648,9 @@ export function GbifLookupHost() {
                           : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800'
                       }`}
                     >
-                      <Text className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                      <Text
+                        className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                      >
                         {t(`manualTaxon.kingdoms.${k}`)}
                       </Text>
                     </Pressable>
@@ -663,7 +668,7 @@ export function GbifLookupHost() {
                     onChangeText={(v) => setManual((prev) => ({ ...prev, genus: v }))}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                    className="mt-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:text-gray-100"
                   />
                 </View>
                 <Pressable
@@ -684,7 +689,9 @@ export function GbifLookupHost() {
                 {t('manualTaxon.autoFillHint')}
               </Text>
               {manualError ? (
-                <Text className="mt-1 text-xs text-amber-700 dark:text-amber-400">{manualError}</Text>
+                <Text className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  {manualError}
+                </Text>
               ) : null}
 
               {(
@@ -704,7 +711,7 @@ export function GbifLookupHost() {
                     onChangeText={(v) => setManual((prev) => ({ ...prev, [field]: v }))}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    className="mt-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+                    className="mt-1 rounded-lg border border-gray-300 px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:text-gray-100"
                   />
                 </View>
               ))}
@@ -725,7 +732,9 @@ export function GbifLookupHost() {
                           : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800'
                       }`}
                     >
-                      <Text className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                      <Text
+                        className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                      >
                         {t(`rank.${r}`)}
                       </Text>
                     </Pressable>

@@ -61,6 +61,7 @@ import { useActiveSession } from '~/stores/activeSession';
 import { isRecordingTarget } from '~/lib/trackRecorder';
 import { useSettings, type MapBasemap } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
+import { ACTION_FILL } from '~/lib/colors';
 
 const BASEMAP_OPTIONS: Array<{
   value: MapBasemap;
@@ -69,14 +70,26 @@ const BASEMAP_OPTIONS: Array<{
   mapType: MapType;
 }> = [
   { value: 'standard', labelKey: 'map.basemapStandard', icon: 'map-outline', mapType: 'standard' },
-  { value: 'satellite', labelKey: 'map.basemapSatellite', icon: 'globe-outline', mapType: 'satellite' },
+  {
+    value: 'satellite',
+    labelKey: 'map.basemapSatellite',
+    icon: 'globe-outline',
+    mapType: 'satellite',
+  },
   { value: 'hybrid', labelKey: 'map.basemapHybrid', icon: 'layers-outline', mapType: 'hybrid' },
-  { value: 'terrain', labelKey: 'map.basemapTerrain', icon: 'trail-sign-outline', mapType: 'terrain' },
+  {
+    value: 'terrain',
+    labelKey: 'map.basemapTerrain',
+    icon: 'trail-sign-outline',
+    mapType: 'terrain',
+  },
 ];
 
-const SINICA_TILE_URL = 'https://gis.sinica.edu.tw/tileserver/file-exists.php?img={LAYER}-png-{z}-{x}-{y}';
+const SINICA_TILE_URL =
+  'https://gis.sinica.edu.tw/tileserver/file-exists.php?img={LAYER}-png-{z}-{x}-{y}';
 // NLSC WMTS RESTful — note the WMTS tile order is z/y/x (TileMatrix/Row/Col).
-const NLSC_TILE_URL = 'https://wmts.nlsc.gov.tw/wmts/{LAYER}/default/GoogleMapsCompatible/{z}/{y}/{x}';
+const NLSC_TILE_URL =
+  'https://wmts.nlsc.gov.tw/wmts/{LAYER}/default/GoogleMapsCompatible/{z}/{y}/{x}';
 
 const DRAW_LABEL: Record<string, string> = {
   Point: 'sites.typePoint',
@@ -182,7 +195,7 @@ function segmentsCross(
   const d2 = cross(c, d, b);
   const d3 = cross(a, b, c);
   const d4 = cross(a, b, d);
-  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  return d1 > 0 !== d2 > 0 && d3 > 0 !== d4 > 0;
 }
 
 /**
@@ -471,7 +484,11 @@ export default function MapScreen() {
     setToolsOpen(false);
     const idx = await showActionSheet({
       title: t('map.drawSite'),
-      options: [{ label: t('sites.typePoint') }, { label: t('sites.typeLineString') }, { label: t('sites.typePolygon') }],
+      options: [
+        { label: t('sites.typePoint') },
+        { label: t('sites.typeLineString') },
+        { label: t('sites.typePolygon') },
+      ],
     });
     if (idx === 0) startDraw('Point');
     else if (idx === 1) startDraw('LineString');
@@ -601,7 +618,10 @@ export default function MapScreen() {
     if (!drawMode || drawPoints.length === 0) return;
     let geometry;
     if (drawMode === 'Point') {
-      geometry = { type: 'Point' as const, coordinates: [drawPoints[0].longitude, drawPoints[0].latitude] as [number, number] };
+      geometry = {
+        type: 'Point' as const,
+        coordinates: [drawPoints[0].longitude, drawPoints[0].latitude] as [number, number],
+      };
     } else if (drawMode === 'LineString') {
       geometry = {
         type: 'LineString' as const,
@@ -641,10 +661,7 @@ export default function MapScreen() {
       title: site.name,
       message: `${t(DRAW_LABEL[site.geometry_type])} · ${site.project_name}${site.notes ? `\n\n${site.notes}` : ''}`,
       cancelLabel: t('common.close'),
-      options: [
-        { label: t('map.jumpToSite') },
-        { label: t('common.delete'), destructive: true },
-      ],
+      options: [{ label: t('map.jumpToSite') }, { label: t('common.delete'), destructive: true }],
     });
     if (idx === 0) {
       const region = geometryBounds(parseGeometry(site));
@@ -684,10 +701,19 @@ export default function MapScreen() {
     const idx = await showActionSheet({
       title: plot.plotid || t('map.plotMenuTitle', { id: plot.id }),
       message:
-        t('map.plotSubtitle', { type: PLOT_TYPE_LABEL[plot.plot_type] ? t(PLOT_TYPE_LABEL[plot.plot_type]) : plot.plot_type, count: plot.species_count, project: plot.project_name }) +
-        (plot.status === 'active' ? `\n\n${t('map.inProgress')}` : ''),
+        t('map.plotSubtitle', {
+          type: PLOT_TYPE_LABEL[plot.plot_type]
+            ? t(PLOT_TYPE_LABEL[plot.plot_type])
+            : plot.plot_type,
+          count: plot.species_count,
+          project: plot.project_name,
+        }) + (plot.status === 'active' ? `\n\n${t('map.inProgress')}` : ''),
       cancelLabel: t('common.close'),
-      options: [{ label: t('map.jumpBack') }, { label: t('map.jumpToLoc') }, { label: t('map.editLoc') }],
+      options: [
+        { label: t('map.jumpBack') },
+        { label: t('map.jumpToLoc') },
+        { label: t('map.editLoc') },
+      ],
     });
     if (idx === 0) {
       router.push(`/plot/${plot.id}`);
@@ -719,7 +745,9 @@ export default function MapScreen() {
         segIdx = await showActionSheet({
           title: t('map.pickSegTitle'),
           cancelLabel: t('common.cancel'),
-          options: segs.map((s, i) => ({ label: t('map.segLabel', { n: i + 1, count: s.length }) })),
+          options: segs.map((s, i) => ({
+            label: t('map.segLabel', { n: i + 1, count: s.length }),
+          })),
         });
         if (segIdx < 0 || segIdx >= segs.length) return; // cancelled
       }
@@ -1047,7 +1075,12 @@ export default function MapScreen() {
               coordinate={center}
               pinColor={color}
               title={plot.plotid || t('map.plotMenuTitle', { id: plot.id })}
-              description={t('map.plotDesc', { type: PLOT_TYPE_LABEL[plot.plot_type] ? t(PLOT_TYPE_LABEL[plot.plot_type]) : plot.plot_type, count: plot.species_count })}
+              description={t('map.plotDesc', {
+                type: PLOT_TYPE_LABEL[plot.plot_type]
+                  ? t(PLOT_TYPE_LABEL[plot.plot_type])
+                  : plot.plot_type,
+                count: plot.species_count,
+              })}
               zIndex={5}
               onPress={() => handlePlotTap(plot)}
             />,
@@ -1128,8 +1161,12 @@ export default function MapScreen() {
           className="items-center justify-center bg-gray-100 dark:bg-gray-800/85"
         >
           <ActivityIndicator size="large" color="#2563eb" />
-          <Text className="mt-3 text-sm text-gray-700 dark:text-gray-300">{t('map.loadingMap')}</Text>
-          <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('map.firstLoadHint')}</Text>
+          <Text className="mt-3 text-sm text-gray-700 dark:text-gray-300">
+            {t('map.loadingMap')}
+          </Text>
+          <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {t('map.firstLoadHint')}
+          </Text>
         </View>
       ) : null}
 
@@ -1139,7 +1176,7 @@ export default function MapScreen() {
         style={{ top: insets.top + 8, right: searchOpen ? 12 : undefined }}
       >
         {searchOpen ? (
-          <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
+          <View className="flex-row items-center rounded-full bg-white px-3 py-2 shadow-md dark:bg-gray-900/95">
             <Pressable onPress={closeSearch} hitSlop={8}>
               <Ionicons name="arrow-back" size={18} color="#374151" />
             </Pressable>
@@ -1189,7 +1226,11 @@ export default function MapScreen() {
                 onPress={handleOpenLayers}
                 accent={!!sinicaLayer || !!nlscLayer}
               />
-              <FabRow icon="create-outline" label={t('map.drawSite')} onPress={handlePickDrawMode} />
+              <FabRow
+                icon="create-outline"
+                label={t('map.drawSite')}
+                onPress={handlePickDrawMode}
+              />
               <FabRow
                 icon="scan-outline"
                 label={t('areaSpecies.fabVisible')}
@@ -1219,9 +1260,11 @@ export default function MapScreen() {
       {/* Drawing toolbar (below search FAB row) */}
       {drawMode ? (
         <View className="absolute left-3 right-3" style={{ top: insets.top + 60 }}>
-          <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
+          <View className="flex-row items-center rounded-full bg-white px-3 py-2 shadow-md dark:bg-gray-900/95">
             <Pressable onPress={cancelDraw} hitSlop={8} className="px-2">
-              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t('common.cancel')}
+              </Text>
             </Pressable>
             <Text className="flex-1 text-center text-xs text-gray-700 dark:text-gray-300">
               {t('map.drawingLabel', { type: t(DRAW_LABEL[drawMode]), count: drawPoints.length })}
@@ -1232,7 +1275,11 @@ export default function MapScreen() {
               </Pressable>
             ) : null}
             {drawMode !== 'Point' ? (
-              <Pressable onPress={finishDraw} hitSlop={8} className="ml-1 rounded-full bg-blue-500 px-3 py-1 active:bg-blue-600">
+              <Pressable
+                onPress={finishDraw}
+                hitSlop={8}
+                className={`ml-1 rounded-full px-3 py-1 ${ACTION_FILL}`}
+              >
                 <Text className="text-xs font-semibold text-white">{t('common.done')}</Text>
               </Pressable>
             ) : null}
@@ -1250,9 +1297,11 @@ export default function MapScreen() {
       {/* Edit-geometry toolbar (drag the marker, then save). */}
       {editMode ? (
         <View className="absolute left-3 right-3" style={{ top: insets.top + 60 }}>
-          <View className="flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md">
+          <View className="flex-row items-center rounded-full bg-white px-3 py-2 shadow-md dark:bg-gray-900/95">
             <Pressable onPress={cancelPlotEdit} hitSlop={8} className="px-2">
-              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
+              <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                {t('common.cancel')}
+              </Text>
             </Pressable>
             <Text className="flex-1 text-center text-xs text-gray-700 dark:text-gray-300">
               {editMode === 'track' ? t('map.editTrackHint') : t('map.editPosHint')}
@@ -1260,7 +1309,7 @@ export default function MapScreen() {
             <Pressable
               onPress={savePlotEdit}
               hitSlop={8}
-              className="ml-1 rounded-full bg-blue-500 px-3 py-1 active:bg-blue-600"
+              className={`ml-1 rounded-full px-3 py-1 ${ACTION_FILL}`}
             >
               <Text className="text-xs font-semibold text-white">{t('common.save')}</Text>
             </Pressable>
@@ -1356,7 +1405,7 @@ function FabButton({
   return (
     <Pressable
       onPress={onPress}
-      className="h-11 w-11 items-center justify-center rounded-full bg-white dark:bg-gray-900/95 shadow-md active:bg-gray-100 dark:active:bg-gray-700"
+      className="h-11 w-11 items-center justify-center rounded-full bg-white shadow-md active:bg-gray-100 dark:bg-gray-900/95 dark:active:bg-gray-700"
     >
       <Ionicons name={icon} size={20} color={accent ? '#2563eb' : '#374151'} />
     </Pressable>
@@ -1377,9 +1426,11 @@ function FabRow({
   return (
     <Pressable
       onPress={onPress}
-      className="mt-2 flex-row items-center rounded-full bg-white dark:bg-gray-900/95 px-3 py-2 shadow-md active:bg-gray-100 dark:active:bg-gray-700"
+      className="mt-2 flex-row items-center rounded-full bg-white px-3 py-2 shadow-md active:bg-gray-100 dark:bg-gray-900/95 dark:active:bg-gray-700"
     >
-      <Text className={`mr-2 text-xs font-medium ${accent ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}>
+      <Text
+        className={`mr-2 text-xs font-medium ${accent ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-gray-300'}`}
+      >
         {label}
       </Text>
       <Ionicons name={icon} size={18} color={accent ? '#2563eb' : '#374151'} />

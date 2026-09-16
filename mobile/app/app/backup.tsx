@@ -16,6 +16,7 @@ import {
 } from '~/lib/backup';
 import { listSafetyBackups } from '~/db';
 import type { ExportFile } from '~/lib/bundleExport';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Busy = null | 'backup' | 'photos' | 'restore';
 
@@ -36,36 +37,44 @@ export default function BackupScreen() {
   useEffect(refreshSafety, [refreshSafety]);
 
   const handleRestoreSafety = (name: string) => {
-    Alert.alert(t('backup.safetyRestoreConfirmTitle'), t('backup.safetyRestoreConfirmMsg', { name }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('backup.restore'),
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            setBusy('restore');
-            await restoreSafetyBackup(name);
-          } catch (e) {
-            setBusy(null);
-            Alert.alert(t('backup.restoreFailed'), e instanceof Error ? e.message : String(e));
-          }
+    Alert.alert(
+      t('backup.safetyRestoreConfirmTitle'),
+      t('backup.safetyRestoreConfirmMsg', { name }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('backup.restore'),
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setBusy('restore');
+              await restoreSafetyBackup(name);
+            } catch (e) {
+              setBusy(null);
+              Alert.alert(t('backup.restoreFailed'), e instanceof Error ? e.message : String(e));
+            }
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const handleDeleteSafety = (name: string) => {
-    Alert.alert(t('backup.safetyDeleteConfirmTitle'), t('backup.safetyDeleteConfirmMsg', { name }), [
-      { text: t('common.cancel'), style: 'cancel' },
-      {
-        text: t('common.delete'),
-        style: 'destructive',
-        onPress: () => {
-          deleteSafetyBackup(name);
-          refreshSafety();
+    Alert.alert(
+      t('backup.safetyDeleteConfirmTitle'),
+      t('backup.safetyDeleteConfirmMsg', { name }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: () => {
+            deleteSafetyBackup(name);
+            refreshSafety();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const share = async (file: ExportFile) => {
@@ -94,7 +103,9 @@ export default function BackupScreen() {
     try {
       setBusy('photos');
       setProgress('');
-      const file = await createPhotoBackup((done, total) => setProgress(t('backup.photoProgress', { done, total })));
+      const file = await createPhotoBackup((done, total) =>
+        setProgress(t('backup.photoProgress', { done, total })),
+      );
       if (!file) {
         Alert.alert(t('backup.noPhotos'), t('backup.noPhotosMsg'));
         return;
@@ -171,7 +182,9 @@ export default function BackupScreen() {
             disabled={busy !== null}
           />
           {busy === 'photos' && progress ? (
-            <Text className="mt-2 text-xs text-gray-500 dark:text-gray-400">{t('backup.processing', { progress })}</Text>
+            <Text className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              {t('backup.processing', { progress })}
+            </Text>
           ) : null}
         </Section>
 
@@ -198,7 +211,7 @@ export default function BackupScreen() {
             {safety.map((f) => (
               <View
                 key={f.name}
-                className="mt-2 flex-row items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2"
+                className="mt-2 flex-row items-center justify-between rounded-lg border border-gray-200 px-3 py-2 dark:border-gray-700"
               >
                 <View className="flex-1 pr-2">
                   <Text className="text-sm text-gray-900 dark:text-gray-100" numberOfLines={1}>
@@ -247,10 +260,12 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <View className="mt-3 bg-white dark:bg-gray-900 px-4 py-4 border-y border-gray-200 dark:border-gray-700">
+    <View className="mt-3 border-y border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-900">
       <View className="flex-row items-center">
         <Ionicons name={icon} size={20} color="#4b5563" />
-        <Text className="ml-2 text-base font-semibold text-gray-900 dark:text-gray-100">{title}</Text>
+        <Text className="ml-2 text-base font-semibold text-gray-900 dark:text-gray-100">
+          {title}
+        </Text>
       </View>
       <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">{desc}</Text>
       <View className="mt-3">{children}</View>
@@ -271,7 +286,7 @@ function ActionButton({
   disabled: boolean;
   destructive?: boolean;
 }) {
-  const base = destructive ? 'bg-red-500 active:bg-red-600' : 'bg-blue-500 active:bg-blue-600';
+  const base = destructive ? 'bg-red-500 active:bg-red-600' : ACTION_FILL;
   return (
     <Pressable
       onPress={onPress}

@@ -14,7 +14,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, Linking, Modal, Pressable, Switch, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Linking,
+  Modal,
+  Pressable,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SettingsPage } from '~/components/settings/SettingsPage';
 import { promptText } from '~/components/TextPromptModal';
@@ -46,6 +56,7 @@ import {
 } from '~/db/regionpacks';
 import { clearTaxonomyCache } from '~/db';
 import { clearSearchResultCache } from '~/components/SearchBox';
+import { ACTION_FILL } from '~/lib/colors';
 
 export default function RegionPacksScreen() {
   const { t, i18n } = useTranslation();
@@ -102,7 +113,6 @@ export default function RegionPacksScreen() {
     ...packs.map((pack) => ({ kind: 'pack' as const, pack })),
   ];
 
-
   /**
    * Saved credentials first (opt-in file, never inside user.db backups), else
    * prompt. The GBIF API authenticates with the USERNAME only — the website
@@ -111,7 +121,9 @@ export default function RegionPacksScreen() {
    * 401 later.
    */
   const obtainCredentials = useCallback(
-    async (forcePrompt: boolean): Promise<{ creds: GbifCredentials; fromStore: boolean } | null> => {
+    async (
+      forcePrompt: boolean,
+    ): Promise<{ creds: GbifCredentials; fromStore: boolean } | null> => {
       if (!forcePrompt) {
         const stored = await loadGbifCredentials();
         if (stored) return { creds: stored, fromStore: true };
@@ -133,9 +145,11 @@ export default function RegionPacksScreen() {
             // Wait out the prompt Modal's dismissal before the Alert presents.
             setTimeout(
               () =>
-                Alert.alert(t('regionPacks.emailNotAllowedTitle'), t('regionPacks.emailNotAllowedMsg'), [
-                  { text: t('common.confirm'), onPress: () => resolve() },
-                ]),
+                Alert.alert(
+                  t('regionPacks.emailNotAllowedTitle'),
+                  t('regionPacks.emailNotAllowedMsg'),
+                  [{ text: t('common.confirm'), onPress: () => resolve() }],
+                ),
               450,
             ),
           );
@@ -340,11 +354,11 @@ export default function RegionPacksScreen() {
     const on = enabledRegions.includes(code);
     const isLast = on && enabledSourceCount <= 1;
     return (
-      <View className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+      <View className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
         <View className="flex-1">
           <Text className="text-base font-medium text-gray-900 dark:text-gray-100">
             {t(code === 'TW' ? 'regionPacks.builtinTwName' : 'regionPacks.builtinJpName')}
-            <Text className="text-xs text-gray-400">  {t('regionPacks.builtinTag')}</Text>
+            <Text className="text-xs text-gray-400"> {t('regionPacks.builtinTag')}</Text>
           </Text>
           <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
             {t(code === 'TW' ? 'regionPacks.builtinTwSub' : 'regionPacks.builtinJpSub')}
@@ -367,7 +381,10 @@ export default function RegionPacksScreen() {
     // A live key means the queued download can simply be polled again; a
     // failed or key-less pack needs a fresh request (with credentials).
     const resumable =
-      !busy && item.status !== 'ready' && item.status !== 'failed' && item.gbif_download_key != null;
+      !busy &&
+      item.status !== 'ready' &&
+      item.status !== 'failed' &&
+      item.gbif_download_key != null;
     const retryable = !busy && item.status !== 'ready' && !resumable;
     return (
       <SwipeRow onDelete={() => handleDelete(item)} label={t('common.delete')}>
@@ -385,7 +402,8 @@ export default function RegionPacksScreen() {
               : undefined
           }
           delayLongPress={350}
-          className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+          className="border-b border-gray-100 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900"
+        >
           <View className="flex-row items-center">
             <View className="flex-1">
               <Text className="text-base font-medium text-gray-900 dark:text-gray-100">
@@ -417,7 +435,7 @@ export default function RegionPacksScreen() {
               <Pressable
                 onPress={() => drivePack(item.id)}
                 hitSlop={8}
-                className="rounded-full bg-blue-500 px-3 py-1.5 active:bg-blue-600"
+                className={`rounded-full px-3 py-1.5 ${ACTION_FILL}`}
                 accessibilityLabel={t('regionPacks.resume')}
               >
                 <Text className="text-xs font-medium text-white">{t('regionPacks.resume')}</Text>
@@ -444,7 +462,8 @@ export default function RegionPacksScreen() {
         data={rows}
         keyExtractor={(r) => (r.kind === 'builtin' ? `builtin-${r.code}` : `pack-${r.pack.id}`)}
         renderItem={({ item }) =>
-          item.kind === 'builtin' ? renderBuiltin(item.code) : renderPack({ item: item.pack })}
+          item.kind === 'builtin' ? renderBuiltin(item.code) : renderPack({ item: item.pack })
+        }
         ListHeaderComponent={
           <View className="px-4 py-3">
             <Text className="text-xs text-gray-500 dark:text-gray-400">
@@ -476,7 +495,7 @@ export default function RegionPacksScreen() {
       <View className="px-4 pb-2 pt-2">
         <Pressable
           onPress={() => setPickerOpen(true)}
-          className="items-center rounded-xl bg-blue-500 py-3 active:bg-blue-600"
+          className={`items-center rounded-xl py-3 ${ACTION_FILL}`}
         >
           <Text className="text-base font-semibold text-white">{t('regionPacks.add')}</Text>
         </Pressable>
@@ -534,11 +553,8 @@ function CountryPickerModal({
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View
-        style={{ paddingTop: insets.top }}
-        className="flex-1 bg-white dark:bg-gray-900"
-      >
-        <View className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+      <View style={{ paddingTop: insets.top }} className="flex-1 bg-white dark:bg-gray-900">
+        <View className="flex-row items-center border-b border-gray-100 px-4 py-3 dark:border-gray-800">
           <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-100">
             {t('regionPacks.pickCountry')}
           </Text>
@@ -553,7 +569,7 @@ function CountryPickerModal({
             placeholder={t('regionPacks.searchCountry')}
             placeholderTextColor="#9ca3af"
             autoCapitalize="none"
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2.5 text-base text-gray-900 dark:text-gray-100"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
           />
         </View>
         <FlatList
@@ -563,7 +579,7 @@ function CountryPickerModal({
           renderItem={({ item }) => (
             <Pressable
               onPress={() => onPick(item)}
-              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-blue-50 dark:active:bg-blue-900/40"
+              className="flex-row items-center border-b border-gray-100 px-4 py-3 active:bg-blue-50 dark:border-gray-800 dark:active:bg-blue-900/40"
             >
               <Text className="flex-1 text-base text-gray-900 dark:text-gray-100">
                 {zh ? item.zh : item.en}
@@ -596,7 +612,7 @@ function GroupChooserModal({
   return (
     <Modal visible={country != null} animationType="slide" onRequestClose={onCancel}>
       <View style={{ paddingTop: insets.top }} className="flex-1 bg-white dark:bg-gray-900">
-        <View className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+        <View className="flex-row items-center border-b border-gray-100 px-4 py-3 dark:border-gray-800">
           <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-100">
             {country ? countryName(country.code, i18n.language) : ''}
           </Text>
@@ -624,7 +640,9 @@ function GroupChooserModal({
                       : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800'
                   }`}
                 >
-                  <Text className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                  <Text
+                    className={`text-xs ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                  >
                     {t(`areaSpecies.iconic.${k}`)}
                   </Text>
                 </Pressable>
@@ -641,10 +659,7 @@ function GroupChooserModal({
           </Text>
         </View>
         <View className="mt-auto px-4 pb-4" style={{ paddingBottom: Math.max(insets.bottom, 16) }}>
-          <Pressable
-            onPress={onConfirm}
-            className="items-center rounded-xl bg-blue-500 py-3 active:bg-blue-600"
-          >
+          <Pressable onPress={onConfirm} className={`items-center rounded-xl py-3 ${ACTION_FILL}`}>
             <Text className="text-base font-semibold text-white">
               {t('regionPacks.startDownload')}
             </Text>

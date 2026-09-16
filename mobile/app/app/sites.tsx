@@ -15,6 +15,7 @@ import { useToast } from '~/stores/toast';
 import { SwipeRow } from '~/components/SwipeRow';
 import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { BackHeaderLeft } from '~/lib/goBack';
+import { ACTION_FILL } from '~/lib/colors';
 
 type ExportFormat = 'geojson' | 'kml' | 'gpx' | 'wkt';
 
@@ -171,7 +172,7 @@ export default function SitesScreen() {
           </Text>
           <Pressable
             onPress={() => router.push('/(tabs)/map')}
-            className="mt-4 rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600"
+            className={`mt-4 rounded-full px-4 py-2 ${ACTION_FILL}`}
           >
             <Text className="text-sm font-medium text-white">{t('sites.goToMap')}</Text>
           </Pressable>

@@ -33,6 +33,7 @@ import { RecordLocationMap } from './RecordLocationMap';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
 import { SpeciesAttributesBlock, type SpeciesAttributesDraft } from './SpeciesAttributesBlock';
 import { EMPTY_DRAFT, detectionOptions } from '~/lib/dwcAttributes';
+import { ACTION_FILL } from '~/lib/colors';
 import {
   quantityTypes,
   basalArea,
@@ -754,7 +755,7 @@ export function PlotSpeciesValueModal({
                 </Pressable>
                 <Pressable
                   onPress={canSave ? handleSave : undefined}
-                  className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? 'bg-emerald-500 active:bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+                  className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? ACTION_FILL : 'bg-gray-200 dark:bg-gray-700'}`}
                 >
                   <Text className="text-sm font-medium text-white">{t('common.save')}</Text>
                 </Pressable>
@@ -908,10 +909,7 @@ function DBHInput({
           autoFocus
           className="flex-1 py-3 text-base text-gray-900 dark:text-gray-100"
         />
-        <Pressable
-          onPress={onAdd}
-          className="rounded-md bg-emerald-500 px-3 py-1.5 active:bg-emerald-600"
-        >
+        <Pressable onPress={onAdd} className={`rounded-md px-3 py-1.5 ${ACTION_FILL}`}>
           <Ionicons name="add" size={18} color="white" />
         </Pressable>
       </View>

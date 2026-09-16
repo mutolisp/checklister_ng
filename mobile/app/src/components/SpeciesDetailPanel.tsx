@@ -32,6 +32,7 @@ import { CollapsibleSection, SynonymStatusBadge } from './CollapsibleSection';
 import { ConservationBadge } from './ConservationBadge';
 import { ScientificName } from './ScientificName';
 import { editManualTaxon } from './GbifLookupHost';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Props = {
   result: SearchResult;
@@ -412,7 +413,7 @@ export function SpeciesDetailPanel({
             onPress={onAddToSession}
             onLongPress={onAddLongPress}
             delayLongPress={350}
-            className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"
+            className={`flex-row items-center justify-center rounded-lg px-4 py-3 ${ACTION_FILL}`}
           >
             <Ionicons name="add" size={18} color="white" />
             <Text className="ml-2 text-sm font-medium text-white">

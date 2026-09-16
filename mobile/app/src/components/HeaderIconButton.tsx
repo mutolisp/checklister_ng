@@ -17,9 +17,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable } from 'react-native';
 
-/** App accent for header actions. Matches the 匯出 teal so the header and the
- *  swipe actions read as one palette rather than two. */
-const TINT = '#00A2A5';
+import { ACCENT } from '~/lib/colors';
+
+const TINT = ACCENT;
 const TINT_DANGER = '#dc2626';
 const TINT_DISABLED = '#9ca3af';
 

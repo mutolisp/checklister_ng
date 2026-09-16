@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
 import { useThemeColors } from '~/hooks/useThemeColors';
 import { useSettings } from '~/stores/settings';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Props = {
   visible: boolean;
@@ -81,7 +82,11 @@ export function LabelExportSheet({ visible, count, busy, onCancel, onConfirm }: 
             <View className="w-14" />
           </View>
 
-          <ScrollView className="px-4" contentContainerClassName="py-4" keyboardShouldPersistTaps="handled">
+          <ScrollView
+            className="px-4"
+            contentContainerClassName="py-4"
+            keyboardShouldPersistTaps="handled"
+          >
             <Text className="mb-3 text-xs text-gray-500 dark:text-gray-400">
               {t('collection.labelSheetDesc')}
             </Text>
@@ -113,7 +118,7 @@ export function LabelExportSheet({ visible, count, busy, onCancel, onConfirm }: 
               onPress={confirm}
               disabled={busy}
               className={`items-center rounded-xl py-3 ${
-                busy ? 'bg-gray-300 dark:bg-gray-700' : 'bg-blue-500 active:bg-blue-600'
+                busy ? 'bg-gray-300 dark:bg-gray-700' : ACTION_FILL
               }`}
             >
               <Text className="text-base font-semibold text-white">

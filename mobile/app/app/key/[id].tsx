@@ -59,6 +59,7 @@ import {
   useSettings,
 } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
+import { ACTION_FILL } from '~/lib/colors';
 
 type LeadKey = 'a' | 'b';
 
@@ -1141,7 +1142,7 @@ function AddToActiveRecordButton({
   return (
     <Pressable
       onPress={onPress}
-      className="mt-3 flex-row items-center rounded-xl bg-emerald-500 px-4 py-3 active:bg-emerald-600"
+      className={`mt-3 flex-row items-center rounded-xl px-4 py-3 ${ACTION_FILL}`}
     >
       <View className="mr-3 h-9 w-9 items-center justify-center rounded-lg bg-white/20">
         <Ionicons name="add" size={20} color="white" />
@@ -1192,7 +1193,7 @@ function FooterButtons({ onBack, onRestart }: { onBack: () => void; onRestart?: 
       {onRestart ? (
         <Pressable
           onPress={onRestart}
-          className="flex-1 flex-row items-center justify-center rounded-lg bg-emerald-500 py-3 active:bg-emerald-600"
+          className={`flex-1 flex-row items-center justify-center rounded-lg py-3 ${ACTION_FILL}`}
         >
           <Ionicons name="refresh" size={14} color="white" />
           <Text className="ml-1.5 text-sm font-medium text-white">{tr('keys.restart')}</Text>

@@ -3022,3 +3022,71 @@ header 既然負起責任，**內容區那條「‹ 所有名錄」也一併移�
 > 全 app 還有其他藍色圓角控制項（`app/(tabs)/map.tsx` 的繪圖確認鈕、`GeoImportModal`、`TaxonGroupPicker` 等），那些是**實心主要動作按鈕**或別的語境，不在這次的「工具列藥丸」範圍內，未動。
 
 - [ ] **實機**：常用名錄兩層的工具列藥丸與記錄分頁標題列外觀一致；深色模式下白底藥丸變深底、邊框看得見
+
+---
+
+## 2026-09-16 — 主要動作按鈕統一為 #00A2A5
+
+### 新 token `src/lib/colors.ts`
+`ACCENT` / `ACCENT_PRESSED` / `ACTION_FILL`。青綠原本在三個地方各寫一次（`SwipeRowActions` 的 export 色、`HeaderIconButton` 的 TINT、記錄分頁的匯出圖示）—— 色票就是這樣走鐘的，現在收在一處。
+
+`ACTION_FILL` 是 class 字串而不是 hex，因為這些按鈕的形狀與內距各不相同，共用的只有填色與按下狀態。NativeWind 的掃描器把它當字面值讀（與 `SwipeRowActions` 顏色表同一個機制），所以呼叫端用樣板字串插值也編得出來。
+
+### 轉換了 24 處填色主要動作按鈕
+地圖的 `完成` / `儲存`、前往地圖、匯入 GeoJSON、GBIF 查詢、區域包下載、iNat 連結、專案匯出、標籤匯出、樣區取得 GPS、樣區豐度 `儲存`、DBH `＋`、備份/回復、建立記錄、檢索表的加入鈕、樣區 FAB ⋯⋯ 原本混用 `bg-blue-500` 與 `bg-emerald-500`，現在一律 `ACTION_FILL`。
+
+**翻綠因此被釋放回去只代表「進行中」** —— 之前綠點、綠 badge、綠按鈕混在一起，狀態與動作分不出來。
+
+### 刻意沒轉的
+- **`TransectTrackControl`**：那裡的 emerald / amber / red 是**紅綠燈語意**（開始／暫停／停止），不是「主要動作」。改了會把意思弄丟。
+- **選取狀態**的 chip 與分段控制（`KeyMatrixRunner`、`regionpacks`、`taxonomy` 分段、樣區的層級 chip）：那是「已選」不是「可按」。
+- **徽章／序號圓圈／圖示磚／進度條**（`key/[id]`、`ExportProgressOverlay`、地圖的交接提示橫幅）：都不是按鈕。
+
+### 驗證狀態
+- [x] tsc / lint 0 error / check:i18n・dock・kav・names・diversity・roundtrip・vegmatrix・report・inat
+- [x] grep 確認除了 `TransectTrackControl` 的紅綠燈之外，已無 `bg-blue-500 active:` / `bg-emerald-500 active:` 的填色按鈕
+- [ ] **實機**：地圖繪圖列的「完成」是青綠；停用狀態仍是灰的
+- [ ] **實機**：樣區軌跡的開始／暫停／停止仍是綠／琥珀／紅
+
+---
+
+## 2026-09-16 — Xcode Cloud：pod 的 deployment target 低於 Xcode 27 下限
+
+Build 21 的三個錯誤：
+
+```
+react-native-maps-ReactNativeMapsPrivacy  IPHONEOS_DEPLOYMENT_TARGET = 11.0
+RNSVG-RNSVGFilters                        IPHONEOS_DEPLOYMENT_TARGET = 12.4
+SDWebImage-SDWebImage                     IPHONEOS_DEPLOYMENT_TARGET = 9.0
+→ the range of supported deployment target versions is 15.0 to 27.0.x
+```
+
+### 根因
+app 自己是 15.1（`ios/Podfile` 的 `platform :ios`），但 **CocoaPods 尊重每個 podspec 自己宣告的 `deployment_target`**，所以還寫著 iOS 9／11／12 的套件會原樣帶進來。Xcode Cloud 用的是 Xcode 27（build log 的「Configure Xcode 27 (27A266a)」），它拒絕任何低於 15.0 的目標。
+
+**`expo-build-properties` 修不了這個**：官方文件對 `ios.deploymentTarget` 的說明是「in CocoaPods projects, `PBXNativeTarget` with "com.apple.product-type.application" productType in the app project」—— 講的是 **app target**，不是各個 pod target。別繞路去裝它。
+
+### 修法
+`ios/Podfile` 的 `post_install` 加一段，把低於 app 最低版本的 pod 一律拉上來，門檻讀同一個 `podfile_properties['ios.deploymentTarget']`，不另立一個會走鐘的數字。
+
+### 已實測，不是推測
+本機重跑 `pod install` 前後比對 `Pods/Pods.xcodeproj/project.pbxproj`：
+
+| | 低於 15.0 的 build config | 全部的值 |
+|---|---|---|
+| 修改前 | 6（9.0 / 11.0 / 12.4） | 混雜 |
+| 修改後 | **0** | 260 個全是 `15.1` |
+
+`Podfile.lock` 只有 `PODFILE CHECKSUM` 跟著變，需一併提交。
+
+### ⚠️ 這個修改會被 prebuild 洗掉
+`ios/` 是 prebuild 產物卻納入版控（與 `Info.plist` 的 CFBundleDisplayName 同樣的狀況）。**`expo prebuild --clean` 會重新產生 Podfile 並刪掉這段**，CI 就會再次以同樣的錯誤失敗。要讓它永久化就得寫一個 local config plugin（`withDangerousMod` 注入 post_install），本次沒做 —— 那個 plugin 在沒有實際跑 prebuild 前無法驗證，而這次的目標是先讓 CI 通過。
+
+### Build 20 的 clone 失敗（另一件事）
+Build 21 已經順利 clone，所以那是暫時性的。但底下的風險仍在：`.git` 3.5 GB，其中 **3.3 GB 是 Git LFS**（`backend/twnamelist.db` 與 `mobile/app/assets/db/twnamelist.db` 各約 170 MB，歷史裡 25 個物件）。每次 CI clone 要抓 340 MB LFS，GitHub 免費 LFS 頻寬是每月 1 GB。
+
+可減負但未做（會動到倉庫結構與 remote，需使用者決定）：**`backend/twnamelist.db` 是 iOS build 完全用不到的**，把它移出追蹤即可讓每次 clone 少一半 LFS。兩個 DB 其實都是衍生產物（`make taicol` / `make mobile-db`），只是 mobile 那份必須進倉庫才能被打包。
+
+### 驗證狀態
+- [x] 本機 `pod install` 實跑，pbxproj 比對確認 0 個低於 15.0
+- [ ] **Xcode Cloud 重跑 Build**：三個 deployment target 錯誤消失

@@ -31,14 +31,7 @@ import { Stack, useRouter, type Href } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '~/i18n';
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Modal, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   addRecord,
@@ -58,6 +51,7 @@ import { useToast } from '~/stores/toast';
 import { ConservationBadge } from './ConservationBadge';
 import { LookupResultSheet } from './LookupResultSheet';
 import { ScientificName } from './ScientificName';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Props = {
   keyId: number;
@@ -101,7 +95,8 @@ function parseNumericRange(raw: string): NumericRange | null {
   if (range) {
     const a = parseFloat(range[1]);
     const b = parseFloat(range[2]);
-    if (Number.isFinite(a) && Number.isFinite(b)) return { min: Math.min(a, b), max: Math.max(a, b) };
+    if (Number.isFinite(a) && Number.isFinite(b))
+      return { min: Math.min(a, b), max: Math.max(a, b) };
   }
   // Single value
   const v = parseFloat(s);
@@ -242,7 +237,10 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
     addRecord({ session_id: target.id, taxon_id: activeDetail.taxon_id });
     refreshActive();
     toast(t('session.added', { name: activeDetail.cname || activeDetail.name }), {
-      action: { label: t('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}` as Href) },
+      action: {
+        label: t('addToRecord.goTo'),
+        onPress: () => router.push(`/session/${target.id}` as Href),
+      },
     });
   };
 
@@ -252,7 +250,10 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
 
   if (!loaded) {
     return (
-      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 items-center justify-center bg-white dark:bg-gray-900"
+      >
         <Stack.Screen options={{ title: t('nav.key') }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">{t('common.loading')}</Text>
       </SafeAreaView>
@@ -265,7 +266,7 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
 
       {/* Top: feature list (60% height) */}
       <View style={{ flex: 0.6 }} className="bg-white dark:bg-gray-900">
-        <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-2">
+        <View className="flex-row items-center justify-between border-b border-gray-100 px-4 py-2 dark:border-gray-800">
           <Text className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
             {t('keys.features', { count: features.length })}
           </Text>
@@ -275,7 +276,9 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
             hitSlop={6}
             className={`rounded-full px-3 py-1 ${activeCount === 0 ? 'opacity-40' : 'active:bg-gray-100 dark:active:bg-gray-800'}`}
           >
-            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">{t('keys.reset')}</Text>
+            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">
+              {t('keys.reset')}
+            </Text>
           </Pressable>
         </View>
         <ScrollView>
@@ -294,16 +297,21 @@ export function KeyMatrixRunner({ keyId, keyData }: Props) {
       </View>
 
       {/* Sticky middle bar */}
-      <View className="flex-row items-center justify-between border-y border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-4 py-2">
+      <View className="flex-row items-center justify-between border-y border-gray-200 bg-gray-100 px-4 py-2 dark:border-gray-700 dark:bg-gray-800">
         <Text className="text-sm font-semibold text-gray-900 dark:text-gray-100">
           {t('keys.remainingSpecies', { count: candidates.length })}
           {activeCount > 0 ? (
-            <Text className="font-normal text-gray-600 dark:text-gray-400">  ·  {t('keys.selectedConditions', { count: activeCount })}</Text>
+            <Text className="font-normal text-gray-600 dark:text-gray-400">
+              {' '}
+              · {t('keys.selectedConditions', { count: activeCount })}
+            </Text>
           ) : null}
         </Text>
         {activeCount > 0 ? (
           <Pressable onPress={handleReset} hitSlop={6}>
-            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">{t('keys.clearAll')}</Text>
+            <Text className="text-xs font-medium text-blue-600 dark:text-blue-400">
+              {t('keys.clearAll')}
+            </Text>
           </Pressable>
         ) : null}
       </View>
@@ -364,14 +372,18 @@ function FeatureRow({
     <Pressable
       onPress={onPress}
       disabled={isText}
-      className={`flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${isText ? 'opacity-50' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
+      className={`flex-row items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800 ${isText ? 'opacity-50' : 'active:bg-gray-50 dark:active:bg-gray-800'}`}
     >
       <View className="flex-1">
         <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">{feature.name}</Text>
         {isText ? (
-          <Text className="text-[11px] text-gray-500 dark:text-gray-400">{t('keys.descFields')}</Text>
+          <Text className="text-[11px] text-gray-500 dark:text-gray-400">
+            {t('keys.descFields')}
+          </Text>
         ) : (
-          <Text className={`text-xs ${active ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}>
+          <Text
+            className={`text-xs ${active ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`}
+          >
             {selectionLabel(selection)}
           </Text>
         )}
@@ -402,19 +414,23 @@ function CandidateRow({
   return (
     <Pressable
       onPress={onPress}
-      className="flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-blue-50 dark:active:bg-blue-900/40"
+      className="flex-row items-start border-b border-gray-100 px-4 py-3 active:bg-blue-50 dark:border-gray-800 dark:active:bg-blue-900/40"
     >
-      <Ionicons name="leaf-outline" size={14} color="#10b981" style={{ marginRight: 8, marginTop: 3 }} />
+      <Ionicons
+        name="leaf-outline"
+        size={14}
+        color="#10b981"
+        style={{ marginRight: 8, marginTop: 3 }}
+      />
       <View className="flex-1">
         <Text className="text-sm text-gray-700 dark:text-gray-300">
           {info?.common_name_c ? (
-            <Text className="font-medium text-gray-900 dark:text-gray-100">{info.common_name_c} </Text>
+            <Text className="font-medium text-gray-900 dark:text-gray-100">
+              {info.common_name_c}{' '}
+            </Text>
           ) : null}
           {info ? (
-            <ScientificName
-              name={info.simple_name}
-              kingdom={info.kingdom}
-            />
+            <ScientificName name={info.simple_name} kingdom={info.kingdom} />
           ) : (
             <Text className="italic">{taxon.taxon_id}</Text>
           )}
@@ -427,7 +443,9 @@ function CandidateRow({
       </View>
       <View className="ml-2 flex-row items-center" style={{ marginTop: 2 }}>
         {info?.is_endemic === 'true' ? (
-          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('species.endemicShort')}</Text>
+          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            {t('species.endemicShort')}
+          </Text>
         ) : null}
         {info?.redlist ? (
           <View className="ml-2">
@@ -460,7 +478,14 @@ function StatePickerSheet({
       <View className="flex-1">
         <Pressable
           onPress={onClose}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
         />
         <View
           style={{ position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: '75%' }}
@@ -470,16 +495,25 @@ function StatePickerSheet({
             <View className="items-center pt-2">
               <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
-            <View className="flex-row items-center justify-between border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{feature.name}</Text>
+            <View className="flex-row items-center justify-between border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                {feature.name}
+              </Text>
               <Pressable onPress={onClose} hitSlop={6}>
-                <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{t('common.done')}</Text>
+                <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                  {t('common.done')}
+                </Text>
               </Pressable>
             </View>
             {feature.type === 'categorical' ? (
               <CategoricalPicker feature={feature} selection={selection} onChange={onChange} />
             ) : feature.type === 'numeric' ? (
-              <NumericPicker feature={feature} selection={selection} taxa={taxa} onChange={onChange} />
+              <NumericPicker
+                feature={feature}
+                selection={selection}
+                taxa={taxa}
+                onChange={onChange}
+              />
             ) : null}
           </SafeAreaView>
         </View>
@@ -516,26 +550,34 @@ function CategoricalPicker({
               <Pressable
                 key={v}
                 onPress={() => toggle(v)}
-                className={`rounded-full border px-3 py-2 ${on ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800'}`}
+                className={`rounded-full border px-3 py-2 ${on ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white active:bg-gray-50 dark:border-gray-600 dark:bg-gray-900 dark:active:bg-gray-800'}`}
               >
-                <Text className={`text-sm ${on ? 'text-white font-medium' : 'text-gray-700 dark:text-gray-300'}`}>{v}</Text>
+                <Text
+                  className={`text-sm ${on ? 'font-medium text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                >
+                  {v}
+                </Text>
               </Pressable>
             );
           })}
         </View>
       </ScrollView>
-      <View className="flex-row items-center justify-between border-t border-gray-100 dark:border-gray-800 px-4 py-3">
+      <View className="flex-row items-center justify-between border-t border-gray-100 px-4 py-3 dark:border-gray-800">
         <Pressable
           onPress={() => onChange(null)}
           className="rounded-full px-3 py-2 active:bg-gray-100 dark:active:bg-gray-800"
         >
-          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('keys.uncertainClear')}</Text>
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t('keys.uncertainClear')}
+          </Text>
         </Pressable>
         <Pressable
           onPress={() => onChange({ kind: 'categorical', states: [...values] })}
           className="rounded-full px-3 py-2 active:bg-gray-100 dark:active:bg-gray-800"
         >
-          <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{t('keys.selectAll')}</Text>
+          <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">
+            {t('keys.selectAll')}
+          </Text>
         </Pressable>
       </View>
     </View>
@@ -589,12 +631,17 @@ function NumericPicker({
     <View className="px-4 py-4">
       {dataMin != null || dataMax != null ? (
         <Text className="mb-3 text-xs text-gray-500 dark:text-gray-400">
-          {t('keys.dataRange', { min: dataMin == null ? '–' : dataMin, max: dataMax == null ? '–' : dataMax })}
+          {t('keys.dataRange', {
+            min: dataMin == null ? '–' : dataMin,
+            max: dataMax == null ? '–' : dataMax,
+          })}
         </Text>
       ) : null}
       <View className="flex-row items-center" style={{ gap: 10 }}>
         <View className="flex-1">
-          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">{t('keys.lowerBound')}</Text>
+          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+            {t('keys.lowerBound')}
+          </Text>
           <TextInput
             value={minStr}
             onChangeText={setMinStr}
@@ -602,12 +649,14 @@ function NumericPicker({
             keyboardType="numeric"
             placeholder={t('keys.noLimit')}
             placeholderTextColor="#9ca3af"
-            className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
           />
         </View>
         <Text className="text-gray-400 dark:text-gray-500">~</Text>
         <View className="flex-1">
-          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">{t('keys.upperBound')}</Text>
+          <Text className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+            {t('keys.upperBound')}
+          </Text>
           <TextInput
             value={maxStr}
             onChangeText={setMaxStr}
@@ -615,7 +664,7 @@ function NumericPicker({
             keyboardType="numeric"
             placeholder={t('keys.noLimit')}
             placeholderTextColor="#9ca3af"
-            className="rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-base text-gray-900 dark:text-gray-100"
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-gray-900 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
           />
         </View>
       </View>
@@ -628,9 +677,11 @@ function NumericPicker({
           }}
           className="rounded-full px-3 py-2 active:bg-gray-100 dark:active:bg-gray-800"
         >
-          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('keys.uncertainClear')}</Text>
+          <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {t('keys.uncertainClear')}
+          </Text>
         </Pressable>
-        <Pressable onPress={apply} className="rounded-full bg-blue-500 px-4 py-2 active:bg-blue-600">
+        <Pressable onPress={apply} className={`rounded-full px-4 py-2 ${ACTION_FILL}`}>
           <Text className="text-sm font-medium text-white">{t('keys.apply')}</Text>
         </Pressable>
       </View>

@@ -18,6 +18,7 @@ import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useSwipeBlock } from './SwipeNavigator';
+import { ACTION_FILL } from '~/lib/colors';
 
 export type SwipeAction = {
   /** Display label next to the icon. */
@@ -44,7 +45,7 @@ const BG: Record<SwipeAction['color'], string> = {
   purple: 'bg-purple-600 active:bg-purple-700',
   amber: 'bg-amber-600 active:bg-amber-700',
   inat: 'bg-[#74AB00] active:bg-[#5E8A00]',
-  export: 'bg-[#00A2A5] active:bg-[#008284]',
+  export: ACTION_FILL,
 };
 
 type Props = {

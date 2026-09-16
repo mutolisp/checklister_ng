@@ -14,6 +14,7 @@ import {
 } from '~/db';
 import { promptText } from '~/components/TextPromptModal';
 import { pauseIfNot } from '~/lib/trackRecorder';
+import { ACTION_FILL } from '~/lib/colors';
 
 function formatTime(ts: number | null): string {
   return ts ? isoDateTime(ts) : '';
@@ -66,11 +67,11 @@ export default function PlotsListScreen() {
 
   return (
     <SafeAreaView edges={['top']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-      <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
-        <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('plots.title')}</Text>
-        <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-          {t('plots.desc')}
+      <View className="border-b border-gray-100 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
+        <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          {t('plots.title')}
         </Text>
+        <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{t('plots.desc')}</Text>
       </View>
       {plots.length === 0 ? (
         <View className="flex-1 items-center justify-center px-8">
@@ -94,7 +95,7 @@ export default function PlotsListScreen() {
       )}
       <Pressable
         onPress={handleNew}
-        className="absolute bottom-8 right-6 h-14 w-14 items-center justify-center rounded-full bg-emerald-500 shadow-lg active:bg-emerald-600"
+        className={`absolute bottom-8 right-6 h-14 w-14 items-center justify-center rounded-full shadow-lg ${ACTION_FILL}`}
       >
         <Ionicons name="add" size={32} color="white" />
       </Pressable>
@@ -119,7 +120,7 @@ function PlotRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+      className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
     >
       <View className="flex-1">
         <View className="flex-row items-center">
@@ -128,13 +129,17 @@ function PlotRow({
           />
           <Text className="font-medium text-gray-900 dark:text-gray-100">{plot.plotid}</Text>
           {isActive ? (
-            <View className="ml-2 rounded bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5">
-              <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{t('records.recording')}</Text>
+            <View className="ml-2 rounded bg-emerald-100 px-2 py-0.5 dark:bg-emerald-900/60">
+              <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                {t('records.recording')}
+              </Text>
             </View>
           ) : null}
           {!ready ? (
-            <View className="ml-2 rounded bg-amber-100 dark:bg-amber-900/60 px-2 py-0.5">
-              <Text className="text-xs font-medium text-amber-700 dark:text-amber-300">{t('records.notReady')}</Text>
+            <View className="ml-2 rounded bg-amber-100 px-2 py-0.5 dark:bg-amber-900/60">
+              <Text className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                {t('records.notReady')}
+              </Text>
             </View>
           ) : null}
         </View>
@@ -145,7 +150,9 @@ function PlotRow({
             : ''}
         </Text>
         {plot.start_ts ? (
-          <Text className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{formatTime(plot.start_ts)}</Text>
+          <Text className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
+            {formatTime(plot.start_ts)}
+          </Text>
         ) : null}
       </View>
       <Ionicons name="chevron-forward" size={18} color="#9ca3af" />

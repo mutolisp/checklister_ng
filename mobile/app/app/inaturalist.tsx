@@ -26,6 +26,7 @@ import {
 import { GEOPRIVACY_VALUES, type Geoprivacy } from '~/lib/inatPayload';
 import { useSettings } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
+import { ACTION_FILL } from '~/lib/colors';
 
 export default function InaturalistScreen() {
   const { t } = useTranslation();
@@ -92,11 +93,13 @@ export default function InaturalistScreen() {
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <Text className="text-xs text-gray-500 dark:text-gray-400">{t('inat.intro')}</Text>
 
-        <View className="mt-4 rounded-xl bg-white dark:bg-gray-900 px-4 py-3">
+        <View className="mt-4 rounded-xl bg-white px-4 py-3 dark:bg-gray-900">
           {status ? (
             <>
               <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
-                {status.login ? t('inat.connectedAs', { login: status.login }) : t('inat.connected')}
+                {status.login
+                  ? t('inat.connectedAs', { login: status.login })
+                  : t('inat.connected')}
               </Text>
               <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                 {status.usable && status.expiresAt
@@ -109,24 +112,30 @@ export default function InaturalistScreen() {
                   disabled={busy}
                   className="flex-1 items-center rounded-lg border border-blue-500 py-2 active:bg-blue-50 dark:active:bg-blue-900/40"
                 >
-                  <Text className="text-sm font-semibold text-blue-600 dark:text-blue-400">{t('inat.refreshToken')}</Text>
+                  <Text className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+                    {t('inat.refreshToken')}
+                  </Text>
                 </Pressable>
                 <Pressable
                   onPress={handleDisconnect}
                   disabled={busy}
                   className="flex-1 items-center rounded-lg border border-red-400 py-2 active:bg-red-50 dark:active:bg-red-900/30"
                 >
-                  <Text className="text-sm font-semibold text-red-600 dark:text-red-400">{t('inat.disconnect')}</Text>
+                  <Text className="text-sm font-semibold text-red-600 dark:text-red-400">
+                    {t('inat.disconnect')}
+                  </Text>
                 </Pressable>
               </View>
             </>
           ) : (
             <>
-              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">{t('inat.notConnected')}</Text>
+              <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
+                {t('inat.notConnected')}
+              </Text>
               <Pressable
                 onPress={handleConnect}
                 disabled={busy}
-                className="mt-3 items-center rounded-xl bg-blue-500 py-3 active:bg-blue-600"
+                className={`mt-3 items-center rounded-xl py-3 ${ACTION_FILL}`}
               >
                 <Text className="text-base font-semibold text-white">{t('inat.connect')}</Text>
               </Pressable>
@@ -134,17 +143,21 @@ export default function InaturalistScreen() {
           )}
         </View>
 
-        <Text className="mt-6 mb-1 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
+        <Text className="mb-1 mt-6 px-1 text-xs font-semibold uppercase text-gray-500 dark:text-gray-400">
           {t('inat.fallbackTitle')}
         </Text>
         <View className="rounded-xl bg-white dark:bg-gray-900">
-          <Text className="px-4 pt-3 text-xs text-gray-500 dark:text-gray-400">{t('inat.fallbackHint')}</Text>
+          <Text className="px-4 pt-3 text-xs text-gray-500 dark:text-gray-400">
+            {t('inat.fallbackHint')}
+          </Text>
           <Pressable
             onPress={() => void Linking.openURL(INAT_API_TOKEN_URL)}
-            className="flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+            className="flex-row items-center border-b border-gray-100 px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:active:bg-gray-800"
           >
             <Ionicons name="open-outline" size={18} color="#2563eb" />
-            <Text className="ml-2 text-base text-blue-600 dark:text-blue-400">{t('inat.openTokenPage')}</Text>
+            <Text className="ml-2 text-base text-blue-600 dark:text-blue-400">
+              {t('inat.openTokenPage')}
+            </Text>
           </Pressable>
           <Pressable
             onPress={handlePaste}
@@ -152,7 +165,9 @@ export default function InaturalistScreen() {
             className="flex-row items-center px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
           >
             <Ionicons name="clipboard-outline" size={18} color="#2563eb" />
-            <Text className="ml-2 text-base text-blue-600 dark:text-blue-400">{t('inat.pasteToken')}</Text>
+            <Text className="ml-2 text-base text-blue-600 dark:text-blue-400">
+              {t('inat.pasteToken')}
+            </Text>
           </Pressable>
         </View>
 
@@ -168,7 +183,9 @@ export default function InaturalistScreen() {
             divider={false}
           />
         </View>
-        <Text className="mt-1 px-1 text-xs text-gray-500 dark:text-gray-400">{t('inat.geoprivacyHint')}</Text>
+        <Text className="mt-1 px-1 text-xs text-gray-500 dark:text-gray-400">
+          {t('inat.geoprivacyHint')}
+        </Text>
       </ScrollView>
     </SettingsPage>
   );

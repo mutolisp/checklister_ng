@@ -10,6 +10,7 @@ import { Modal, Pressable, ScrollView, Text, View, useWindowDimensions } from 'r
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSettings } from '~/stores/settings';
 import { AnalysisExportOptions, exportContentItems } from './AnalysisExportOptions';
+import { ACTION_FILL } from '~/lib/colors';
 
 type Props = {
   visible: boolean;
@@ -51,7 +52,14 @@ export function ProjectExportSheet({ visible, onClose, onExport }: Props) {
       <View className="flex-1">
         <Pressable
           onPress={onClose}
-          style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)' }}
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+          }}
         />
         <View
           style={{ position: 'absolute', bottom: 0, left: 0, right: 0, maxHeight: sheetMaxHeight }}
@@ -62,7 +70,7 @@ export function ProjectExportSheet({ visible, onClose, onExport }: Props) {
               <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
 
-            <View className="flex-row items-center justify-between px-4 pt-3 pb-2">
+            <View className="flex-row items-center justify-between px-4 pb-2 pt-3">
               <Text className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {t('projectExport.title')}
               </Text>
@@ -77,22 +85,30 @@ export function ProjectExportSheet({ visible, onClose, onExport }: Props) {
               <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                 {t('projectExport.listTitle')}
               </Text>
-              <View className="mb-4 rounded-lg bg-gray-50 dark:bg-gray-800/60 px-3 py-2">
+              <View className="mb-4 rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/60">
                 {items.map((item, i) => (
-                  <Text key={i} className="py-0.5 text-xs leading-4 text-gray-700 dark:text-gray-300">
+                  <Text
+                    key={i}
+                    className="py-0.5 text-xs leading-4 text-gray-700 dark:text-gray-300"
+                  >
                     {i + 1}. {item}
                   </Text>
                 ))}
               </View>
             </ScrollView>
 
-            <View className="px-4" style={{ paddingBottom: Math.max(insets.bottom, 12), paddingTop: 4 }}>
+            <View
+              className="px-4"
+              style={{ paddingBottom: Math.max(insets.bottom, 12), paddingTop: 4 }}
+            >
               <Pressable
                 onPress={onExport}
-                className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"
+                className={`flex-row items-center justify-center rounded-lg px-4 py-3 ${ACTION_FILL}`}
               >
                 <Ionicons name="share-outline" size={16} color="white" style={{ marginRight: 6 }} />
-                <Text className="text-sm font-medium text-white">{t('projectExport.exportNow')}</Text>
+                <Text className="text-sm font-medium text-white">
+                  {t('projectExport.exportNow')}
+                </Text>
               </Pressable>
             </View>
           </SafeAreaView>
