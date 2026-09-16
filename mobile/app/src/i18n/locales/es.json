@@ -268,7 +268,16 @@
     "star": "Destacar",
     "unstar": "Quitar destacado",
     "layoutToCard": "Cambiar a vista de tarjetas",
-    "layoutToList": "Cambiar a vista de lista"
+    "layoutToList": "Cambiar a vista de lista",
+    "deleteSelectedTitle_one": "¿Eliminar {{count}} registro?",
+    "deleteSelectedTitle_many": "¿Eliminar {{count}} registros?",
+    "deleteSelectedTitle_other": "¿Eliminar {{count}} registros?",
+    "deleteSelectedMsg_one": "Este registro y las {{rows}} observaciones que contiene se eliminarán de forma permanente.",
+    "deleteSelectedMsg_many": "Estos {{count}} registros y las {{rows}} observaciones que contienen se eliminarán de forma permanente.",
+    "deleteSelectedMsg_other": "Estos {{count}} registros y las {{rows}} observaciones que contienen se eliminarán de forma permanente.",
+    "deletedCount_one": "{{count}} registro eliminado",
+    "deletedCount_many": "{{count}} registros eliminados",
+    "deletedCount_other": "{{count}} registros eliminados"
   },
   "export": {
     "preparing": "Preparando…",

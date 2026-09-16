@@ -220,7 +220,10 @@
     "star": "별표 추가",
     "unstar": "별표 해제",
     "layoutToCard": "카드 보기로 전환",
-    "layoutToList": "목록 보기로 전환"
+    "layoutToList": "목록 보기로 전환",
+    "deleteSelectedTitle_other": "조사 기록 {{count}}건을 삭제할까요?",
+    "deleteSelectedMsg_other": "이 {{count}}건의 조사 기록과 그 안의 종 기록 {{rows}}건이 모두 삭제되며 되돌릴 수 없습니다.",
+    "deletedCount_other": "조사 기록 {{count}}건을 삭제했습니다"
   },
   "export": {
     "preparing": "준비 중…",

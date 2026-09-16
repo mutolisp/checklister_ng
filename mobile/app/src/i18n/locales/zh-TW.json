@@ -220,7 +220,10 @@
     "star": "加星號",
     "unstar": "取消星號",
     "layoutToCard": "改用卡片檢視",
-    "layoutToList": "改用列表檢視"
+    "layoutToList": "改用列表檢視",
+    "deleteSelectedTitle_other": "刪除 {{count}} 筆調查記錄？",
+    "deleteSelectedMsg_other": "這 {{count}} 筆調查記錄與其下 {{rows}} 筆物種紀錄將全部移除，無法復原。",
+    "deletedCount_other": "已刪除 {{count}} 筆調查記錄"
   },
   "export": {
     "preparing": "準備中…",

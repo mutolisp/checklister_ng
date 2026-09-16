@@ -244,7 +244,13 @@
     "star": "Star",
     "unstar": "Remove star",
     "layoutToCard": "Switch to card view",
-    "layoutToList": "Switch to list view"
+    "layoutToList": "Switch to list view",
+    "deleteSelectedTitle_one": "Delete {{count}} record?",
+    "deleteSelectedTitle_other": "Delete {{count}} records?",
+    "deleteSelectedMsg_one": "This record and the {{rows}} species rows inside it will be permanently removed.",
+    "deleteSelectedMsg_other": "These {{count}} records and the {{rows}} species rows inside them will be permanently removed.",
+    "deletedCount_one": "Deleted {{count}} record",
+    "deletedCount_other": "Deleted {{count}} records"
   },
   "export": {
     "preparing": "Preparing…",

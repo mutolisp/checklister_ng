@@ -23,6 +23,26 @@ const TINT = '#00A2A5';
 const TINT_DANGER = '#dc2626';
 const TINT_DISABLED = '#9ca3af';
 
+/**
+ * Optical-centring nudges, in points.
+ *
+ * A chevron is not symmetric about its own glyph box: the apex sits at one
+ * edge and the two arms open away from it, so geometric centring leaves it
+ * looking shoved toward the point. Invisible while the glyph floats on its
+ * own; obvious the moment it sits inside a disc, which is what the circular
+ * buttons made visible.
+ *
+ * Positive = move right. Applied as a transform, NOT a margin: the button
+ * centres its child, so a margin would widen that child and move it by only
+ * half the value — a nudge that silently means something other than it says.
+ *
+ * Only glyphs that actually need it are listed.
+ */
+const OPTICAL_NUDGE_X: Partial<Record<string, number>> = {
+  'chevron-back': 2,
+  'chevron-forward': -2,
+};
+
 export function HeaderIconButton({
   icon,
   onPress,
@@ -61,6 +81,7 @@ export function HeaderIconButton({
         name={icon}
         size={22}
         color={disabled ? TINT_DISABLED : tone === 'danger' ? TINT_DANGER : TINT}
+        style={{ transform: [{ translateX: OPTICAL_NUDGE_X[icon] ?? 0 }] }}
       />
     </Pressable>
   );

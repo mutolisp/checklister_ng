@@ -60,7 +60,10 @@ function externalLinks(result: SearchResult): Array<{ label: string; url: string
   }
   const sciEnc = encodeURIComponent(result.name);
   links.push({ label: 'GBIF', url: `https://www.gbif.org/species/search?q=${sciEnc}` });
-  links.push({ label: i18n.t('species.inatTaxon'), url: `https://www.inaturalist.org/taxa/search?q=${sciEnc}` });
+  links.push({
+    label: i18n.t('species.inatTaxon'),
+    url: `https://www.inaturalist.org/taxa/search?q=${sciEnc}`,
+  });
   links.push({ label: 'Wikispecies', url: `https://species.wikimedia.org/wiki/${sciEnc}` });
   links.push({ label: 'NCBI', url: `https://www.ncbi.nlm.nih.gov/taxonomy/?term=${sciEnc}` });
   if (result.kingdom === 'Plantae') {
@@ -69,7 +72,10 @@ function externalLinks(result: SearchResult): Array<{ label: string; url: string
     // 台灣植物資訊整合查詢 covers Taiwanese plants — meaningless for a
     // pack/external/YList taxon that is not in TaiCOL.
     if (result.taxon_id.charAt(0) === 't') {
-      links.push({ label: i18n.t('species.taiLink'), url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}` });
+      links.push({
+        label: i18n.t('species.taiLink'),
+        url: `https://tai2.ntu.edu.tw/search/1/${sciEnc}`,
+      });
     }
   }
   return links;
@@ -142,7 +148,7 @@ export function SpeciesDetailPanel({
 
   return (
     <View className="flex-1">
-      <View className="flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3">
+      <View className="flex-row items-start border-b border-gray-100 px-4 py-3 dark:border-gray-800">
         <View className="flex-1">
           {result.cname ? (
             <Text selectable className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -171,7 +177,7 @@ export function SpeciesDetailPanel({
                 if (out) setResult(out.result);
               }}
               hitSlop={6}
-              className="mt-2 flex-row items-center self-start rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+              className="mt-2 flex-row items-center self-start rounded-full bg-amber-50 px-3 py-1.5 active:bg-amber-100 dark:bg-amber-950/40 dark:active:bg-amber-900/60"
             >
               <Ionicons name="create-outline" size={14} color="#b45309" />
               <Text className="ml-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -183,13 +189,9 @@ export function SpeciesDetailPanel({
             <Pressable
               onPress={() => (favorited ? removeFav(result.taxon_id) : addFav(result))}
               hitSlop={6}
-              className="mt-2 flex-row items-center self-start rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+              className="mt-2 flex-row items-center self-start rounded-full bg-amber-50 px-3 py-1.5 active:bg-amber-100 dark:bg-amber-950/40 dark:active:bg-amber-900/60"
             >
-              <Ionicons
-                name={favorited ? 'star' : 'star-outline'}
-                size={14}
-                color="#d97706"
-              />
+              <Ionicons name={favorited ? 'heart' : 'heart-outline'} size={14} color="#d97706" />
               <Text className="ml-1.5 text-xs font-medium text-amber-700 dark:text-amber-300">
                 {favorited ? t('species.inFavorites') : t('favorites.add')}
               </Text>
@@ -221,7 +223,7 @@ export function SpeciesDetailPanel({
       </View>
 
       {result.matched_as ? (
-        <View className="border-b border-gray-100 dark:border-gray-800 bg-orange-50 dark:bg-orange-950/40 px-4 py-2">
+        <View className="border-b border-gray-100 bg-orange-50 px-4 py-2 dark:border-gray-800 dark:bg-orange-950/40">
           <Text selectable className="text-xs text-orange-900 dark:text-orange-200">
             {t('species.matchedSynonymPre')}
             <ScientificName
@@ -249,15 +251,18 @@ export function SpeciesDetailPanel({
 
         <Section title={t('species.status')}>
           <View className="flex-row flex-wrap gap-2">
-            {result.endemic ? <Tag color="emerald" label={endemicTagLabel(result.taxon_id)} /> : null}
+            {result.endemic ? (
+              <Tag color="emerald" label={endemicTagLabel(result.taxon_id)} />
+            ) : null}
             {(() => {
               const ab = alienBadge(result.alien_type, result.kingdom);
               if (!ab) return null;
-              const color =
-                ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple';
+              const color = ab.kind === 'invasive' || ab.kind === 'naturalized' ? 'rose' : 'purple';
               return <Tag color={color} label={ab.longLabel} />;
             })()}
-            {result.is_hybrid === 'true' ? <Tag color="purple" label={t('species.hybrid')} /> : null}
+            {result.is_hybrid === 'true' ? (
+              <Tag color="purple" label={t('species.hybrid')} />
+            ) : null}
             {habitatLabels(result).map((label) => (
               <Tag key={label} color="blue" label={label} />
             ))}
@@ -281,16 +286,10 @@ export function SpeciesDetailPanel({
                   key={idx}
                   className={`flex-row py-1.5 ${idx > 0 ? 'border-t border-gray-100 dark:border-gray-800' : ''}`}
                 >
-                  <Text
-                    selectable
-                    className="w-20 text-xs text-gray-500 dark:text-gray-400"
-                  >
+                  <Text selectable className="w-20 text-xs text-gray-500 dark:text-gray-400">
                     {entry.type}
                   </Text>
-                  <Text
-                    selectable
-                    className="flex-1 text-xs text-gray-700 dark:text-gray-300"
-                  >
+                  <Text selectable className="flex-1 text-xs text-gray-700 dark:text-gray-300">
                     {entry.citation}
                   </Text>
                 </View>
@@ -303,7 +302,11 @@ export function SpeciesDetailPanel({
           const nonAccepted = synonyms.filter((s) => s.status !== 'accepted');
           if (nonAccepted.length === 0) return null;
           return (
-            <CollapsibleSection title={t('species.synonyms')} count={nonAccepted.length} defaultOpen={false}>
+            <CollapsibleSection
+              title={t('species.synonyms')}
+              count={nonAccepted.length}
+              defaultOpen={false}
+            >
               {nonAccepted.map((s, idx) => (
                 <View key={idx} className="flex-row flex-wrap items-baseline">
                   <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
@@ -385,9 +388,11 @@ export function SpeciesDetailPanel({
               <Pressable
                 key={link.label}
                 onPress={() => Linking.openURL(link.url)}
-                className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-950/40 px-3 py-1.5 active:bg-blue-100 dark:active:bg-blue-900/60"
+                className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:bg-blue-100 dark:bg-blue-950/40 dark:active:bg-blue-900/60"
               >
-                <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">{link.label}</Text>
+                <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                  {link.label}
+                </Text>
                 <Ionicons name="open-outline" size={12} color="#2563eb" />
               </Pressable>
             ))}
@@ -410,7 +415,9 @@ export function SpeciesDetailPanel({
             className="flex-row items-center justify-center rounded-lg bg-blue-500 px-4 py-3 active:bg-blue-600"
           >
             <Ionicons name="add" size={18} color="white" />
-            <Text className="ml-2 text-sm font-medium text-white">{addButtonLabel ?? t('species.addToRecord')}</Text>
+            <Text className="ml-2 text-sm font-medium text-white">
+              {addButtonLabel ?? t('species.addToRecord')}
+            </Text>
           </Pressable>
           {onAddLongPress ? (
             <Text className="mt-1.5 text-center text-[11px] text-gray-400 dark:text-gray-500">
@@ -425,13 +432,14 @@ export function SpeciesDetailPanel({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <View className="border-b border-gray-100 dark:border-gray-800 px-4 py-3">
-      <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</Text>
+    <View className="border-b border-gray-100 px-4 py-3 dark:border-gray-800">
+      <Text className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        {title}
+      </Text>
       {children}
     </View>
   );
 }
-
 
 function splitAltNames(s: string): string[] {
   return s
@@ -465,18 +473,13 @@ function buildJumpPath(result: SearchResult, depth: Rank): JumpPath {
   return path;
 }
 
-function RankChipRow({
-  result,
-  onClose,
-}: {
-  result: SearchResult;
-  onClose?: () => void;
-}) {
+function RankChipRow({ result, onClose }: { result: SearchResult; onClose?: () => void }) {
   const router = useRouter();
   const requestJump = useTaxonomyJump((s) => s.request);
 
   const items: Array<{ rank: Rank; name: string; nameC: string }> = [];
-  if (result.kingdom) items.push({ rank: 'kingdom', name: result.kingdom, nameC: result.kingdom_c });
+  if (result.kingdom)
+    items.push({ rank: 'kingdom', name: result.kingdom, nameC: result.kingdom_c });
   if (result.phylum) items.push({ rank: 'phylum', name: result.phylum, nameC: result.phylum_c });
   if (result.class_name)
     items.push({ rank: 'class', name: result.class_name, nameC: result.class_c });
@@ -589,7 +592,9 @@ function ConservationBadgeRow({ label, value }: { label: string; value: string }
   if (!value) return null;
   return (
     <View className="flex-row items-center">
-      <Text selectable className="text-sm text-gray-700 dark:text-gray-300">{label}：</Text>
+      <Text selectable className="text-sm text-gray-700 dark:text-gray-300">
+        {label}：
+      </Text>
       <ConservationBadge code={value} />
     </View>
   );

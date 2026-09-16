@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
 import { File, Paths } from 'expo-file-system';
@@ -37,12 +38,15 @@ import { SearchBox } from '~/components/SearchBox';
 import { BatchImportModal } from '~/components/BatchImportModal';
 import { RecordPickerSheet } from '~/components/RecordPickerSheet';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
-import { showActionSheet, type ActionSheetOption } from '~/components/ActionSheet';
+import { showActionSheet } from '~/components/ActionSheet';
 import { promptText } from '~/components/TextPromptModal';
 import { useAddToActiveRecord } from '~/lib/useAddToActiveRecord';
 import { useFavorites } from '~/stores/favorites';
 import { useToast } from '~/stores/toast';
 import { FolderAreaMap } from '~/components/FolderAreaMap';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
+import { PillButton } from '~/components/PillButton';
+import { goBackOrHome } from '~/lib/goBack';
 
 type SortKey = 'added' | 'cname' | 'name' | 'family';
 const SORT_LABEL: Record<SortKey, string> = {
@@ -385,34 +389,23 @@ export default function FavoritesScreen() {
     }
   };
 
-  const handleFolderLongPress = async (f: FavoriteFolder) => {
-    const canDelete = f.id !== DEFAULT_FOLDER_ID;
-    const opts: ActionSheetOption[] = [{ label: t('favorites.renameFolder') }];
-    if (canDelete) opts.push({ label: t('favorites.deleteFolder'), destructive: true });
-    const idx = await showActionSheet({ title: folderLabel(f), options: opts });
-    if (idx === 0) {
-      const name = await promptText({
-        title: t('favorites.renameFolder'),
-        defaultValue: f.is_default ? t('favorites.defaultFolder') : f.name,
-      });
-      if (name?.trim()) renameFolder(f.id, name);
-    } else if (idx === 1 && canDelete) {
-      Alert.alert(
-        t('favorites.deleteFolder'),
-        t('favorites.deleteFolderConfirm', { name: f.name, count: f.species_count }),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          {
-            text: t('common.delete'),
-            style: 'destructive',
-            onPress: () => {
-              deleteFolder(f.id);
-              toast(t('favorites.folderDeleted', { name: f.name }));
-            },
-          },
-        ],
-      );
-    }
+  /** 長按進多選 —— identical gesture to the records tab. The default list
+   *  cannot be deleted, so it enters the mode without selecting itself. */
+  const handleFolderLongPress = (f: FavoriteFolder) => {
+    if (folderSelectMode) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setFolderSelectMode(true);
+    setPickedFolders(f.id === DEFAULT_FOLDER_ID ? new Set() : new Set([f.id]));
+  };
+
+  /** 重新命名 —— reached from the folder's own title, not from a long-press
+   *  menu; see the headerTitle below. */
+  const handleRenameFolder = async (f: FavoriteFolder) => {
+    const name = await promptText({
+      title: t('favorites.renameFolder'),
+      defaultValue: f.is_default ? t('favorites.defaultFolder') : f.name,
+    });
+    if (name?.trim()) renameFolder(f.id, name);
   };
 
   // ── species actions ─────────────────────────────────────────────────
@@ -458,46 +451,59 @@ export default function FavoritesScreen() {
     );
   };
 
-  const handleLongPress = async (item: FavoriteItem) => {
-    const others = folders.filter((f) => f.id !== item.folder_id);
-    const opts: ActionSheetOption[] = [{ label: t('favorites.addToRecord') }];
-    if (others.length > 0) opts.push({ label: t('favorites.moveTo') });
-    opts.push({ label: t('favorites.removeFromFolder'), destructive: true });
+  /** 長按進多選 —— the records tab's gesture, so one habit works everywhere.
+   *  What long-press used to open (加到記錄 / 移動到 / 移除) is now on the
+   *  swipe, which is also where per-row actions live on the records tab. */
+  const handleLongPress = (item: FavoriteItem) => {
+    if (selectMode) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectMode(true);
+    setPicked(new Set([item.id]));
+  };
 
-    const idx = await showActionSheet({
-      title: item.common_name_c || item.simple_name,
-      options: opts,
+  const addToRecord = async (item: FavoriteItem) => {
+    const r = searchByTaxonId(item.taxon_id);
+    if (!r) {
+      toast(t('favorites.notInDb'));
+      return;
+    }
+    // Ask which record it goes to rather than assuming the active one — from
+    // a curated list the user is usually filling a specific plot/session.
+    await promptAddDestination(r);
+  };
+
+  const moveToFolder = async (item: FavoriteItem) => {
+    const others = folders.filter((f) => f.id !== item.folder_id);
+    if (others.length === 0) return;
+    const pick = await showActionSheet({
+      title: t('favorites.moveTo'),
+      options: others.map((f) => ({ label: folderLabel(f) })),
     });
-    if (idx === 0) {
-      const r = searchByTaxonId(item.taxon_id);
-      if (!r) {
-        toast(t('favorites.notInDb'));
-        return;
-      }
-      // Ask which record it goes to rather than assuming the active one — from
-      // a curated list the user is usually filling a specific plot/session.
-      await promptAddDestination(r);
-      return;
+    if (pick >= 0 && pick < others.length) {
+      moveItem(item.id, others[pick].id);
+      toast(t('favorites.movedTo', { name: folderLabel(others[pick]) }));
     }
-    if (others.length > 0 && idx === 1) {
-      const pick = await showActionSheet({
-        title: t('favorites.moveTo'),
-        options: others.map((f) => ({ label: folderLabel(f) })),
-      });
-      if (pick >= 0 && pick < others.length) {
-        moveItem(item.id, others[pick].id);
-        toast(t('favorites.movedTo', { name: folderLabel(others[pick]) }));
-      }
-      return;
-    }
-    if (idx === opts.length - 1) removeHere(item);
   };
 
   // ── folder list view ────────────────────────────────────────────────
   if (folderId == null) {
     return (
       <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-        <Stack.Screen options={{ title: t('nav.favorites') }} />
+        <Stack.Screen
+          options={{
+            title: t('nav.favorites'),
+            // Was the bare native back: blue, square-cornered, and a no-op when
+            // this screen was reached without history.
+            headerLeft: () => (
+              <HeaderIconButton
+                icon="chevron-back"
+                onPress={goBackOrHome}
+                label={t('nav.back')}
+                edge="left"
+              />
+            ),
+          }}
+        />
         <View className="flex-row items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-900">
           <Text className="text-sm text-gray-500 dark:text-gray-400">
             {folderSelectMode
@@ -545,24 +551,7 @@ export default function FavoritesScreen() {
             </View>
           ) : (
             <View className="flex-row items-center gap-2">
-              {deletableFolders.length > 0 ? (
-                <Pressable
-                  onPress={() => setFolderSelectMode(true)}
-                  hitSlop={8}
-                  className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
-                >
-                  <Ionicons name="checkbox-outline" size={16} color="#4b5563" />
-                </Pressable>
-              ) : null}
-              <Pressable
-                onPress={handleNewFolder}
-                className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:opacity-70 dark:bg-blue-900/40"
-              >
-                <Ionicons name="add" size={16} color="#2563eb" />
-                <Text className="ml-1 text-xs font-medium text-blue-600 dark:text-blue-400">
-                  {t('favorites.newFolder')}
-                </Text>
-              </Pressable>
+              <PillButton icon="add" label={t('favorites.newFolder')} onPress={handleNewFolder} />
             </View>
           )}
         </View>
@@ -662,22 +651,54 @@ export default function FavoritesScreen() {
   // ── species list view (one folder) ──────────────────────────────────
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
-      <Stack.Screen options={{ title: current ? folderLabel(current) : t('nav.favorites') }} />
+      <Stack.Screen
+        options={{
+          // 重新命名 lives on the title, beside the name it renames — the same
+          // shape 採集 and 專案 use. It used to be buried in a long-press menu,
+          // and long-press now means "select" everywhere.
+          headerTitle: () => (
+            <Pressable
+              onPress={() => (current ? void handleRenameFolder(current) : undefined)}
+              disabled={!current}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('favorites.renameFolder')}
+              className="flex-row items-center active:opacity-60"
+            >
+              <Text
+                className="max-w-[220px] text-[17px] font-semibold text-gray-900 dark:text-gray-100"
+                numberOfLines={1}
+              >
+                {current ? folderLabel(current) : t('nav.favorites')}
+              </Text>
+              {current ? (
+                <Ionicons
+                  name="pencil-outline"
+                  size={14}
+                  color="#9ca3af"
+                  style={{ marginLeft: 6 }}
+                />
+              ) : null}
+            </Pressable>
+          ),
+          // Back means UP one level here. The native button left the feature
+          // entirely, which is why the in-content 「所有名錄」 row existed —
+          // that row is gone now that the header does the job.
+          headerLeft: () => (
+            <HeaderIconButton
+              icon="chevron-back"
+              onPress={() => setFolderId(null)}
+              label={t('favorites.allFolders')}
+              edge="left"
+            />
+          ),
+        }}
+      />
       {/* Content (back row + toolbar + filter + list) fills above the bottom
           search box. The KeyboardStickyView search box is a SIBLING of this
           flex-1 View (not a child) so keyboard translation lifts only the
           search box, not the list — mirrors the session detail screen. */}
       <View className="flex-1">
-        <Pressable
-          onPress={() => setFolderId(null)}
-          className="flex-row items-center border-b border-gray-100 bg-white px-4 py-2 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
-        >
-          <Ionicons name="chevron-back" size={16} color="#2563eb" />
-          <Text className="ml-1 text-sm text-blue-600 dark:text-blue-400">
-            {t('favorites.allFolders')}
-          </Text>
-        </Pressable>
-
         <View className="flex-row items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-900">
           <Text className="text-sm text-gray-500 dark:text-gray-400">
             {selectMode
@@ -719,31 +740,17 @@ export default function FavoritesScreen() {
             </View>
           ) : (
             <View className="flex-row items-center gap-2">
-              <Pressable
-                onPress={() => setSelectMode(true)}
-                hitSlop={8}
-                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
-              >
-                <Ionicons name="checkbox-outline" size={16} color="#4b5563" />
-              </Pressable>
-              <Pressable
+              <PillButton
+                icon="download-outline"
+                label={t('favorites.import')}
                 onPress={handleImportMenu}
-                className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:opacity-70 dark:bg-blue-900/40"
-              >
-                <Ionicons name="download-outline" size={14} color="#2563eb" />
-                <Text className="ml-1 text-xs font-medium text-blue-600 dark:text-blue-400">
-                  {t('favorites.import')}
-                </Text>
-              </Pressable>
-              <Pressable
+              />
+              <PillButton
+                icon="swap-vertical"
+                label={t(SORT_LABEL[sortKey])}
+                a11yLabel={t('collection.sortTitle')}
                 onPress={handleSort}
-                className="flex-row items-center rounded-full bg-gray-100 px-3 py-1.5 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
-              >
-                <Ionicons name="swap-vertical" size={14} color="#4b5563" />
-                <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-                  {t(SORT_LABEL[sortKey])}
-                </Text>
-              </Pressable>
+              />
             </View>
           )}
         </View>
@@ -790,6 +797,23 @@ export default function FavoritesScreen() {
             <SwipeRowActions
               disabled={selectMode}
               actions={[
+                {
+                  label: t('favorites.addToRecord'),
+                  icon: 'add-circle-outline',
+                  color: 'emerald',
+                  onPress: () => void addToRecord(item),
+                },
+                // Only offered when there is somewhere to move it to.
+                ...(folders.length > 1
+                  ? [
+                      {
+                        label: t('favorites.moveTo'),
+                        icon: 'folder-outline' as const,
+                        color: 'blue' as const,
+                        onPress: () => void moveToFolder(item),
+                      },
+                    ]
+                  : []),
                 {
                   label: t('common.delete'),
                   icon: 'trash-outline',

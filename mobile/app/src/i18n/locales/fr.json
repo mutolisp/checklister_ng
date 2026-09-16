@@ -268,7 +268,16 @@
     "star": "Épingler",
     "unstar": "Retirer l’épingle",
     "layoutToCard": "Passer en vue cartes",
-    "layoutToList": "Passer en vue liste"
+    "layoutToList": "Passer en vue liste",
+    "deleteSelectedTitle_one": "Supprimer {{count}} relevé ?",
+    "deleteSelectedTitle_many": "Supprimer {{count}} relevés ?",
+    "deleteSelectedTitle_other": "Supprimer {{count}} relevés ?",
+    "deleteSelectedMsg_one": "Ce relevé et les {{rows}} observations qu’il contient seront définitivement supprimés.",
+    "deleteSelectedMsg_many": "Ces {{count}} relevés et les {{rows}} observations qu’ils contiennent seront définitivement supprimés.",
+    "deleteSelectedMsg_other": "Ces {{count}} relevés et les {{rows}} observations qu’ils contiennent seront définitivement supprimés.",
+    "deletedCount_one": "{{count}} relevé supprimé",
+    "deletedCount_many": "{{count}} relevés supprimés",
+    "deletedCount_other": "{{count}} relevés supprimés"
   },
   "export": {
     "preparing": "Préparation…",

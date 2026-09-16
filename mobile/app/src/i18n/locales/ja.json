@@ -220,7 +220,10 @@
     "star": "スターを付ける",
     "unstar": "スターを外す",
     "layoutToCard": "カード表示に切り替え",
-    "layoutToList": "リスト表示に切り替え"
+    "layoutToList": "リスト表示に切り替え",
+    "deleteSelectedTitle_other": "{{count}} 件の調査記録を削除しますか？",
+    "deleteSelectedMsg_other": "この {{count}} 件の調査記録と、その中の {{rows}} 件の種の記録がすべて削除されます。元に戻せません。",
+    "deletedCount_other": "{{count}} 件の調査記録を削除しました"
   },
   "export": {
     "preparing": "準備中…",

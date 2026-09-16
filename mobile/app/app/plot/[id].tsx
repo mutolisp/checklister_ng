@@ -127,7 +127,7 @@ export default function PlotDetailScreen() {
           title: plot.plotid,
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-3">
               <HeaderIconButton
                 icon="document-text-outline"
                 onPress={() => router.push(`/report/plot/${plot.id}` as Href)}

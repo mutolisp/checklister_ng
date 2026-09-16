@@ -683,7 +683,7 @@ export default function SessionDetailScreen() {
           // entry doesn't strand the user with a dead button.
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-3">
               <HeaderIconButton
                 icon="document-text-outline"
                 onPress={() => router.push(`/report/session/${sessionId}` as Href)}

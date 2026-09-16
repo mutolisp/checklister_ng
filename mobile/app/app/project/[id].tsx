@@ -8,7 +8,7 @@ import { CrossPlotChao2Card } from '~/components/CrossPlotChao2Card';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getProject,
@@ -148,10 +148,39 @@ export default function ProjectDetailScreen() {
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
         options={{
-          title: project.name,
+          // 編輯 moved off the button row and onto the title, the same way
+          // 採集 renames a trip. Four discs in one header left ~140pt for the
+          // project name on a 375pt screen; this both frees a slot and puts
+          // the affordance on the thing it edits.
+          headerTitle: () => (
+            <Pressable
+              onPress={projectId === 0 ? undefined : () => setEditing(true)}
+              disabled={projectId === 0 || busy}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={t('common.edit')}
+              className="flex-row items-center active:opacity-60"
+            >
+              <Text
+                className="max-w-[220px] text-[17px] font-semibold text-gray-900 dark:text-gray-100"
+                numberOfLines={1}
+              >
+                {project.name}
+              </Text>
+              {/* 未分類 (id 0) is not a real project and cannot be renamed. */}
+              {projectId === 0 ? null : (
+                <Ionicons
+                  name="pencil-outline"
+                  size={14}
+                  color="#9ca3af"
+                  style={{ marginLeft: 6 }}
+                />
+              )}
+            </Pressable>
+          ),
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <View className="flex-row items-center gap-2">
+            <View className="flex-row items-center gap-3">
               <HeaderIconButton
                 icon={layout === 'card' ? 'grid-outline' : 'list-outline'}
                 onPress={() => setSetting('records_layout', layout === 'card' ? 'list' : 'card')}
@@ -162,14 +191,6 @@ export default function ProjectDetailScreen() {
                 onPress={() => router.push(`/report/project/${projectId}` as Href)}
                 label={t('report.navTitle')}
               />
-              {projectId !== 0 ? (
-                <HeaderIconButton
-                  icon="pencil"
-                  onPress={() => setEditing(true)}
-                  disabled={busy}
-                  label={t('common.edit')}
-                />
-              ) : null}
               <HeaderIconButton
                 icon="share-outline"
                 onPress={() => setSheetOpen(true)}

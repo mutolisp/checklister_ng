@@ -244,7 +244,13 @@
     "star": "Markieren",
     "unstar": "Markierung entfernen",
     "layoutToCard": "Zur Kartenansicht wechseln",
-    "layoutToList": "Zur Listenansicht wechseln"
+    "layoutToList": "Zur Listenansicht wechseln",
+    "deleteSelectedTitle_one": "{{count}} Aufzeichnung löschen?",
+    "deleteSelectedTitle_other": "{{count}} Aufzeichnungen löschen?",
+    "deleteSelectedMsg_one": "Diese Aufzeichnung und die {{rows}} Artdatensätze darin werden endgültig entfernt.",
+    "deleteSelectedMsg_other": "Diese {{count}} Aufzeichnungen und die {{rows}} Artdatensätze darin werden endgültig entfernt.",
+    "deletedCount_one": "{{count}} Aufzeichnung gelöscht",
+    "deletedCount_other": "{{count}} Aufzeichnungen gelöscht"
   },
   "export": {
     "preparing": "Wird vorbereitet…",

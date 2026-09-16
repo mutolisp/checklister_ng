@@ -9,12 +9,12 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  ScrollView,
   Text,
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
+import { PillButton } from '~/components/PillButton';
 import {
   clearRecordDiversityCache,
   RecordGridCard,
@@ -674,6 +674,34 @@ export default function RecordsListScreen() {
     });
   };
 
+  /**
+   * 篩選 / 檢視 / 匯入 behind one ⋯.
+   *
+   * They used to be three separate controls competing with the title for
+   * header width. Folding them in costs one tap on each, and buys back the
+   * thing the icon-only chips had lost: the labels here SAY what is currently
+   * selected, which a funnel glyph never could.
+   */
+  const handleHeaderMore = async () => {
+    const idx = await showActionSheet({
+      cancelLabel: t('common.cancel'),
+      options: [
+        { label: `${t('records.filterTitle')}: ${filterLabel[filter]} (${counts[filter]})` },
+        { label: `${t('records.viewTitle')}: ${viewLabel[viewMode]}` },
+        { label: t('record.kindImport') },
+      ],
+    });
+    if (idx < 0) return;
+    // iOS will not present a second sheet in the tick the first is dismissing.
+    await new Promise((r) => setTimeout(r, 250));
+    if (idx === 0) await pickFilter();
+    else if (idx === 1) await pickView();
+    else if (idx === 2) {
+      await importRecordPromptAndOpen();
+      reload();
+    }
+  };
+
   const handleSelectionMore = async () => {
     if (selectedItems.length === 0) {
       toast(t('records.noneSelected'));
@@ -686,6 +714,9 @@ export default function RecordsListScreen() {
         { label: t('plotStats.crossTitle') },
         { label: t('records.moveToProject') },
         { label: t('records.merge') },
+        // Destructive last, closest to the cancel — same order the swipe
+        // actions use, so 刪除 is never where a thumb lands by habit.
+        { label: t('common.delete'), destructive: true },
       ],
     });
     if (idx < 0) return;
@@ -711,6 +742,48 @@ export default function RecordsListScreen() {
       );
     } else if (idx === 1) setAssigningProject(true);
     else if (idx === 2) handleMergeSelection();
+    else if (idx === 3) handleDeleteSelection();
+  };
+
+  /**
+   * 批次刪除，一定先問過。
+   *
+   * The confirm names both numbers — records AND the species rows inside them —
+   * because "刪除 3 筆" badly understates throwing away 400 observations, and
+   * this is the one action in the selection bar that nothing can undo.
+   */
+  const handleDeleteSelection = () => {
+    const picked = selectedItems;
+    if (picked.length === 0) {
+      toast(t('records.noneSelected'));
+      return;
+    }
+    const rows = picked.reduce((sum, it) => sum + it.recordCount, 0);
+    Alert.alert(
+      t('records.deleteSelectedTitle', { count: picked.length }),
+      t('records.deleteSelectedMsg', { count: picked.length, rows }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.delete'),
+          style: 'destructive',
+          onPress: () => {
+            withTransaction(() => {
+              for (const it of picked) {
+                if (it.kind === 'session') deleteSession(it.id);
+                else if (it.kind === 'collection') deleteCollectionTrip(it.id);
+                else deletePlotSurvey(it.id);
+              }
+            });
+            // reload() also refreshes both active stores, which matters here:
+            // the selection may well have contained the active record.
+            reload();
+            selectClear();
+            toast(t('records.deletedCount', { count: picked.length }));
+          },
+        },
+      ],
+    );
   };
 
   const handleMergeConfirm = (opts: MergeRecordOptions) => {
@@ -972,7 +1045,7 @@ export default function RecordsListScreen() {
                 accessibilityLabel={t('records.favorites')}
               >
                 <Ionicons
-                  name="star-outline"
+                  name="heart-outline"
                   size={20}
                   color={selected.size === 0 ? '#9ca3af' : '#d97706'}
                 />
@@ -1014,68 +1087,38 @@ export default function RecordsListScreen() {
           <View className="flex-row items-center">
             <Text
               numberOfLines={1}
-              className="flex-shrink text-2xl font-bold text-gray-900 dark:text-gray-100"
+              className="flex-1 text-2xl font-bold text-gray-900 dark:text-gray-100"
             >
               {t('tab.records')}
             </Text>
-            {/* Filter / view live on the title row. The chips are icon-only so
-                their width no longer tracks the UI language — that is what
-                stopped them colliding with the favourites pill. The scroller
-                stays as insurance for the parts that DO grow (fr title
-                "Enregistrements" + "Favoris"); the action cluster is
-                deliberately outside it, since primary actions must never
-                scroll out of reach. */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="ml-3 flex-1"
-              contentContainerClassName="flex-row items-center gap-2 pr-2"
-              keyboardShouldPersistTaps="handled"
-            >
-              <DropdownChip
-                icon="funnel-outline"
-                a11yLabel={`${t('records.filterTitle')}: ${filterLabel[filter]} (${counts[filter]})`}
-                active={filter !== 'all'}
-                onPress={pickFilter}
-              />
-              <DropdownChip
-                icon={viewMode === 'byProject' ? 'folder-outline' : 'time-outline'}
-                a11yLabel={`${t('records.viewTitle')}: ${viewLabel[viewMode]}`}
-                onPress={pickView}
-              />
-              {/* A straight toggle, not a DropdownChip: with two states the
-                  sheet would be one more tap to say what the icon already
-                  says. The icon shows the CURRENT layout; the a11y label says
-                  what tapping does. */}
-              <ToggleChip
+            {/* Three pills, all the same height, none of them carrying text —
+                so the header's width no longer tracks the UI language and the
+                horizontal scroller that used to absorb that growth is gone.
+                The title takes whatever is left and truncates. */}
+            <View className="flex-row items-center gap-2">
+              {/* A straight toggle, not a picker: with two states, a sheet
+                  would be one more tap to say what the icon already says. The
+                  icon shows the CURRENT layout; the a11y label says what
+                  tapping does. */}
+              <PillButton
                 icon={layout === 'card' ? 'grid-outline' : 'list-outline'}
                 a11yLabel={t(layout === 'card' ? 'records.layoutToList' : 'records.layoutToCard')}
                 onPress={() => setSetting('records_layout', layout === 'card' ? 'list' : 'card')}
               />
-            </ScrollView>
-            <View className="flex-row items-center gap-2">
-              <Pressable
+              {/* 常用名錄. A heart, not a star: records now carry their own
+                  star (加星號), and two features sharing one glyph is how you
+                  end up tapping the wrong thing in the field. */}
+              <PillButton
+                icon="heart"
+                tone="amber"
+                a11yLabel={t('records.favorites')}
                 onPress={() => router.push('/favorites')}
-                hitSlop={8}
-                className="flex-row items-center rounded-full bg-amber-50 px-3 py-1.5 active:bg-amber-100 dark:bg-amber-950/40 dark:active:bg-amber-900/60"
-              >
-                <Ionicons name="star" size={14} color="#d97706" />
-                <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">
-                  {t('records.favorites')}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={async () => {
-                  await importRecordPromptAndOpen();
-                  reload();
-                }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('record.kindImport')}
-                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
-              >
-                <Ionicons name="download-outline" size={16} color="#4b5563" />
-              </Pressable>
+              />
+              <PillButton
+                icon="ellipsis-horizontal"
+                a11yLabel={t('common.more')}
+                onPress={handleHeaderMore}
+              />
             </View>
           </View>
         )}
@@ -1221,60 +1264,3 @@ export default function RecordsListScreen() {
  * lives in `a11yLabel` for screen readers and is spelled out in the sheet the
  * chevron promises.
  */
-/** Same pill as `DropdownChip` without the disclosure caret — for a control
- *  that flips on tap instead of opening a sheet. */
-function ToggleChip({
-  icon,
-  a11yLabel,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  a11yLabel: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      className="flex-row items-center rounded-full border border-gray-300 bg-white px-2.5 py-1.5 active:opacity-70 dark:border-gray-600 dark:bg-gray-900"
-    >
-      <Ionicons name={icon} size={16} color="#4b5563" />
-    </Pressable>
-  );
-}
-
-function DropdownChip({
-  icon,
-  a11yLabel,
-  active = false,
-  onPress,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  a11yLabel: string;
-  active?: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={a11yLabel}
-      className={`flex-row items-center rounded-full border px-2.5 py-1.5 active:opacity-70 ${
-        active
-          ? 'border-emerald-500 bg-emerald-50 dark:border-emerald-600 dark:bg-emerald-950/40'
-          : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'
-      }`}
-    >
-      <Ionicons name={icon} size={16} color={active ? '#059669' : '#4b5563'} />
-      <Ionicons
-        name="chevron-down"
-        size={12}
-        color={active ? '#059669' : '#9ca3af'}
-        style={{ marginLeft: 2 }}
-      />
-    </Pressable>
-  );
-}
