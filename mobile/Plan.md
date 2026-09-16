@@ -2231,3 +2231,464 @@ i18n：`locMap` 新增 6 個 key（`moveConfirmTitle` / `moveConfirmGps` / `move
   7. undo 列在 `undo_duration` 秒後自動消失；期間離開 sheet 不應 crash（timer 有 cleanup）
   8. 樣區中心（`app/plot/[id].tsx`，唯一不在 Modal 裡的呼叫端）行為一致
   9. 沒有任何保育欄位的物種（多數昆蟲）詳細頁：不該出現「紅皮書：–」，整個保育區塊連標題都不出現
+
+### 3. 樣區頁記住上次的分頁
+
+`app/plot/[id].tsx` 的「環境／物種」每次進頁都重置回 `'env'`。實務上環境只填一次、其餘時間都在物種，每次去看地圖或拍照回來都要重點一次。
+
+新增設定 `plot_last_tab: { plotId: number; tab: 'env' | 'species' }`（`src/stores/settings.ts`，`writeOne` 會自動 JSON 序列化，解析時驗形狀、壞值退回預設）。
+
+**刻意綁定 plotId 而不是全域記憶**：全新樣區必須開在「環境」—— 那正是它還沒有的資料。`plotId: 0` 當作「沒存過」的哨兵，避免 `writeOne` 對 `null` 會寫成字串 `"null"` 的邊界。
+
+- 初值用 `useSettings.getState()` 讀一次，不用 selector —— 這是起點而非綁定，設定在畫面開著時變動不該把使用者的分頁抽走。store 一定已載入（`DBProvider` 把整個 app 的 render 擋在它後面）。
+- 兩個 `setTab` 呼叫點改走 `selectTab()` 一併寫入；`grep setTab(` 應只在 `selectTab` 內出現一處。
+- 渲染邏輯**完全未動**：還原成 `'species'` 但該樣區還不能收物種（`plotCanAcceptSpecies` false）時，維持原本顯示 `SpeciesGateScreen` 說明原因的行為，「環境」鈕仍可點。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:dock / check:kav / check:roundtrip / lint（0 error、150 warning 與改動前相同）
+- [ ] 實機：
+  1. 樣區 A 切到「物種」→ 返回 → 重進 → 停在「物種」
+  2. 殺掉 app 重開 → 重進樣區 A → 仍停在「物種」（設定有落地）
+  3. 新建樣區 B → 開在「環境」（不受 A 影響）
+  4. 還原成「物種」但樣區缺 plotid／start_ts → 看到 `SpeciesGateScreen` 而非空白，且「環境」鈕可點回去
+
+### 4. iNat uuid 一致性：查證＋fail-fast 守衛
+
+**結論：本機 `occurrence_id` 與 iNat 觀察的 uuid 本來就一致，不需要對齊機制。** 查證來源：
+
+- `https://api.inaturalist.org/v2/api-docs`（OpenAPI 3.0.0）：`ObservationsCreate.observation.uuid` = `{"type":"string","format":"uuid"}`，是合法的建立參數。
+- `inaturalist/inaturalist` `app/controllers/observations_controller.rb:1937`：`:uuid` 在 `observation_params` 的 permit 白名單。
+- `lib/acts_as_uuidable/acts_as_uuidable.rb`：`self.uuid ||= SecureRandom.uuid` 後 `downcase` —— **有給就保留**，只是轉小寫。
+- `observations_controller.rb:571-577`：建立時用該 uuid 找 `current_user.observations`，這就是重送不會產生重複觀察的機制。
+- 本機端 `inatPayload.ts:119` 從第一版就送 `uuid: input.occurrenceId`（`git log -S` 確認 `inatPayload.ts` 只有 commit `8a38771` 一筆），而 `src/db/uuid.ts` 產的是小寫 RFC-4122 v4 —— 大小寫與格式都正好對上伺服器的 `downcase`。
+
+**所以沒有「舊版沒送 uuid」的歷史資料**，不存在需要修復的落差；加 `inat_uuid` 欄位只會是一個恆等於 `occurrence_id` 的死欄位，未做。
+
+**不要用 iNat 的 uuid 覆蓋本機的**：`occurrence_id` 就是匯出的 DwC `occurrenceID`（`bundleExport.ts:375`、`dwcArchive.ts:43`、`projectExport.ts:439`），已寫進交付出去的檔案。同「資料檢查刻意不自動重配重複 occurrence_id」的理由。
+
+**順帶查到**（如果日後真要改 iNat 端的 uuid，這點解除了最大疑慮）：iNat 發布到 GBIF 的 `occurrenceID` 是 `uri`（`lib/darwin_core/occurrence.rb:202` → `observation.rb:2329` = `https://www.inaturalist.org/observations/<數字 id>`），**不是 uuid**，所以改 uuid 不會動到 GBIF 的記錄身分。
+
+**實作的只有一個 fail-fast 守衛**（`inatUpload.ts`，建立觀察後）：`created.uuid` 與 `rec.occurrenceId` 不符即丟出 `inat.uuidMismatch`。理由是整條下游都用**本機 uuid** 定址遠端（`uploadPhoto`／`uploadSound`／`createAnnotation`，以及日後每次 sync 的 `updateObservation`／`fetchObservationAnnotations`）——一旦分歧，這筆記錄就完全無法同步，而症狀會是第一張照片上傳時一個莫名其妙的 404。`markInatObservation` 在 throw 之前執行，所以重試會接續同一筆觀察而不是再建一筆。
+
+i18n：`inat.uuidMismatch`（7 語系，帶 `{{sent}}` / `{{got}}`）。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:inat / check:dock / check:kav / check:roundtrip / lint（0 error、150 warning 不變）
+- [ ] 實機：上傳一筆新觀察 → 到 `inaturalist.org/observations/<id>` 用 API（`/v1/observations/<uuid>`）確認 uuid 等於 App 內該筆記錄的 occurrenceID
+- [ ] 守衛本身走不到（正常情況永不觸發），只能靠 code review 確認邏輯
+
+### 5. 記錄詳細頁頁尾：記錄識別碼 + 最後更新時間
+
+三個詳細 sheet（名錄物種 `SpeciesDetailSheet`、樣區物種 `PlotSpeciesValueModal`、採集標本 `SpecimenDetailSheet`）在內容最底下、動作按鈕上方，顯示該筆記錄的 `occurrence_id` 與最後更新時間。共用 `src/components/RecordMetaFooter.tsx`；uuid 用 `selectable`（要對帳時能直接選取引用，不必新增 clipboard 依賴）。
+
+**`updated_at` 三張表原本都沒有** —— `collections.ts` 那組 `created_at`/`updated_at` 屬於 `CollectionTrip`（採集行程）不是 `Specimen`。v32 migration 補上，既有列回填成該筆已知最早時間（`observed_at`／`created_at`／`collected_at`），**不是** migration 執行當下 —— 否則所有舊資料會看起來像剛被改過。
+
+**「更新」的定義（採手動標記，不用 trigger）**：使用者改了記錄內容才算 —— 豐度、屬性、備註、座標、照片、聲音、分層、分類群、小區歸屬。iNat 上傳回寫的 `inat_*` 欄位**不算**，那是記帳不是野外資料變動；它們全部集中在 `src/db/inatSync.ts`，不碰那個檔就自動排除。`cleanup.ts` 啟動時修復孤立 `subplot_id` 的那一句也刻意不標記（會在每次開 app 集體刷新時間戳）；`plots.ts` 裡同一句 SQL 則要標記，因為那是使用者主動縮減小區數量。
+
+涵蓋範圍（逐一稽核過）：**16 處 UPDATE**（records 6 / plots 6＋小區 1 / collections 4，其中三處是動態 SET builder，`updated_at` 在組 SQL 前 push 進 `sets`）＋ **7 處 INSERT**（含匯入與「另存新檔」複製路徑 —— `plots.ts` 匯入/複製、`sessions.ts` 匯入/複製這四處一開始漏掉，補上後用欄位／佔位符數量比對確認 7 處全部平衡）。
+
+i18n：`record.lastUpdated`（7 語系）。`uuid` 與 `iNat ID` **刻意不翻譯** —— 它們指的是原樣出現在匯出檔與 iNaturalist API 裡的識別碼，翻成中文只會讓旁邊那串值更難辨認。
+
+**頁尾三列**（各自有值才出現）：`uuid` / `iNat ID`（已同步時）/ 最後更新。iNat id 的顯示條件與外部連結完全相同（`inat_uploaded_at != null && inat_observation_id`），由呼叫端先 gate 再傳進來，兩處不會各說各話。
+
+**外部連結改名**（`SpeciesDetailSheet` 的 `externalLinks()`，以及 `SpeciesDetailPanel` 的物種頁連結）：
+- 觀察連結 `iNaturalist #12345` → `species.inatObservation`（zh-TW「iNaturalist 觀察記錄」／en "iNat observation"）。數字 id 移到頁尾了，連結標籤就不必再重複識別碼，改成說明它開啟什麼。
+- 物種頁連結 `iNaturalist` → `species.inatTaxon`（zh-TW「iNat 物種頁面」／en "iNat taxon"）。`SpeciesDetailPanel` 也一併改，同一個連結不該在兩個畫面有兩個名字。
+- 兩者都在模組層的 `externalLinks()` 內，用 `i18n.t()` 而非 hook（該函式每次 render 重新呼叫，消費端元件本身有 `useTranslation`，切語言會重繪）。
+
+> 陷阱：`zh-TW.json` 有兩個 `"kindSession"`（`record` 與另一個 namespace），用它當插入錨點會插錯地方。改用檔內唯一的 `"kindImport"`。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:roundtrip / check:names / check:inat / check:dock / check:kav / check:vegmatrix / lint（0 error、150 warning 不變）
+- [x] 7 處 INSERT 的欄位數＝佔位符數，全部含 `updated_at`
+- [ ] 實機：
+  1. 舊 DB 升到 v32：既有記錄的「最後更新」顯示的是記錄／採集時間，不是升級當下
+  2. 改豐度／備註／屬性／座標／照片／分層 → 重開詳細頁，時間有變
+  3. **上傳 iNat 後時間不該變**（這是手動標記相對 trigger 的主要差別）
+  4. 樣區物種「新增」模式下頁尾不出現（無 occurrence_id）
+  5. 匯入一份 yml、以及「另存新檔」複製 → 新記錄的最後更新＝匯入當下，不是 NULL
+  6. 減少小區數量 → 被歸空的記錄時間有變
+
+### 6. iNaturalist 介面整併與正名
+
+**頁尾標籤**：`uuid`（原「記錄識別碼」）與 `iNaturalist ID` 一律不翻譯 —— 它們指的是原樣出現在匯出檔與 iNaturalist API 裡的識別碼。`record.occurrenceId` 因此孤立，已從 7 語系移除。
+
+**移除詳細頁右上角的「已上傳 iNat」pill**（`InatUploadedBadge`），三個 sheet 都拿掉，整併進本來就在的 `InatSyncButton`：狀態已由那一列的文字與圖示表達，觀察 id 也已移到頁尾，一個會隨狀態換措辭的控制項比兩個好讀。元件隨之無人使用，連同只有它在用的 `Linking` / `observationWebUrl` import 一併刪除；檔案更名 `InatUploadedBadge.tsx` → `InatSyncButton.tsx`（名稱不該再指向已不存在的匯出）。`inat.uploadedBadge` key 移除。
+
+> 副作用：採集標本與樣區物種這兩個 sheet 沒有「外部連結」區，pill 是它們唯一能點開 iNaturalist 觀察頁的入口，移除後就沒有了（名錄物種仍有外部連結區的「iNaturalist 觀察記錄」）。頁尾的 iNaturalist ID 目前只能選取複製、不可點。若要補回，最小做法是讓頁尾那一列變成連結。
+
+**按鈕措辭**（`InatSyncButton` 本來就依狀態切換，只改文案）：未上傳→`inat.uploadButton`「上傳 iNaturalist」；已上傳→`inat.syncButton`「同步 iNaturalist」；有變更→`inat.syncChanged`「同步 iNaturalist（有變更）」。
+
+**全面正名 iNat → iNaturalist**：7 語系共 81 條字串（`iNat(?!uralist)` 掃描），含 de/fr/es 的複合形（`iNat-Beobachtung` → `iNaturalist-Beobachtung` 等）。
+
+> **唯一例外：`records.uploadInat` 維持 `'iNat'`。** 它是三個列表畫面（記錄 tab／名錄詳細／採集詳細）的 swipe action 標籤，`SwipeRowActions` 用 `flex-row` + `px-4`，寬度由內容決定；本 repo 已記錄「記錄 tab 4 個 swipe action 在 375pt 寬裝置剛好放得下」，展開成 iNaturalist 會多約 45pt，很可能擠爆。要改的話應同時把該列的 action 數量或呈現方式一起重新設計。
+
+### 驗證狀態
+- [x] tsc / check:i18n（1445 keys、7 語系對等）/ check:roundtrip / check:inat / check:dock / check:kav / lint（0 error、150 warning 不變）；反向孤兒掃描 0
+- [x] 程式碼中已無 `InatUploadedBadge` 殘留；縮寫 `iNat` 只剩 `records.uploadInat` 一處
+- [ ] 實機：
+  1. 未上傳的記錄詳細頁 → 只有一顆「上傳 iNaturalist」，右上角沒有 pill
+  2. 已上傳 → 同一位置變成「同步 iNaturalist」；改過內容後變「同步 iNaturalist（有變更）」
+  3. 名錄物種的外部連結區：「iNaturalist 觀察記錄」與「iNaturalist 物種頁面」兩條並存且指向正確
+  4. 頁尾三列標籤為 `uuid` / `iNaturalist ID` / 最後更新，且在 375pt 裝置上 `w-28` 標籤欄放得下「iNaturalist ID」不被截斷
+  5. 記錄 tab 左滑：swipe action 仍是 `iNat`，4 個按鈕在 375pt 上仍放得下
+
+### 7. 照片 metadata：拍攝即寫座標 + 匯出時重寫
+
+**Bug**：先拍照、後補座標 → 照片沒有 GPS。metadata 只在存進相簿那一刻寫入一次（`capturePhoto` → `embedMetadata` → `MediaLibrary.createAssetAsync`），之後改記錄不會回頭改檔案。
+
+**為什麼不能原地更新**：`expo-media-library` 的型別宣告裡沒有任何修改既有 asset 的 API（只有 create / delete / read / album）。iOS 要 `PHAssetChangeRequest`、Android 要 MediaStore update，都沒被 expose。「建新的＋刪舊的」會讓 `ph://` URI 改變、相簿出現重複、刪除失敗留孤兒 —— 對野外資料不採用。
+
+因此拆成兩段：
+
+**(a) 拍攝當下強制寫座標。** 記錄還沒有座標時，用裝置當下的定位（`currentFixForPhoto()`，`expo-location`、`Balanced`）。**best-effort**：不自己要權限、不等待，拿不到就算了 —— 絕不能因為定位慢而讓使用者錯過那一張。**只寫進照片，不寫回記錄**，所以使用者之後的選擇（包括刻意留白）仍然說了算。`expo-image-picker` 在 `quality < 1` 強制轉 JPEG 時不保證帶得出相機自己的 GPS，這也是原本沒 GPS 的原因之一。
+
+**(b) 匯出時依記錄現況重寫。** `restampJpegBase64()`（`photoCapture.ts` 匯出）先 `piexif.load` 保留相機原有資料（鏡頭、曝光、拍攝時寫入的 GPS），再套上當下的 context。`composeExif` 只在 ctx 有座標時覆蓋 GPS —— 這正是「記錄仍無座標時，拍攝當下那個 fix 得以保留」的機制。掛在 `collectPhotos()` / `collectPhotosPlot()`，這兩處本來就已經把照片讀成 base64，只多一次 piexif 轉換、不增加 I/O。JPEG only（piexif 寫不了 HEIC/PNG），失敗就原樣送出。使用者相簿的原檔完全不動，這也讓相簿選來的照片能在匯出副本裡帶上 metadata。
+
+**(c) UserComment 補完整 DwC 欄位**，`compact()` 過濾 —— 只寫真的有值的：`coordinate_uncertainty_m`、`sex`、`life_stage`、`reproductive_condition`、`leaf_phenology`、`detection_type`、`organism_quantity`、`organism_quantity_type`。「沒記錄」與「記錄為 unknown」是兩回事，一堆 null 兩者都表達不了。
+
+**(d) 樣區物種座標回退。** `buildContextFromPlotRecord(record, plotGeo?)`：記錄自己有座標就用自己的（點計數、穿越線），否則用樣區中心 —— 「在這個樣區裡」是這筆觀察的事實，也是該記錄在其他匯出裡本來就宣稱的位置。拍攝端（`PlotSpeciesTab`）與匯出端都傳入樣區座標。
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:roundtrip / check:names / check:inat / check:dock / check:kav / check:vegmatrix / lint（0 error、150 warning 不變）/ `expo export --platform ios`
+- [x] 無 require cycle（`photoCapture` 不反向 import `bundleExport`）
+- [ ] 實機（**要用 exiftool 驗檔案，不能只看 app 內顯示**）：
+  1. 關閉定位權限 → 拍照仍成功、不跳權限框、照片無 GPS（best-effort 不擋流程）
+  2. 開啟定位 → 對一筆**沒有座標**的記錄拍照 → 相簿那張就有 GPS，且記錄本身仍無座標
+  3. 接著手動改座標 → 匯出 → `exiftool` 檢查 zip 內那張的 GPS **等於手動改的值**，不是拍攝時的
+  4. 補上性別／生活史／豐度等屬性 → 匯出 → UserComment JSON 有這些鍵，且**沒有** null 鍵
+  5. 樣區物種（無自身座標）→ 匯出照片的 GPS 等於樣區中心
+  6. 從相簿選的 HEIC → 匯出不應損壞（非 JPEG 直接略過 restamp）
+  7. 大量照片匯出（50+ 張）確認記憶體與耗時可接受 —— piexif 走 base64 字串，是這次唯一的效能風險
+
+---
+
+## Sprint 2026-09-15（三）— 選單攤平成唯一設定介面 + 名錄物種區塊改序
+
+### 1. 偏好設定攤平進 選單 tab
+
+原本三層才到得了區域名錄（選單 → 偏好設定 → 區域名錄）。`/settings` 全 codebase 只有 `menu.tsx:22` 一個入口，所以收掉它是單邊改動。
+
+**新 IA（兩層：選單頁 → 詳細頁），依用途分組**：
+
+| 區塊 | 列 |
+|---|---|
+| 記錄管理 | 專案管理 `/projects`・地理樣區 `/sites`・**常用名錄 `/favorites`**・備份 `/backup` |
+| 調查設定 | 調查記錄設定（SelectRow）・調查者 `/surveyors`・標本採集 `/settings/collection` |
+| 名錄與同步 | 區域名錄 `/regionpacks`・iNaturalist 帳號 `/inaturalist`・匯出設定 `/settings/export` |
+| 外觀與操作 | 語言 `/settings/language`・主題・卡片密度・字體大小・Undo 時間 |
+| 資料 | 資料檢查・清除查詢歷史・清除所有資料 |
+| （無標題） | 關於 `/about` |
+
+順帶消掉「標題與唯一列名重複」的單列區塊（區域名錄→區域名錄、標本採集→標本採集）：8 區塊變 6。
+
+**`/favorites` 首次有固定入口** —— 它有 887 行、4 個入口（記錄 tab 星星 pill、地圖、兩個 toast），但選單和偏好設定都沒有它，離開後要再找到得靠運氣。
+
+**捨棄選單原本的 icon。** 全頁 19 列有 5 列是 `SelectRow`（右側就是下拉觸發器，沒有 icon 槽），只有部分列有 icon 會讓左緣參差；要一致就得給 `LinkRow`/`SelectRow` 都加 icon prop、挑 19 個字形，那是跟著 IA 改動偷渡一次視覺改版。順帶消掉 `menu.tsx:39` 寫死的 `#4b5563`（暗色模式下 gray-600 畫在 gray-900 上，對比不足且非 theme-aware）。三個下游詳細頁本來就是無 icon 的列。
+
+**`Section` 的 `title` 改成選填**，讓 關於 成為無標題的結尾區塊。使用者核可的預覽把 關於 併進「資料」區 —— 那是我預覽的排版假影，而不是本意：資料區的標題承諾「會動到你資料的東西」，關於不是，而且它會緊貼在「清除所有資料」下面。改成獨立無標題區塊，也避開「標題 關於 + 列名 關於」的重複。
+
+**其他**：不套 `SettingsPage`（那是給推入式 route 註冊 `headerLeft` 用的，tab 沒有返回鍵）；不要 `SafeAreaView edges={['bottom']}`（bottom-tabs 的 tab bar 在畫面容器外）；store 訂閱從整包 `useSettings()` 改成逐欄 selector（tab 常駐，整包訂閱會讓任何設定寫入都重繪本頁）。
+
+**順手修一個既有缺陷**：`handleClearAll` 原本只 refresh `useSettings` 與 `useActiveSession`，漏了 `useActivePlot`。`clearAllUserData()` 刪的是整個 DB 檔，active 樣區會讓 app-wide 的 `ActiveSessionBar` 指向一筆已不存在的樣區。
+
+**檔案**：`app/(tabs)/menu.tsx` 重寫（handler 就地保留，單一消費端不抽 module）、`git rm app/settings/index.tsx`、`app/_layout.tsx` 移除 `settings/index` 的 `Stack.Screen`、`src/components/settings/rows.tsx` 的 `title?`。`app/settings/` 目錄留著（三個子路由是獨立 route 檔，不依賴 index 存在）。
+
+**i18n**：刪 6（`nav.settings`、`settings.title`、`sectionInteraction`、`sectionRegions`、`sectionExport`、`sectionInat`）、改值 2（`sectionAppearance`→外觀與操作、`sectionSurvey`→調查設定）、新增 3（`sectionRecords`、`sectionSync`、`menu.favoritesDesc`）。
+> **地雷（已避開）**：`es-419.json` override 了 `menu.backupDesc`、`exportPref.title`、`nav.backup`、`settings.clearAllConfirmMsg`。刪掉 base 的 `menu.backupDesc` 會讓 `check:i18n` 以「不是 es.json 的 key」失敗。這些全部保留，`es-419` 零改動。
+
+### 2. 名錄物種詳細頁區塊改序
+
+只有 `SpeciesDetailSheet` 需要改 —— 樣區物種與採集標本的座標區本來就在照片上方。
+
+新順序：觀測時間 → 定位按鈕 → 小地圖 → 照片 → 錄音 → 備註 → 屬性 → 同步 iNaturalist。理由是「先拍照後補座標」讓照片沒有 GPS（見 sprint 7），把地圖擺前面引導先定位；同步鈕移到最底也讓三個 sheet 一致。純 JSX 搬移，八個子元素各自獨立 gate、間距都是 margin-on-self，零 className 改動。
+
+**順手修的既有 bug**：該 `ScrollView` 沒有 `keyboardShouldPersistTaps`，RN 預設 `'never'` 會把鍵盤開著時的第一次點擊吃掉用來收鍵盤 —— 而 `RecordLocationMap` 座標輸入框正下方就是「取消／OK」，**這兩顆按鈕一直需要點兩次**。兩個姊妹 sheet 都已設 `'handled'`。改序讓地圖從「捲動後才看得到」變成「一開就在」，這個 bug 的曝光度大增，所以一併修。
+
+### 驗證狀態
+- [x] tsc / check:i18n（1442 referenced、7 語系對等）/ check:kav / check:dock / lint（0 error、150 warning 不變）/ `expo export --platform ios`
+- [x] 反向孤兒掃描 0（1630 keys）；`'/settings'` 全 codebase 零引用；`app/settings/` 三個子路由檔仍在
+- [ ] 實機 iOS：
+  1. 選單頁 6 個區塊順序正確、關於在無標題結尾區塊、左緣不參差
+  2. 開「主題」select → popover 畫在 **tab bar 之上**；點外面關閉；即時套用
+  3. 捲到最底開「Undo 時間」select → popover 是否覆蓋 tab bar（`ui/select.tsx:86` 的 insets 用的是 safe area ~34pt，不含 tab bar ~49pt）。可點可用即算過，純視覺不佳再修
+  4. 字級「特大」後重開 select → 文字要跟著放大（PortalHost 層級回歸檢查）
+  5. 12 個導覽列各自推對畫面，返回鍵回到 選單（而非已不存在的 `/settings`）
+  6. **有 active 樣區時「清除所有資料」** → 兩次確認 → `ActiveSessionBar` 要消失（這是 `useActivePlot` 修正）→ 落到記錄 tab 且可用
+  7. 冷啟深連結 `checklister://settings/collection` / `export` / `language` 仍可開；`checklister://settings` 預期失敗，確認是 graceful 而非白畫面
+- [ ] 實機 Android：popover 開啟時實體返回鍵先關 popover
+- [ ] 名錄物種 sheet：新順序正確；座標輸入框開啟後 **「取消」「OK」各點一次就生效**（改前要兩次）；長保育／同物異名的分類群捲到座標框在下方時鍵盤不遮擋
+
+### 8. 物種屬性新增 degreeOfEstablishment（野生／圈養／栽培）
+
+每筆記錄可標示這一個體是野生、圈養還是栽培；預設 NULL = 未記錄（與明確記為「野生」是兩回事）。三種記錄（名錄／樣區／採集）都有，`SpeciesAttributesBlock` 的「進階（物種屬性）」內。
+
+**不分界顯示。** 其他欄位依 kingdom 分支（生命階段只給動物、花果葉只給植物），但栽培的真菌、苗圃裡人工繁殖的植物都是真實記錄，用 kingdom 猜反而正好把選項藏起來。
+
+**與 taxon 層的 `alien_type` 是兩件事**，不可混淆：`alien_type` 來自 TaiCOL，講的是「這個**分類群**在臺灣是原生還是外來」，整個物種一個值；新欄位講的是「眼前這**一筆個體**是野生還是人為養殖」。同一物種可以兩者並存。
+
+#### DwC 對應（查證過）
+
+值取自 TDWG `degreeOfEstablishment` 受控詞彙（`rs.gbif.org/vocabulary/dwc/degree_of_establishment_2022-02-02.xml`，`dc:relation` 指向 `dwc.tdwg.org/terms/#dwc:degreeOfEstablishment`）：`captive` = d002「圈養或檢疫中的個體」（Blackburn B1）、`cultivated` = d003「栽植的個體…庭園、公園、農場」（B2）。
+
+**`wild` 是我們自己的值，TDWG 沒有。** 該詞彙最接近的 `native` 定義是「未被帶離原生分布範圍」—— 那是生物地理學宣稱，一株野外的歸化植物是野生的卻絕不是 `native`。所以：
+
+| UI | 內部值 | DwC `degreeOfEstablishment` | iNat `captive_flag` |
+|---|---|---|---|
+| 未記錄 | `null` | 空白 | 不送 |
+| 野生 | `wild` | **空白** | `false`（明確） |
+| 圈養 | `captive` | `captive` | `true` |
+| 栽培 | `cultivated` | `cultivated` | `true` |
+
+代價：「野生」與「未記錄」在 DwC 那一欄長得一樣。值本身完整保留在 DB、yml 往返、照片 UserComment，iNat 端也分得開。硬塞 `wild` 會產生 GBIF 認不得的值，塞 `native` 則是沒有根據的宣稱。
+
+> **不可用 `establishmentMeans`** —— `dwcMapper.ts:26` 早就把它配給 taxon 層的 `source`（原生／歸化／栽培／圈養）。共用會在 `convertToDwc` 互相覆蓋。
+
+#### iNaturalist 同步
+
+`captive_flag` 是 **observation payload 的 boolean 欄位，不是 controlled annotation**（查證 `api.inaturalist.org/v2/api-docs`，`ObservationsCreate.observation.captive_flag: {"type":"boolean"}`），所以不進 `INAT_TERMS`。三態→boolean-or-absent 的對應函式**行內寫在 `inatPayload.ts`**，不從 `dwcAttributes.ts` import —— 後者會拉進 `~/i18n`，而 `inatPayload` 必須能在純 Node 下跑（`check-inat-payload.mjs`），與 `dwcMultiValue.ts` 當初拆出來同一個理由。
+
+`syncFingerprint` 雜湊的是「payload 去掉 uuid/geoprivacy/tag_list」，所以新欄位自動納入變更偵測 —— 實測 `wild` 與 `captive` 的指紋不同，改值會讓詳細頁顯示「同步 iNaturalist（有變更）」。人類可讀的值也一併寫進 observation description（單看 `captive_flag: false` 看不出「有人明確標記為野生」）。
+
+#### 涵蓋範圍
+
+v33 migration（三張表 `ADD COLUMN degree_of_establishment TEXT`）。逐一補上：三個 record 型別 · `ATTR_COLS` · `PlotSpeciesAttributePatch` · **`SPECIMEN_UPDATABLE_KEYS`**（白名單，漏了會靜默不寫） · **`SPECIMEN_COLS` 與 `listSessionRecords` 的明列 SELECT**（漏了會讀回 undefined） · `addPlotSpecies` INSERT（欄位/佔位符/參數 22/22/22 核對過） · 四個手寫 persist 呼叫端 · 匯出（dwcMapper／dwcArchive／bundleExport CSV＋yml／bundleYaml ×2／projectExport ×3） · 匯入（sessionImport／plotImport） · 照片 EXIF UserComment。
+
+`check-roundtrip.mjs` 的覆蓋率是**迭代 fixture 的欄位**，所以不加進 fixture 會「通過但沒測到」。已加進 plot（`cultivated`）、plot #2（`null`）、session（`wild`）三個 fixture 並補上值的斷言。
+
+i18n：`attr.establishmentLabel` + `attr.establishment.{wild,captive,cultivated}`（7 語系）。避開已被佔用的 `alien.captive` / `conservation.captive*`。
+
+### 驗證狀態
+- [x] tsc / check:roundtrip（含新斷言）/ check:inat / check:i18n / check:vegmatrix / check:names / check:report / check:dock / check:kav
+- [x] payload 實測：`null→undefined`、`wild→false`、`captive→true`、`cultivated→true`；`wild` 與 `captive` 指紋不同
+- [x] lint 0 error。warning 150→**151**：新增的 `establishmentOptions(): Array<{…}>` 沿用該檔所有 option helper 的既有寫法（整個 `dwcAttributes.ts` 都是這個 warning），刻意不為了數字而偏離鄰近風格
+- [ ] 實機：
+  1. 舊 DB 升 v33，既有記錄此欄為空、進階區顯示三個 chip 未選
+  2. 三種記錄各選一次並重開詳細頁，值有保留；再點同一個 chip 可取消回未記錄
+  3. 已上傳 iNat 的記錄改這個值 → 按鈕變「同步 iNaturalist（有變更）」→ 同步後到 inaturalist.org 確認 captive/cultivated 標記與描述欄文字
+  4. 標本改值 → 確認真的寫進 DB（`SPECIMEN_UPDATABLE_KEYS` 白名單若漏會靜默失敗，這是最容易出錯的一條）
+  5. 匯出 bundle：`degreeOfEstablishment` 欄在 plot CSV 與 DwC-A occurrence.txt 內；「野生」那筆該欄為空但 yml 仍有 `degree_of_establishment: wild`
+  6. 匯出再匯入同一份 yml，值保留
+
+---
+
+## Sprint 2026-09-16 — DwC 匯出稽核與三個一致性修正
+
+完整對照表（105 個匯出欄位 × 6 套詞彙）見 artifact。結論：DwC-A 本身已正確（Event core + Occurrence + Humboldt，43 個 term 逐一比對官方詞彙檔皆存在且 namespace 正確）；47 個 DwC 核心 / 15 個標準擴充 / 18 個自訂但有標準可用 / 25 個確無標準。
+
+以下修的是**與詞彙選用無關**的三個一致性問題。
+
+### 1. `scientificNameAuthorship` 裝的是完整學名
+
+TDWG 定義：「The authorship information for the scientificName」，範例 `(Torr.) J.T. Howell` —— 只有命名者。而 `dwcMapper` 把 `fullname`（`屬名 種小名 命名者`）對應過去，於是每一格的命名者欄都重複整個學名。
+
+`fullname` 本身沒錯，它是 Markdown 文件排版與排序要用的。錯的是**對應**。修法：item builder 另外帶 `name_author`，`dwcMapper` 改成 `name_author → scientificNameAuthorship`，並加一個 `DISPLAY_ONLY` 集合讓 `fullname` 不要以原名洩漏成欄位（`convertToDwc` 對未對應的 key 是原樣穿透的）。
+
+> **桌面版 `backend/utils/mapper.py:12` 有同一個對應**（`"fullname": "scientificNameAuthorship"`），本次未動。要兩邊一致的話那邊也要改。
+
+### 2. 樣區 `sp.csv` 把逐筆備註放在 `eventRemarks`
+
+改成 `occurrenceRemarks`，與其餘所有 occurrence 匯出一致。樣區自己的 `field_note` 本來就以 `eventRemarks` 出現在 `env.csv` / `event.txt`，兩者不再混用同一個詞彙。
+
+### 3. `degreeOfEstablishment` 的 `wild` 只在部分檔案被過濾
+
+根因是 `.yml` 與 `_sp.csv` **共用同一個 item builder**，但兩者的角色不同：
+
+- **`.yml` 是匯入往返格式** —— `sessionImport` 會把 `degreeOfEstablishment` 直接讀回來，所以必須保留使用者輸入的原值，包含 `wild`（那是我們的值，TDWG 沒有）。它本來就混著非 DwC 的 `eventUUID` / `gpsMode` / `startedAt`。
+- **`_sp.csv` 是交付檔** —— 不該用 DwC 詞彙送出 TDWG 沒定義的值。
+
+修法：新增 `toDwcCsvRow()`，只掛在 csv 路徑（`bundleExport.ts` 名錄 1 處、採集 1 處）；yml 路徑維持 `convertToDwc`。**過程中我一度把採集 yml 的 `dwcItems` 也改掉了 —— 那會讓採集匯出往返掉資料，已改回並加註解。**
+
+`establishmentDwcValue()` 從 `dwcAttributes.ts` 搬到純模組 `dwcMultiValue.ts`（`dwcAttributes` 改成 re-export，呼叫端不動），理由與當初拆出 `parseMultiAttribute` 相同：`dwcAttributes` import 了 `~/i18n`，純 Node 腳本解析不了。
+
+### 回歸護欄（`check-roundtrip.mjs`）
+
+這個「yml 原值 / csv 消毒」的分工正是會靜默崩掉的那種設計，所以補了四條斷言：yml 保留 `wild`、`establishmentDwcValue` 對它回傳空字串、`scientificNameAuthorship` 等於裸命名者 `L.`、`fullname` 不成為欄位。
+
+### 驗證狀態
+- [x] tsc / check:roundtrip（含 4 條新斷言）/ check:vegmatrix / check:inat / check:report / check:names / check:i18n / check:dock / check:kav / lint（0 error）
+- [ ] 實機：匯出一份名錄與一份採集 →
+  1. `_sp.csv` 的 `scientificNameAuthorship` 只有命名者，沒有重複學名
+  2. `_sp.csv` 沒有 `fullname` 欄
+  3. 「野生」那筆在 `_sp.csv` 的 `degreeOfEstablishment` 是空的，但 `.yml` 仍是 `wild`
+  4. 把該 `.yml` 匯入回 app → 該筆仍是「野生」
+  5. 樣區 `sp.csv` 的逐筆備註出現在 `occurrenceRemarks`，`env.csv` 的樣區備註仍在 `eventRemarks`
+
+### 尚未處理（等決定）
+- §3 的 18 個「自訂但有標準可用」—— Relevé 的坡度/坡向/覆蓋度 7 個、Distribution 的 `threatStatus`/`appendixCITES` 3 個、`footprintWKT` 1 個、VernacularName 擴充 7 個。
+- 各階層俗名改 VernacularName 擴充：**建議不改**。那七個欄位對「人開 Excel 看名錄」很好用，而擴充是星狀結構（俗名另一個檔、一列一名）。而且「桑科」其實是 *Moraceae* 的俗名、不是該物種的屬性，正確做法是掛在上階層自己的 taxonID 上。真正需要它的時機是發布到 GBIF 時，屆時由 DwC-A 那條路徑另產生擴充檔，`checklist.csv` 維持現狀。
+
+### 後續 1 — 桌面版同步修正 `scientificNameAuthorship`
+
+`backend/utils/mapper.py` 與 `frontend/src/lib/dwcMapper.ts` 都有同一個 `fullname → scientificNameAuthorship` 對應。三處一起修：
+
+- `backend/utils/mapper.py`：改 `name_author → scientificNameAuthorship`，`convert_to_dwc()` 加 `DISPLAY_ONLY = {"fullname"}` 過濾（原本未對應的 key 會原樣穿透）。
+- `backend/api/search_api.py`：搜尋結果原本只組出 `fullname`，沒有回傳裸命名者 → 兩處補 `"name_author"`。前端是把 `selectedSpecies` 整包 POST 給匯出 API 的，所以補了就會自動流過去。
+- `frontend/src/lib/dwcMapper.ts`：同樣改對應並加 `DISPLAY_ONLY`。該檔是**雙向**的（`reverseFieldMap` 由正向表推導），所以匯入端會自動跟著變成 `scientificNameAuthorship → name_author`，正確。
+
+實測 backend：`convert_to_dwc()` 送入含 `fullname` 與 `name_author` 的 item → 輸出 `scientificNameAuthorship='Corner'`、無 `fullname` 欄。
+
+> 順帶發現但未動：前端 `dwcMapper.ts` 的紅皮書欄位名與 backend 不一致（前端 `iucnStatus` / `redlistCategory`，後端 `iucnRedListCategory` / `nationalRedListCategory`）。
+
+### 後續 2 — §3 的 18 個「自訂但有標準可用」
+
+**實際改了 8 個。**另外 10 個在動手時發現不是改名而是結構變更，未改。
+
+已套用（`bundleYaml.ts` 的 `buildPlotEnvRows`，同時影響樣區 `_env.csv`、分析 `env.csv`、JUICE header）：
+
+| 原 | 改為 | 詞彙 |
+|---|---|---|
+| `slopeDeg` | `inclinationInDegrees` | Relevé |
+| `aspectDeg` | `aspect` | Relevé |
+| `totalCoverPct` | `coverTotalInPercentage` | Relevé |
+| `rockCoverPct` | `coverRockInPercentage` | Relevé |
+| `bryophyteCoverPct` | `coverMossesInPercentage` | Relevé |
+| `lichenCoverPct` | `coverLichensInPercentage` | Relevé |
+| `litterCoverPct` | `coverLitterInPercentage` | Relevé |
+| `CITES` | `appendixCITES` | Distribution（mobile + backend 都改） |
+
+> **這是既有匯出檔的破壞性改名。** 使用者若已有讀 `env.csv` 的 R 腳本，欄名會對不上。`gravelCoverPct` / `barelandCoverPct` / `vascularCoverPct` / `terrainPosition` 在 Relevé 裡沒有對應詞彙，維持原名。
+
+**紅皮書（決定後補做）**：`redlist` → `threatStatus`（Distribution 擴充，`http://iucn.org/terms/threatStatus`），三份對應表都改；全球 `iucn_category` 維持 `iucnRedListCategory`。兩者在同一筆 item 內同時存在（`bundleYaml.ts:80-81`），扁平 CSV 放不下兩個同名欄，而 Distribution 擴充靠「一列一個分布區 + `locationID`」區分的星狀結構本檔未採用。`iucnRedListCategory` 也正好是 GBIF SPECIES_LIST 下載檔自己的欄名（`gbifSpeciesList.ts:143`），維持原名對得起來源。
+
+> 順手補上前端與後端對不起來的既有落差：`frontend/src/lib/dwcMapper.ts` 原本是 `iucnStatus` / `redlistCategory`，與 backend 的欄名不同。該檔的 `reverseFieldMap` 是匯入用的，名字對不上代表後端匯出的 YAML 匯回來時這兩欄還原不了。已一併對齊。
+
+**未改，因為不是改名：**
+- **`trackGeoJSON` → `footprintWKT`（1）**：這是**格式轉換**（GeoJSON → WKT）不是改名，而且 `bundleYaml.ts:163-165` 已明確記載刻意保持逐字不轉：「re-serializing through WKT or a Feature would not round-trip byte-for-byte」。改了會破壞軌跡往返。
+- **各階層俗名（7）**：VernacularName 擴充是星狀結構（俗名另一檔、一列一名），且「桑科」其實是 *Moraceae* 的俗名而非該物種的屬性。**使用者確認不動。**
+
+最終：18 個之中改了 **10** 個（7 Relevé + `appendixCITES` + `threatStatus` + `scientificNameAuthorship` 連帶），保留 8 個（全球 IUCN、軌跡、7 俗名中的 7 個 — 實際保留項目見稽核表 §3）。稽核表 artifact 已更新為 v2。
+
+### 驗證狀態
+- [x] mobile：tsc + 8 支 check script 全過；backend：`convert_to_dwc()` 行為實測；frontend：`dwcMapper.ts` 無新增型別錯誤（既有 3 個 js-yaml/projectStore 錯誤與本次無關）
+- [ ] 實機／實跑：
+  1. 桌面版匯出 CSV → `scientificNameAuthorship` 只有命名者、無 `fullname` 欄、`appendixCITES` 取代 `CITES`
+  2. 手機匯出樣區 bundle → `_env.csv` 出現 `aspect` / `inclinationInDegrees` / `cover*InPercentage`
+  3. 分析 `env.csv` 與 JUICE header 的欄名同步改變（同一個 `buildPlotEnvRows`）
+
+---
+
+## 2026-09-16 — app 顯示名稱改為 Mitalivana
+
+**只改顯示名稱，識別碼一律不動。** 兩邊官方文件都寫死：Apple「Bundle ID … You can't change this property after you upload a build」；Android「Don't change the application ID after you publish your app. If you change it, Google Play Store treats the subsequent upload as a new app」。改識別碼等於開一個新 app —— TestFlight 測試者要重新邀請、Play 安裝數與評價不轉移，而且**使用者的本機 SQLite 資料不會跟過去**（野外調查中的人得手動備份→回復）。
+
+### 改了（使用者看得到）
+| 位置 | 內容 |
+|---|---|
+| `app.config.ts:26` | `name: 'Mitalivana'` — home screen / TestFlight 名稱的唯一來源 |
+| `ios/Checklister/Info.plist:10` | `CFBundleDisplayName`（prebuild 產物但有納入版控，不改的話這次 build 仍顯示舊名） |
+| `app/about.tsx:16` | 關於頁標題 |
+| `src/lib/geoExporters.ts:101,164` | 匯出 KML `<name>` 與 GPX `creator=`（品牌標記，非格式識別碼） |
+| 8 個語系 × 3 處 | `gps.permMsg`（字面指向 iOS 設定裡的 app 名）、`backup.notChecklister` 的**值**、`plotValue.permMsg` |
+
+### 刻意沒改（動了會壞掉）
+- `checklister-user-backup` — `backup.ts:136` 會 `manifest.kind !== 'checklister-user-backup'` 直接 throw，改了**既有備份全部讀不回來**
+- `checklister-ng-mobile` — 匯出 manifest 的 `app` 欄
+- `system="checklister-ng"` — DwC-A 的 eml.xml
+- `scheme: 'checklister'` — 深連結，改了舊連結全斷
+- `bundleIdentifier` / `package` / `slug` / EAS `projectId`
+- i18n 的 **key** 名 `notChecklister`（key 不是使用者看得到的，改了要動 8 個檔案沒有好處）
+
+### 尚未處理
+- `ios/Checklister.xcodeproj` / `ios/Checklister/` 目錄名仍是舊名 —— 純內部路徑，使用者看不到，改名要重簽 provisioning profile，不值得
+- App Store / Play 的**商店列表名稱**要另外在各自後台改，不是這個 commit 能處理的
+
+### 驗證狀態
+- [x] tsc / check:i18n / check:roundtrip / lint（0 error）；格式識別碼 8 項逐一 grep 確認未被誤改
+- [ ] 實機：重新 build → home screen 圖示名稱、關於頁、定位權限說明都顯示 Mitalivana
+- [ ] **回復一份改名前做的備份**，確認仍可讀（這是最容易被改名弄壞的一條）
+
+---
+
+## 2026-09-16 — 滑動切換 + 記錄間導覽 + 多選批次（專案／合併）
+
+四件 UI/UX 細調，外加一個新的 DB 操作（合併）。
+
+### 1. 物種詳細資訊左右滑動切換上／下一筆
+
+新元件 `src/components/SwipeNavigator.tsx`：`useSwipeNav` / `usePagerNav`（手勢 + 動畫位移）、`SwipeNavArea`（GestureDetector + Animated.View）、`SwipeNavPager`（`‹ 3 / 47 ›` 可見控制）、`SwipeBlockProvider` / `SwipeBlockedArea`（讓巢狀元件把外層手勢擋掉）。
+
+沒有新 native module —— `react-native-gesture-handler` 2.28 + `reanimated` 4.1 已經在了，加 `react-native-pager-view` 會逼所有人重 build dev client。
+
+三個接上的地方，順序一律是**畫面當下所見的順序**（含篩選與排序）：
+
+| 畫面 | 元件 | 清單來源 |
+|---|---|---|
+| 名錄 | `SpeciesDetailSheet` | `app/session/[id].tsx` 的 `filtered` |
+| 採集 | `SpecimenDetailSheet` | `app/collection/[id].tsx` 的 `display` |
+| 樣區物種 | `PlotSpeciesValueModal` | `PlotSpeciesTab` 的 `listData`（FlatList 實際 render 的那份，抽成 memo） |
+
+三個容易靜默壞掉的地方，都已處理：
+
+- **Modal 內要自己的 `GestureHandlerRootView`**（gesture-handler 進不到 Modal 的原生 view 階層，與 `SurveyorAssignSheet` 同一個理由）。
+- **內嵌 `RecordLocationMap` 會被搶手勢** —— 地圖橫向拖曳本來就是「移動地圖」。三處都把地圖包進 `Gesture.Native().blocksExternalGesture(pan)`。**這條要實機確認**：它是這次唯一沒辦法靜態驗證的行為。
+- **編輯中的草稿**：`SpecimenDetailSheet` 的欄位是 onBlur 才寫回，而 parent 的 `onSave` 寫的是「當下開著的那一筆」 —— 直接切下一筆會把舊文字寫到新標本上。改成 `Keyboard.dismiss()` 後等一個 frame 再切。`PlotSpeciesValueModal` 則是**髒了才存再切**（`sameDraft` 比對 `initial`），沒動過就不寫，免得 `updated_at` 被推進去害整排被判定要重新 iNat 同步。
+
+`activeOffsetX(±18)` / `failOffsetY(±16)` 讓直向捲動照舊。
+
+### 2. 樣區「環境／物種」左右滑動切換
+
+`app/plot/[id].tsx` 的分頁內容包 `SwipeNavArea`，`hasNext` 與 `TabBtn` 的 `disabled={!ready}` 同一個條件（物種分頁未開放時滑不過去）。
+
+衝突點是 `PlotSpeciesTab` 的 `SwipeRowActions`（左滑刪除）。`ReanimatedSwipeable` 本來就吃 `blocksExternalGesture` prop，所以走 context：畫面用 `SwipeBlockProvider` 把手勢放進去，`SwipeRowActions` 自己 `useSwipeBlock()` 取用 —— 不必逐一改散落各畫面的呼叫端。列的手勢贏，切分頁讓路。
+
+`useSwipeNav` 放在 `if (!plot)` 早退之前（hook 順序）。
+
+### 3. 記錄詳細畫面底部的上／下一筆
+
+新元件 `src/components/RecordStepBar.tsx`。兩個刻意的決定：
+
+- **鄰居限同類型**：名錄／樣區／採集 是三個不同的畫面，跨類型切換等於在使用者拇指底下換掉整個 UI。順序用 `listRecords(kind)`（active 優先、再依 `startedAt` 遞減），也就是記錄列表的順序。
+- **`router.replace` 不是 `push`**：走過十筆不該在返回堆疊留下十層。
+
+**放置位置是這次最容易踩雷的地方**：必須在 `KeyboardStickyView` 的**上方**。dock 下方的 chrome 正是 `offset.opened` 在抵銷的東西，放下面會把搜尋框推到鍵盤後面 —— 而 `check-bottom-dock.mjs` 抓不到這種錯（它只比對同一檔案內的兩個字面）。因此：
+
+- 名錄、採集：插在內容 `View` 與 dock 之間。
+- 樣區：dock 在 `PlotSpeciesTab` 內部（比 `plot/[id].tsx` 的 SafeAreaView 深一層），所以物種分頁的 bar 放在 `PlotSpeciesTab` 內、dock 之上；其餘分支（環境／未開放）沒有 dock，bar 放在 `plot/[id].tsx`。
+
+### 4. 多選批次：移動到專案／另建專案／合併
+
+選取列右端加一個 `⋯`（既有的 統計／常用／匯出 四個控制加上「已選 N」，窄機已經沒有可截斷的空間）。選單兩項：
+
+- **移動到專案**：直接沿用 `ProjectAssignSheet`，它的「新建專案」那一列本來就是「另建專案」，所以只有一個入口。`currentProjectId={-1}` 讓多選時不預先打勾。批次寫入包在 `withTransaction` 內。
+- **合併**：見下。
+
+#### 合併（新 DB 操作）
+
+`src/db/merge.ts`（`MergeRecordOptions` + `mergeOrder` / `unionSurveyors` / `unionTracks` / `latest`）、`mergeSessions()`（sessions.ts）、`mergePlotSurveys()`（plots.ts）、`MergeRecordsModal`。
+
+**只有名錄與樣區可合併。採集排除** —— 採集號來自採集者自己的流水序列，重新配號等於改寫已經寫在實體標本台紙上的號碼。樣區另外要求 `plot_type` 相同。
+
+繼承規則（合併對話框的說明文字與這張表一致）：
+
+| 欄位 | 來源 |
+|---|---|
+| 起訖時間 | **聯集** —— 最早的開始、最晚的結束／觀察 |
+| 座標、環境資料、專案、樣點 | **主記錄**（使用者在對話框裡選） |
+| 軌跡 | 各來源 segment 的聯集（`MultiLineString`，不首尾相接 —— 那段路沒人走過） |
+| 調查者 | 聯集去重，主記錄的順序在前 |
+| 物種記錄 | 全部來源，依合併順序 |
+
+時間取聯集，是因為合併後的記錄仍要誠實回答「這是什麼時候調查的」；**座標不取平均** —— 兩個樣區中心的平均會生出一個沒人調查過的地點。逐筆物種記錄自己的時間與座標原封不動保留。
+
+其他決定：
+
+- 逐筆記錄**重新配 occurrence_id**（occurrenceID 全域唯一，保留原記錄時會撞號），**iNaturalist 欄位不帶過去**（兩列宣稱同一個 observation 會讓下次同步互相覆蓋）。
+- 照片／聲音沿用同一份檔案 URI；刪除記錄不會刪檔，所以「不保留原記錄」時合併後的照片仍在。
+- 去重（預設開）：名錄以 `taxon_id|used_scientific_name`、樣區再加 `layer|subplot` —— 與 `duplicate*Tx` 同一把鑰匙（同一分類群刻意掛在兩個名字下是兩筆，不是重複）。關閉則無損保留每一筆觀察。
+- 保留原記錄（預設開，可逆的那一邊）；關閉時對話框出紅色警告，刪除與寫入在同一個 transaction 內。
+- 樣區分層值只取主記錄（分層覆蓋度是「某地某時的一次測量」，平均或串接等於捏造讀數）；`layer_count` 取 max，避免物種掉進 render 不出來又刪不掉的層。
+- 小區全部保留，標籤撞名時附上來源 plotid（兩個來源的「A」不是同一個地點）。
+- 合併結果一律 `done`，不搶 single-active；刪來源後 refresh 兩個 active store。
+
+i18n：`common.more` + 21 個 `records.merge*` / `moveToProject` 鍵，7 個完整語系（es-419 是覆寫子集，措辭無差異故不動）。
+
+### 驗證狀態
+- [x] `tsc --noEmit`；`check:dock / kav / i18n / roundtrip / names / vegmatrix / report / inat / diversity` 全過；`lint` 0 error
+- [x] 跨平台稽核：未新增任何 `Alert.prompt` / `ActionSheetIOS` / `Platform.OS === 'ios'`
+- [x] 新增的 7 個 INSERT 逐一比對「欄位數 = ? 數 + 字面值數」且「? 數 = 參數數」，欄位名全部存在於 migrations 的 schema
+- [ ] **實機（合併）**：兩筆名錄合併 → 時間範圍涵蓋兩者、座標等於主記錄、物種筆數正確、照片開得起來；關閉「保留原始記錄」再試一次，確認來源消失且合併結果的照片仍在
+- [ ] **實機（合併・樣區）**：兩個 fixed 樣區（其中一個有小區）合併 → 小區標籤不撞、分層值等於主記錄、沒有物種掉進看不到的層；transect 合併 → 軌跡是兩段而不是接成一條
+- [ ] **實機（手勢）**：物種詳細頁左右滑動切換；**在內嵌小地圖上橫向拖曳應該是移動地圖，不是切換記錄**（`Gesture.Native().blocksExternalGesture` 的唯一驗證方式）
+- [ ] **實機（手勢）**：樣區 環境↔物種 滑動；物種列左滑仍然是叫出刪除而不是切分頁
+- [ ] **實機（鍵盤）**：三個記錄畫面點搜尋框 → 搜尋框仍貼在鍵盤上方，上／下一筆那條 bar 不會擋住它

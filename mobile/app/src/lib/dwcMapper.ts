@@ -5,7 +5,13 @@
 export const DWC_FIELD_MAP: Record<string, string> = {
   taxon_id: 'taxonID',
   name: 'scientificName',
-  fullname: 'scientificNameAuthorship',
+  // `scientificNameAuthorship` is "The authorship information … formatted
+  // according to the conventions of the applicable nomenclaturalCode"
+  // (rs.tdwg.org/dwc/terms/scientificNameAuthorship; examples are bare author
+  // strings like `(Torr.) J.T. Howell`). It takes `name_author` alone — the
+  // display-only `fullname` (binomial + author) used to land here, which made
+  // every authorship cell repeat the whole name.
+  name_author: 'scientificNameAuthorship',
   cname: 'vernacularName',
   alternative_name_c: 'alternativeVernacularName',
   family: 'family',
@@ -25,8 +31,16 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   abundance: 'individualCount',
   source: 'establishmentMeans',
   iucn_category: 'iucnRedListCategory',
-  redlist: 'nationalRedListCategory',
-  cites: 'CITES',
+  // 臺灣紅皮書 → Distribution 擴充的 threatStatus（http://iucn.org/terms/
+  // threatStatus，受控值見 rs.gbif.org/vocabulary/iucn/threat_status）。
+  // 全球 IUCN 另一欄保持自訂：兩者在同一筆記錄同時存在，扁平 CSV 放不下兩個
+  // threatStatus，而 Distribution 擴充靠「一列一個分布區 + locationID」區分的
+  // 星狀結構本檔並未採用。iucnRedListCategory 也正好是 GBIF SPECIES_LIST
+  // 下載檔自己的欄名（見 gbifSpeciesList.ts），維持原名對得起來源。
+  redlist: 'threatStatus',
+  // GBIF Distribution 擴充的詞彙（rs.gbif.org/terms/1.0/appendixCITES）。
+  // 原本的 'CITES' 全大寫既非 DwC 也不合 camelCase 慣例。
+  cites: 'appendixCITES',
   protected: 'protectionStatus',
   endemic: 'endemic',
   is_hybrid: 'isHybrid',
@@ -56,6 +70,11 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   life_stage: 'lifeStage',
   reproductive_condition: 'reproductiveCondition',
   leaf_phenology: 'leafPhenology',
+  // DwC degreeOfEstablishment. NOT establishmentMeans — that term is already
+  // taken above by `source`, the TAXON-level TaiCOL alien status; these are
+  // different claims (this taxon is native to Taiwan vs this individual is
+  // cultivated) and must not overwrite each other.
+  degree_of_establishment: 'degreeOfEstablishment',
   // Name usage. `taxonID` is the taxon CONCEPT; `scientificName` is whichever
   // name the recorder filed under, which may be one the checklist calls
   // not-accepted. The other three say so explicitly rather than leaving the
@@ -84,9 +103,14 @@ export const DWC_FIELD_MAP: Record<string, string> = {
   locality: 'locality',
 };
 
+/** Display-only keys the document builders need but that have no DwC term and
+ *  must not become columns. Unmapped keys otherwise pass through verbatim. */
+const DISPLAY_ONLY = new Set(['fullname']);
+
 export function convertToDwc(obj: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) {
+    if (DISPLAY_ONLY.has(k)) continue;
     out[DWC_FIELD_MAP[k] ?? k] = v;
   }
   return out;

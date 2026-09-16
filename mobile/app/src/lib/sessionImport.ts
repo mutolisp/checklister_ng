@@ -63,6 +63,7 @@ export function sessionFromDoc(doc: Record<string, unknown> | null): ImportedSes
       life_stage: str(r.lifeStage),
       reproductive_condition: pipeToJson(r.reproductiveCondition),
       leaf_phenology: pipeToJson(r.leafPhenology),
+      degree_of_establishment: str(r.degreeOfEstablishment),
       photo_files: pipeToList(r.associatedMedia),
       // Name usage: `scientificName` already holds the adopted name, so the id
       // is a hint and the string is the durable half.

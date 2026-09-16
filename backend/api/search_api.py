@@ -153,6 +153,7 @@ def _taicol_to_response(
         "id": row.name_id,
         "name": row.simple_name,
         "fullname": fullname,
+        "name_author": row.name_author or "",
         "cname": display_cname or row.common_name_c or "",
         "_raw_cname": row.common_name_c or "",  # 排序用，不含括號區分
         "family": row.family or "",
@@ -198,6 +199,7 @@ def _taicol_to_response(
         result["matched_as"] = {
             "name": matched_row.simple_name,
             "fullname": matched_fullname,
+            "name_author": matched_row.name_author or "",
             "status": matched_row.usage_status,
         }
 

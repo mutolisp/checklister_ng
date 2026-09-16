@@ -44,6 +44,11 @@ export type CollectionSort = 'collected' | 'number' | 'family' | 'name';
 export type SortDirection = 'asc' | 'desc';
 export type FontScale = 'small' | 'normal' | 'large' | 'xlarge';
 export type MapBasemap = 'standard' | 'satellite' | 'hybrid' | 'terrain';
+export type PlotTab = 'env' | 'species';
+/** Which tab of the plot detail screen was last open, and for which plot.
+ *  Scoped to one plot on purpose: a brand-new survey must still open on 環境,
+ *  because that is the data it has none of yet. `plotId: 0` = nothing stored. */
+export type PlotTabState = { plotId: number; tab: PlotTab };
 export type RecordTypeDefault = 'session' | 'plot' | 'collection' | 'ask';
 export type AnalysisFormat = 'vegan' | 'juice' | 'dwca';
 
@@ -136,6 +141,9 @@ type SettingsValues = {
   records_swipe_hint_shown: boolean;
   font_scale: FontScale;
   map_view: MapViewState;
+  /** Last plot detail tab, so returning to a survey in progress lands where the
+   *  user left it rather than back on 環境 every time. */
+  plot_last_tab: PlotTabState;
   record_type_default: RecordTypeDefault;
   /** Collection number (DwC recordNumber) prefix, e.g. 'CTL-'. '' for none. */
   collection_number_prefix: string;
@@ -211,6 +219,7 @@ const DEFAULTS: SettingsValues = {
   records_swipe_hint_shown: false,
   font_scale: 'normal',
   map_view: DEFAULT_MAP_VIEW,
+  plot_last_tab: { plotId: 0, tab: 'env' },
   record_type_default: 'ask',
   collection_number_prefix: '',
   collection_number_start: 1,
@@ -259,6 +268,23 @@ function readAll(): SettingsValues {
     try {
       const parsed = JSON.parse(mvRaw);
       if (parsed && typeof parsed === 'object') mapView = { ...DEFAULTS.map_view, ...parsed };
+    } catch {
+      // ignore corrupt setting
+    }
+  }
+  let plotLastTab: PlotTabState = DEFAULTS.plot_last_tab;
+  const pltRaw = map.get('plot_last_tab');
+  if (pltRaw) {
+    try {
+      const parsed = JSON.parse(pltRaw);
+      if (
+        parsed &&
+        typeof parsed === 'object' &&
+        typeof parsed.plotId === 'number' &&
+        (parsed.tab === 'env' || parsed.tab === 'species')
+      ) {
+        plotLastTab = { plotId: parsed.plotId, tab: parsed.tab };
+      }
     } catch {
       // ignore corrupt setting
     }
@@ -312,6 +338,7 @@ function readAll(): SettingsValues {
     records_swipe_hint_shown: map.get('records_swipe_hint_shown') === 'true',
     font_scale: (map.get('font_scale') as FontScale) ?? DEFAULTS.font_scale,
     map_view: mapView,
+    plot_last_tab: plotLastTab,
     record_type_default:
       (map.get('record_type_default') as RecordTypeDefault) ?? DEFAULTS.record_type_default,
     collection_number_prefix:

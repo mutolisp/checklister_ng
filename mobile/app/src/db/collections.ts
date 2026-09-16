@@ -52,6 +52,9 @@ export type Specimen = {
   trip_id: number;
   /** DwC occurrenceID — stable v4 uuid assigned at insert. */
   occurrence_id: string;
+  /** Last time the user changed this specimen's content (v32). iNat
+   *  bookkeeping writes in `inatSync.ts` deliberately do not count. */
+  updated_at: number;
   taxon_id: string;
   /** DwC recordNumber — the collector's number, prefix included. Editable. */
   record_number: string;
@@ -68,6 +71,10 @@ export type Specimen = {
   /** GPS horizontal accuracy in metres → DwC coordinateUncertaintyInMeters. */
   accuracy: number | null;
   locality: string | null;
+  /** DwC degreeOfEstablishment (v33): 'wild' | 'captive' | 'cultivated'.
+   *  NULL = 未記錄, which is a different statement from an explicit 'wild'.
+   *  Per-INDIVIDUAL — not to be confused with the taxon-level `alien_type`. */
+  degree_of_establishment: string | null;
   // DwC species attributes (v20 for sex/life_stage, v19 for the phenology
   // pair). Single-valued enums; the two phenology columns are JSON array
   // strings — see dwcAttributes parse/serializeMultiAttribute.
@@ -96,7 +103,7 @@ export type SpecimenWithTaxon = Specimen & TaxonFields & AdoptionStatus;
 
 const SPECIMEN_COLS = `id, trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
   collected_at, recorded_by, identified_by, lat, lng, accuracy, locality,
-  sex, life_stage, reproductive_condition, leaf_phenology, notes, photo_paths,
+  sex, life_stage, reproductive_condition, leaf_phenology, degree_of_establishment, notes, photo_paths,
   used_name_id, used_scientific_name,
   audio_paths, inat_observation_id, inat_media_done, inat_uploaded_at, inat_sync_hash`;
 
@@ -392,8 +399,8 @@ export function addSpecimen(input: AddSpecimenInput): number {
     `INSERT INTO collection_specimens
        (trip_id, occurrence_id, taxon_id, record_number, record_number_seq,
         collected_at, recorded_by, identified_by, lat, lng, accuracy, locality, notes,
-        used_name_id, used_scientific_name, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        used_name_id, used_scientific_name, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.trip_id,
       generateUuid(),
@@ -415,6 +422,7 @@ export function addSpecimen(input: AddSpecimenInput): number {
       input.adopted?.name_id ?? null,
       input.adopted?.scientific_name ?? null,
       now,
+      now,
     ],
   );
   return res.insertId ?? 0;
@@ -426,7 +434,8 @@ export function addSpecimen(input: AddSpecimenInput): number {
 const SPECIMEN_UPDATABLE_KEYS = new Set([
   'taxon_id', 'record_number', 'collected_at', 'recorded_by', 'identified_by',
   'lat', 'lng', 'accuracy',
-  'locality', 'sex', 'life_stage', 'reproductive_condition', 'leaf_phenology', 'notes',
+  'locality', 'sex', 'life_stage', 'reproductive_condition', 'leaf_phenology',
+  'degree_of_establishment', 'notes',
 ]);
 
 export function updateSpecimen(id: number, patch: Partial<Specimen>): void {
@@ -444,7 +453,8 @@ export function updateSpecimen(id: number, patch: Partial<Specimen>): void {
     }
   }
   if (fields.length === 0) return;
-  params.push(id);
+  fields.push('updated_at = ?');
+  params.push(Date.now(), id);
   db.executeSync(`UPDATE collection_specimens SET ${fields.join(', ')} WHERE id = ?`, params);
 }
 
@@ -456,21 +466,21 @@ export function updateSpecimenLocation(
 ): void {
   const db = getUserDb();
   db.executeSync(
-    `UPDATE collection_specimens SET lat = ?, lng = ?, accuracy = ? WHERE id = ?`,
-    [lat, lng, accuracy, id],
+    `UPDATE collection_specimens SET lat = ?, lng = ?, accuracy = ?, updated_at = ? WHERE id = ?`,
+    [lat, lng, accuracy, Date.now(), id],
   );
 }
 
 export function updateSpecimenPhotos(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE collection_specimens SET photo_paths = ? WHERE id = ?`, [value, id]);
+  db.executeSync(`UPDATE collection_specimens SET photo_paths = ?, updated_at = ? WHERE id = ?`, [value, Date.now(), id]);
 }
 
 export function updateSpecimenAudio(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE collection_specimens SET audio_paths = ? WHERE id = ?`, [value, id]);
+  db.executeSync(`UPDATE collection_specimens SET audio_paths = ?, updated_at = ? WHERE id = ?`, [value, Date.now(), id]);
 }
 
 /**

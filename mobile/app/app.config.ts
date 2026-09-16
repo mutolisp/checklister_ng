@@ -23,7 +23,7 @@ import type { ExpoConfig } from 'expo/config';
 const GOOGLE_MAPS_ANDROID_API_KEY = process.env.GOOGLE_MAPS_ANDROID_API_KEY;
 
 const config: ExpoConfig = {
-  name: 'Checklister',
+  name: 'Mitalivana',
   slug: 'checklister-mobile',
   version: '0.4.1',
   orientation: 'portrait',

@@ -5,14 +5,19 @@
 export const dwcFieldMap: Record<string, string> = {
   taxon_id: "taxonID",
   name: "scientificName",
-  fullname: "scientificNameAuthorship",
+  // 只有命名者，例如 `(Torr.) J.T. Howell`。顯示用的 fullname（學名+命名者）
+  // 不是這個詞彙，見 DISPLAY_ONLY。
+  name_author: "scientificNameAuthorship",
   cname: "vernacularName",
   family: "family",
   family_cname: "familyVernacularName",
   pt_name: "higherClassification",
   source: "establishmentMeans",
-  iucn_category: "iucnStatus",
-  redlist: "redlistCategory",
+  // 與 backend/utils/mapper.py 對齊。這兩個欄名原本與後端不同
+  // （iucnStatus / redlistCategory），而本檔的 reverseFieldMap 是匯入用的，
+  // 名字對不上就代表後端匯出的 YAML 匯回來時這兩欄會還原不了。
+  iucn_category: "iucnRedListCategory",
+  redlist: "threatStatus",
   endemic: "endemic",
   occurrenceID: "occurrenceID",
   eventDate: "eventDate",
@@ -25,9 +30,13 @@ export const reverseFieldMap: Record<string, string> = Object.fromEntries(
 );
 
 // ✅ 匯出時使用：原始 → Darwin Core
+// 只供顯示/排序、沒有 DwC 詞彙的欄位，不可原樣變成欄位。
+const DISPLAY_ONLY = new Set(["fullname"]);
+
 export function convertToDarwinCore(record: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   for (const key in record) {
+    if (DISPLAY_ONLY.has(key)) continue;
     const newKey = dwcFieldMap[key] ?? key;
     result[newKey] = record[key];
   }

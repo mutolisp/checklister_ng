@@ -180,6 +180,7 @@ export function useAddToActiveRecord(): {
       life_stage: v.life_stage,
       reproductive_condition: serializeMultiAttribute(v.reproductive_condition),
       leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
+      degree_of_establishment: v.degree_of_establishment,
       detection_type: v.detection_type,
     });
     setPlotTarget(null);

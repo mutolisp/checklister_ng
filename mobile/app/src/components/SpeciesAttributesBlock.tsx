@@ -7,6 +7,11 @@
  *   - Animalia: sex + life_stage (per-class enum from dwcAttributes)
  *   - other   : sex only (covers Fungi / Protozoa where sex still meaningful)
  *
+ * degreeOfEstablishment (野生 / 圈養 / 栽培) is shown for every kingdom rather
+ * than split by it: a cultivated fungus and a captive-bred plant in a nursery
+ * are both real records, and guessing from kingdom would hide the option from
+ * exactly those cases.
+ *
  * Used by PlotSpeciesValueModal and the session SpeciesDetailSheet so plot
  * and checklist records have the same input UX.
  */
@@ -15,6 +20,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pressable, Text, View } from 'react-native';
 import {
+  establishmentOptions,
   hasAttributes,
   leafPhenologyOptions,
   reproductiveOptions,
@@ -33,6 +39,8 @@ export type SpeciesAttributesDraft = {
   life_stage: string | null;
   reproductive_condition: string[];
   leaf_phenology: string[];
+  /** '' is not a value — null means 未記錄, which is distinct from 野生. */
+  degree_of_establishment: string | null;
 };
 
 type Props = {
@@ -62,7 +70,7 @@ export function SpeciesAttributesBlock({
   const isPlant = (kingdom || '').toLowerCase() === 'plantae';
   const isAnimal = (kingdom || '').toLowerCase() === 'animalia';
 
-  const setSingle = (key: 'sex' | 'life_stage', next: string) => {
+  const setSingle = (key: 'sex' | 'life_stage' | 'degree_of_establishment', next: string) => {
     onChange({ ...value, [key]: value[key] === next ? null : next });
   };
 
@@ -74,7 +82,8 @@ export function SpeciesAttributesBlock({
     (value.sex ? 1 : 0) +
     (value.life_stage ? 1 : 0) +
     (value.reproductive_condition.length > 0 ? 1 : 0) +
-    (value.leaf_phenology.length > 0 ? 1 : 0);
+    (value.leaf_phenology.length > 0 ? 1 : 0) +
+    (value.degree_of_establishment ? 1 : 0);
 
   return (
     <View>
@@ -97,6 +106,14 @@ export function SpeciesAttributesBlock({
 
       {open ? (
         <View className="mt-2 gap-3">
+          <FieldRow label={t('attr.establishmentLabel')}>
+            <SingleChipGroup
+              options={establishmentOptions()}
+              value={value.degree_of_establishment}
+              onChange={(v) => setSingle('degree_of_establishment', v)}
+            />
+          </FieldRow>
+
           <FieldRow label={t('attr.sexLabel')}>
             <SingleChipGroup
               options={sexOptions()}

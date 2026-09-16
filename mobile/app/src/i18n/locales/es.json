@@ -15,7 +15,8 @@
     "continue": "Continuar",
     "undo": "DESHACER",
     "remove": "Quitar",
-    "loading": "Cargando..."
+    "loading": "Cargando...",
+    "more": "Más"
   },
   "group": {
     "plantae": "Plantas",
@@ -126,7 +127,7 @@
   },
   "gps": {
     "permTitle": "Se necesita permiso de ubicación",
-    "permMsg": "Vaya a Ajustes → Checklister → Ubicación y active «Al usar la app»",
+    "permMsg": "Vaya a Ajustes → Mitalivana → Ubicación y active «Al usar la app»",
     "posRecorded": "Ubicación actual registrada",
     "posFailTitle": "No se pudo obtener la ubicación",
     "trackBusyTitle": "Otro registro está grabando una traza",
@@ -236,7 +237,34 @@
     "collectionCount_one": "Recolecciones {{count}}",
     "collectionCount_many": "Recolecciones {{count}}",
     "collectionCount_other": "Recolecciones {{count}}",
-    "uploadInat": "iNat"
+    "uploadInat": "iNat",
+    "mergeProvenance": "Combinado a partir de: {{sources}}",
+    "moveToProject": "Mover a un proyecto",
+    "movedToProject_one": "{{count}} registro movido a «{{name}}»",
+    "movedToProject_many": "{{count}} registros movidos a «{{name}}»",
+    "movedToProject_other": "{{count}} registros movidos a «{{name}}»",
+    "merge": "Combinar",
+    "mergeTitle": "Combinar {{noun}}",
+    "mergeCount_one": "Se combinará {{count}} registro",
+    "mergeCount_many": "Se combinarán {{count}} registros",
+    "mergeCount_other": "Se combinarán {{count}} registros",
+    "mergePrimary": "Registro principal",
+    "mergePrimaryHint": "Las coordenadas, los datos ambientales, el proyecto y el sitio provienen del registro principal; el periodo abarca todos los registros.",
+    "mergeDedupe": "Agrupar especies repetidas",
+    "mergeDedupeHint": "Desactivado: se conserva cada observación, incluida la misma especie varias veces.",
+    "mergeKeepSources": "Conservar los registros originales",
+    "mergeKeepSourcesHint": "Desactivado: los registros combinados se eliminan una vez escrito el nuevo.",
+    "mergeDeleteWarn_one": "Se eliminará {{count}} registro original. Esta acción no se puede deshacer.",
+    "mergeDeleteWarn_many": "Se eliminarán los {{count}} registros originales. Esta acción no se puede deshacer.",
+    "mergeDeleteWarn_other": "Se eliminarán los {{count}} registros originales. Esta acción no se puede deshacer.",
+    "mergeExplain": "Cada observación conserva su hora, coordenadas, fotos y audio. El estado de subida a iNaturalist no se traslada.",
+    "mergeNeedTwo": "Selecciona al menos dos registros",
+    "mergeSameKind": "Solo se pueden combinar registros del mismo tipo",
+    "mergeNoCollection": "Las recolecciones no se pueden combinar: los números de colecta corresponden a especímenes físicos",
+    "mergeSamePlotType": "Solo se pueden combinar parcelas con el mismo método de muestreo",
+    "mergeFailed": "Error al combinar",
+    "merged": "Combinado como «{{name}}»",
+    "open": "Abrir"
   },
   "export": {
     "preparing": "Preparando…",
@@ -258,7 +286,6 @@
     "key": "Clave",
     "projects": "Proyectos",
     "sites": "Sitios",
-    "settings": "Preferencias",
     "surveyors": "Observadores",
     "about": "Acerca de",
     "favorites": "Favoritos",
@@ -279,7 +306,8 @@
     "projectsDesc": "Proyectos y sus listas de especies / parcelas",
     "sites": "Sitios geográficos",
     "sitesDesc": "Puntos / líneas / polígonos en el mapa",
-    "backupDesc": "Copia de seguridad y restauración de datos y fotos"
+    "backupDesc": "Copia de seguridad y restauración de datos y fotos",
+    "favoritesDesc": "Listas de especies habituales; se pueden añadir en bloque a un registro"
   },
   "record": {
     "kindSession": "Lista rápida",
@@ -292,7 +320,8 @@
     "defaultPlot": "Predeterminado: muestreo de parcela",
     "kindCollection": "Recolección",
     "defaultCollection": "Predeterminado: recolección",
-    "kindImport": "Importar un registro (.yml / .zip)"
+    "kindImport": "Importar un registro (.yml / .zip)",
+    "lastUpdated": "Última modificación"
   },
   "rank": {
     "kingdom": "Reino",
@@ -362,6 +391,8 @@
     "longPressClear": "Mantenga presionado para borrar",
     "tapGps": "Toque GPS",
     "externalLinks": "Enlaces externos",
+    "inatObservation": "Observación de iNaturalist",
+    "inatTaxon": "Taxón de iNaturalist",
     "addToRecord": "Añadir al registro actual",
     "inFavorites": "En favoritos",
     "matchedSynonymPre": "Ha escrito ",
@@ -386,6 +417,7 @@
     "lifeStageLabel": "Estadio (lifeStage)",
     "reproLabel": "Flor / fruto (reproductiveCondition, selección múltiple)",
     "leafLabel": "Hoja (leafPhenology, selección múltiple)",
+    "establishmentLabel": "Silvestre / manejado (degreeOfEstablishment)",
     "sex": {
       "female": "Hembra",
       "male": "Macho",
@@ -418,6 +450,11 @@
       "shedding": "Caída de hojas",
       "green": "Hojas verdes",
       "colored": "Hojas coloreadas"
+    },
+    "establishment": {
+      "wild": "Silvestre",
+      "captive": "En cautiverio",
+      "cultivated": "Cultivado"
     },
     "filledCount_one": "{{count}} definido",
     "filledCount_many": "{{count}} definidos",
@@ -544,14 +581,12 @@
     "manualCoord": "ubicado manualmente"
   },
   "settings": {
-    "title": "Preferencias",
-    "sectionAppearance": "Apariencia",
-    "sectionInteraction": "Interacción",
-    "sectionRegions": "Listas regionales",
-    "sectionSurvey": "Muestreo",
-    "sectionExport": "Exportación",
+    "sectionAppearance": "Apariencia e interacción",
+    "sectionSurvey": "Ajustes de muestreo",
     "exportPrefDesc": "Formatos geo, fotos, categorías y estado de conservación, formatos de análisis",
     "sectionData": "Datos",
+    "sectionRecords": "Registros",
+    "sectionSync": "Listas y sincronización",
     "theme": "Tema",
     "themeAuto": "Seguir el sistema",
     "themeLight": "Claro",
@@ -627,7 +662,6 @@
     "nRows_one": "{{count}} fila",
     "nRows_many": "{{count}} filas",
     "nRows_other": "{{count}} filas",
-    "sectionInat": "iNaturalist",
     "inaturalist": "Cuenta de iNaturalist",
     "inaturalistDesc": "Vincula tu cuenta para subir registros con fotos o audio como observaciones",
     "inaturalistLinked": "Vinculado: {{login}}"
@@ -675,7 +709,7 @@
     "restoreFromFile": "Restaurar desde un archivo de copia de seguridad",
     "invalidFile": "No es un archivo de copia de seguridad válido (falta user.db o manifest.json)",
     "corrupt": "Archivo de copia de seguridad dañado (no se puede leer manifest.json)",
-    "notChecklister": "No es un archivo de copia de seguridad de Checklister",
+    "notChecklister": "No es un archivo de copia de seguridad de Mitalivana",
     "tooNew": "Esta copia de seguridad se creó con una versión más reciente de la app (esquema v{{version}}); actualice la app antes de restaurarla.",
     "safetyTitle": "Copias de seguridad automáticas de protección",
     "safetyDesc": "Instantáneas que la app tomó antes de reparar los datos. Puede eliminarlas cuando haya comprobado sus datos.",
@@ -1965,6 +1999,7 @@
     "openTokenPage": "Abrir la página del token en el navegador",
     "pasteToken": "Pegar token del portapapeles",
     "geoprivacy": "Privacidad geográfica",
+    "uuidMismatch": "iNaturalist asignó un uuid distinto (enviado {{sent}}, recibido {{got}}); este registro no se puede sincronizar.",
     "geoprivacyOpen": "Abierta",
     "geoprivacyObscured": "Difuminada",
     "geoprivacyPrivate": "Privada",
@@ -1990,7 +2025,7 @@
     "recordsHeader": "Registros a subir",
     "toggleAll": "Todo / nada",
     "emptyList": "Ningún registro aquí tiene foto o audio",
-    "resultCompleted": "Último envío: {{ok}} correctas, {{failed}} fallidas, {{unresolved}} sin taxón iNat (solo nombre)",
+    "resultCompleted": "Último envío: {{ok}} correctas, {{failed}} fallidas, {{unresolved}} sin taxón iNaturalist (solo nombre)",
     "resultCancelled": "Último envío cancelado: {{ok}} correctas, {{failed}} fallidas",
     "resultOffline": "Último envío detenido (sin conexión): {{ok}} correctas, {{failed}} fallidas; los incompletos se pueden reenviar",
     "resultAuth": "Último envío detenido (sesión caducada): {{ok}} correctas, {{failed}} fallidas",
@@ -2004,17 +2039,16 @@
     "noMediaRecord": "Este registro no tiene foto ni audio, así que no se puede subir a iNaturalist",
     "rowUploading": "Subiendo…",
     "progressRequests": "{{done}} / {{total}} solicitudes",
-    "uploadedBadge": "En iNat",
-    "uploadButton": "Subir a iNat",
-    "syncButton": "Sincronizar con iNat",
-    "syncChanged": "Sincronizar con iNat (cambios)",
+    "uploadButton": "Subir a iNaturalist",
+    "syncButton": "Sincronizar con iNaturalist",
+    "syncChanged": "Sincronizar con iNaturalist (cambios)",
     "syncing": "Sincronizando…",
-    "syncNoChange": "Ya está actualizado en iNat",
-    "syncDone": "Sincronizado con iNat: anotaciones +{{added}} −{{removed}}, medios nuevos {{media}}",
+    "syncNoChange": "Ya está actualizado en iNaturalist",
+    "syncDone": "Sincronizado con iNaturalist: anotaciones +{{added}} −{{removed}}, medios nuevos {{media}}",
     "syncFailed": "Error de sincronización: {{msg}}",
-    "syncNotUploaded": "Este registro aún no está en iNat",
-    "syncAuth": "La sesión de iNat caducó; vuelve a vincular en Ajustes",
+    "syncNotUploaded": "Este registro aún no está en iNaturalist",
+    "syncAuth": "La sesión de iNaturalist caducó; vuelve a vincular en Ajustes",
     "syncOffline": "Sin conexión: no se puede sincronizar",
-    "busy": "Otra subida o sincronización de iNat está en curso"
+    "busy": "Otra subida o sincronización de iNaturalist está en curso"
   }
 }

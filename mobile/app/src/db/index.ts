@@ -21,3 +21,4 @@ export * from './favorites';
 export * from './surveyors';
 export * from './externalTaxa';
 export * from './inatSync';
+export * from './merge';

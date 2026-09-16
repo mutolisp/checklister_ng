@@ -2,7 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { PlotDiversityCard } from './PlotDiversityCard';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, Keyboard, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Keyboard,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   addPlotSpecies,
@@ -37,6 +47,7 @@ import { deleteAudioFile } from '~/lib/audioCapture';
 import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
+import { RecordStepBar } from './RecordStepBar';
 import type { AdoptionInput } from '~/db';
 import { ScientificName } from './ScientificName';
 import { SearchBox } from './SearchBox';
@@ -62,13 +73,7 @@ type ValueModalState =
   | { mode: 'create'; taxon: SearchResult; layer: Layer; adopted?: AdoptionInput | null }
   | { mode: 'edit'; record: PlotSpeciesRecordWithTaxon };
 
-export function PlotSpeciesTab({
-  plot,
-  onChanged,
-}: {
-  plot: PlotSurvey;
-  onChanged: () => void;
-}) {
+export function PlotSpeciesTab({ plot, onChanged }: { plot: PlotSurvey; onChanged: () => void }) {
   const { t: tr } = useTranslation();
   // `stratified` = fixed plot only (has E1..E6 layers). transect + point_count
   // are non-stratified: a single 'T' bucket, no layer chips/headers. Keep the
@@ -89,7 +94,7 @@ export function PlotSpeciesTab({
   // most commonly entered layer. If layer_count < 2, fall back to E1.
   const defaultLayer: Layer = !stratified
     ? 'T'
-    : (activeLayers.includes('E2' as FixedLayer) ? 'E2' : activeLayers[0]) ?? 'E1';
+    : ((activeLayers.includes('E2' as FixedLayer) ? 'E2' : activeLayers[0]) ?? 'E1');
   const [layer, setLayer] = useState<Layer>(defaultLayer);
   // Sync layer state with activeLayers: if the user lowers layer_count in the
   // env tab below the currently-selected layer (e.g. selected 'E5' then drops
@@ -206,6 +211,43 @@ export function PlotSpeciesTab({
     return out;
   }, [records, sortOrder, sortDir, activeLayers, stratified]);
 
+  /** The rows exactly as the FlatList renders them — layer headers included —
+   *  so the species order the modal steps through is the order on screen. */
+  const listData = useMemo(
+    () =>
+      (stratified ? activeLayers : (['T'] as Layer[])).flatMap<
+        { kind: 'header'; layer: Layer } | { kind: 'row'; record: PlotSpeciesRecordWithTaxon }
+      >((l) => {
+        const list = grouped[l];
+        if (list.length === 0) return [];
+        // 非分層模式（穿越線 / 定點計數）不顯示 header（單一 'T'，已在 chips 區告知）。
+        return [
+          ...(stratified ? [{ kind: 'header', layer: l } as const] : []),
+          ...list.map((r) => ({ kind: 'row', record: r }) as const),
+        ];
+      }),
+    [stratified, activeLayers, grouped],
+  );
+
+  const visibleRecords = useMemo(
+    () => listData.flatMap((i) => (i.kind === 'row' ? [i.record] : [])),
+    [listData],
+  );
+
+  const modalPager = useMemo(() => {
+    if (!modal || modal.mode !== 'edit') return undefined;
+    const index = visibleRecords.findIndex((r) => r.id === modal.record.id);
+    if (index < 0) return undefined;
+    return {
+      index,
+      total: visibleRecords.length,
+      onStep: (dir: -1 | 1) => {
+        const next = visibleRecords[index + dir];
+        if (next) setModal({ mode: 'edit', record: next });
+      },
+    };
+  }, [modal, visibleRecords]);
+
   const handlePickSort = async () => {
     const orders: RecordSort[] = ['observed', 'cname', 'name', 'family'];
     const labels: Record<RecordSort, string> = {
@@ -243,9 +285,7 @@ export function PlotSpeciesTab({
       updatePlotSpeciesTaxon(target.id, taxon.taxon_id);
       reload();
       onChanged();
-      useToast.getState().show(
-        tr('plotSpecies.taxonChanged', { name: taxon.cname || taxon.name }),
-      );
+      useToast.getState().show(tr('plotSpecies.taxonChanged', { name: taxon.cname || taxon.name }));
       return;
     }
     // iOS UIKit refuses to present a Modal while the keyboard / Chinese IME
@@ -272,6 +312,7 @@ export function PlotSpeciesTab({
         life_stage: v.life_stage,
         reproductive_condition: serializeMultiAttribute(v.reproductive_condition),
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
+        degree_of_establishment: v.degree_of_establishment,
         detection_type: v.detection_type,
         adopted: modal.adopted,
       });
@@ -306,6 +347,7 @@ export function PlotSpeciesTab({
         life_stage: v.life_stage,
         reproductive_condition: serializeMultiAttribute(v.reproductive_condition),
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
+        degree_of_establishment: v.degree_of_establishment,
         detection_type: v.detection_type,
       });
     }
@@ -317,7 +359,10 @@ export function PlotSpeciesTab({
   // One record → the upload page with only this row pre-selected (see
   // app/session/[id].tsx handleUploadInat for the media gate rationale).
   const handleUploadInat = (record: PlotSpeciesRecordWithTaxon) => {
-    if (parsePhotoPaths(record.photo_paths).length + parsePhotoPaths(record.audio_paths).length === 0) {
+    if (
+      parsePhotoPaths(record.photo_paths).length + parsePhotoPaths(record.audio_paths).length ===
+      0
+    ) {
       useToast.getState().show(tr('inat.noMediaRecord'));
       return;
     }
@@ -327,7 +372,10 @@ export function PlotSpeciesTab({
   const inatSyncingId = useInatSync((s) => s.runningId);
   const modalRecord = modal?.mode === 'edit' ? modal.record : null;
   const modalInatChanged = useMemo(
-    () => (modalRecord && modalRecord.inat_uploaded_at != null ? hasInatChanges({ kind: 'plot', id: plot.id }, modalRecord.id) : false),
+    () =>
+      modalRecord && modalRecord.inat_uploaded_at != null
+        ? hasInatChanges({ kind: 'plot', id: plot.id }, modalRecord.id)
+        : false,
     [modalRecord, plot.id],
   );
   const handleInatSync = async (record: PlotSpeciesRecordWithTaxon) => {
@@ -342,7 +390,11 @@ export function PlotSpeciesTab({
       toast(
         r.noop
           ? tr('inat.syncNoChange')
-          : tr('inat.syncDone', { added: r.annotationsAdded, removed: r.annotationsRemoved, media: r.mediaSent }),
+          : tr('inat.syncDone', {
+              added: r.annotationsAdded,
+              removed: r.annotationsRemoved,
+              media: r.mediaSent,
+            }),
       );
       reload();
       onChanged();
@@ -371,7 +423,10 @@ export function PlotSpeciesTab({
     const next = parsePhotoPaths(record.audio_paths).filter((u) => u !== uri);
     updatePlotSpeciesAudio(record.id, next);
     void deleteAudioFile(uri);
-    setModal({ mode: 'edit', record: { ...record, audio_paths: next.length > 0 ? JSON.stringify(next) : null } });
+    setModal({
+      mode: 'edit',
+      record: { ...record, audio_paths: next.length > 0 ? JSON.stringify(next) : null },
+    });
     reload();
     onChanged();
   };
@@ -379,14 +434,19 @@ export function PlotSpeciesTab({
   const handleAddPhotoForModal = async (mode: 'camera' | 'library') => {
     if (!modal) return;
     try {
-      const { captureAndSavePhoto, pickPhotos, buildContextFromPlotRecord } = await import(
-        '~/lib/photoCapture'
-      );
+      const { captureAndSavePhoto, pickPhotos, buildContextFromPlotRecord } =
+        await import('~/lib/photoCapture');
       // EXIF/caption context: from the saved record in edit mode, or synthesized
       // from the picked taxon in create mode (no record exists yet).
       const ctx =
         modal.mode === 'edit'
-          ? buildContextFromPlotRecord(modal.record)
+          ? buildContextFromPlotRecord(modal.record, {
+              // A plot species usually has no coordinate of its own; the plot's
+              // centre is where the observation actually was.
+              lat: plot.decimal_latitude,
+              lng: plot.decimal_longitude,
+              accuracyM: plot.coord_uncertainty_m,
+            })
           : {
               taxon_id: modal.taxon.taxon_id,
               simple_name: modal.taxon.name,
@@ -595,6 +655,7 @@ export function PlotSpeciesTab({
         life_stage: r.life_stage ?? null,
         reproductive_condition: parseMultiAttribute(r.reproductive_condition),
         leaf_phenology: parseMultiAttribute(r.leaf_phenology),
+        degree_of_establishment: r.degree_of_establishment ?? null,
         detection_type: r.detection_type ?? null,
       } satisfies PlotValueDraft,
       kingdom: r.kingdom ?? null,
@@ -624,7 +685,7 @@ export function PlotSpeciesTab({
       />
       {/* Subplot switcher (小區) — scopes the whole species tab to one subplot. */}
       {subplotMode ? (
-        <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2">
+        <View className="border-b border-gray-100 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-900">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -654,7 +715,7 @@ export function PlotSpeciesTab({
       ) : null}
 
       {/* Layer focus chips (fixed plots only) */}
-      <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+      <View className="border-b border-gray-100 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
         <View className="mb-2 flex-row items-center justify-end">
           <Pressable
             onPress={handlePickSort}
@@ -677,7 +738,9 @@ export function PlotSpeciesTab({
         {!stratified ? (
           <Text className="text-[11px] text-gray-500 dark:text-gray-400">
             {isPointCount ? tr('plotSpecies.pointCountRecord') : tr('plotSpecies.transectRecord')}
-            {grouped['T'].length > 0 ? tr('plotSpecies.recordedCount', { count: grouped['T'].length }) : ''}
+            {grouped['T'].length > 0
+              ? tr('plotSpecies.recordedCount', { count: grouped['T'].length })
+              : ''}
           </Text>
         ) : (
           <>
@@ -699,7 +762,9 @@ export function PlotSpeciesTab({
                     className={`items-center justify-center rounded-md px-2.5 py-1 ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
                     style={{ minWidth: 38 }}
                   >
-                    <Text className={`text-xs font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+                    <Text
+                      className={`text-xs font-bold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                    >
                       {l}
                     </Text>
                   </Pressable>
@@ -708,7 +773,9 @@ export function PlotSpeciesTab({
             </ScrollView>
             <Text className="mt-1 text-[11px] text-gray-500 dark:text-gray-400" numberOfLines={1}>
               {layerLabel(layer)}
-              {grouped[layer].length > 0 ? tr('plotSpecies.recordedCount', { count: grouped[layer].length }) : ''}
+              {grouped[layer].length > 0
+                ? tr('plotSpecies.recordedCount', { count: grouped[layer].length })
+                : ''}
             </Text>
           </>
         )}
@@ -716,17 +783,7 @@ export function PlotSpeciesTab({
 
       {/* Records grouped by layer */}
       <FlatList
-        data={(stratified ? activeLayers : (['T'] as Layer[])).flatMap<
-          { kind: 'header'; layer: Layer } | { kind: 'row'; record: PlotSpeciesRecordWithTaxon }
-        >((l) => {
-          const list = grouped[l];
-          if (list.length === 0) return [];
-          // 非分層模式（穿越線 / 定點計數）不顯示 header（單一 'T'，已在 chips 區告知）。
-          return [
-            ...(stratified ? [{ kind: 'header', layer: l } as const] : []),
-            ...list.map((r) => ({ kind: 'row', record: r }) as const),
-          ];
-        })}
+        data={listData}
         keyExtractor={(item, idx) =>
           item.kind === 'header' ? `h-${item.layer}` : `r-${item.record.id}-${idx}`
         }
@@ -734,7 +791,7 @@ export function PlotSpeciesTab({
         automaticallyAdjustKeyboardInsets
         ListHeaderComponent={
           subplotMode && activeSubplotId != null ? (
-            <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2">
+            <View className="border-b border-gray-100 bg-white px-4 py-2 dark:border-gray-800 dark:bg-gray-900">
               <SubplotLayerInputs
                 subplotId={activeSubplotId}
                 activeLayers={activeLayers}
@@ -747,7 +804,7 @@ export function PlotSpeciesTab({
         renderItem={({ item }) => {
           if (item.kind === 'header') {
             return (
-              <View className="bg-gray-100 dark:bg-gray-800 px-4 py-1.5">
+              <View className="bg-gray-100 px-4 py-1.5 dark:bg-gray-800">
                 <Text className="text-xs font-semibold text-gray-600 dark:text-gray-400">
                   {layerLabel(item.layer)} ({grouped[item.layer].length})
                 </Text>
@@ -795,20 +852,31 @@ export function PlotSpeciesTab({
       />
 
       {replaceTarget ? (
-        <View className="flex-row items-center border-t border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-2">
+        <View className="flex-row items-center border-t border-amber-200 bg-amber-50 px-4 py-2 dark:border-amber-900 dark:bg-amber-950/40">
           <Ionicons name="swap-horizontal" size={14} color="#d97706" />
-          <Text className="ml-2 flex-1 text-xs text-amber-800 dark:text-amber-300" numberOfLines={1}>
+          <Text
+            className="ml-2 flex-1 text-xs text-amber-800 dark:text-amber-300"
+            numberOfLines={1}
+          >
             {tr('plotSpecies.changeTaxonBanner', {
               name: replaceTarget.common_name_c || replaceTarget.simple_name,
             })}
           </Text>
-          <Pressable onPress={() => setReplaceTarget(null)} hitSlop={8} className="active:opacity-70">
+          <Pressable
+            onPress={() => setReplaceTarget(null)}
+            hitSlop={8}
+            className="active:opacity-70"
+          >
             <Text className="text-xs font-medium text-amber-800 dark:text-amber-300">
               {tr('common.cancel')}
             </Text>
           </Pressable>
         </View>
       ) : null}
+
+      {/* Record stepping sits ABOVE the dock: chrome below a KeyboardStickyView
+          is what its `offset.opened` compensates for. */}
+      <RecordStepBar kind="plot" id={plot.id} />
 
       {/* SearchBox sticks above the keyboard, follows accessory-bar changes */}
       <KeyboardStickyView offset={{ opened: insets.bottom }}>
@@ -843,6 +911,8 @@ export function PlotSpeciesTab({
           onAddPhoto={handleAddPhotoForModal}
           onRemovePhoto={handleRemovePhotoForModal}
           audioUris={modal.mode === 'edit' ? parsePhotoPaths(modal.record.audio_paths) : undefined}
+          occurrenceId={modal.mode === 'edit' ? modal.record.occurrence_id : null}
+          updatedAt={modal.mode === 'edit' ? modal.record.updated_at : null}
           inatObservationId={modal.mode === 'edit' ? modal.record.inat_observation_id : null}
           inatUploadedAt={modal.mode === 'edit' ? modal.record.inat_uploaded_at : null}
           inat={
@@ -857,6 +927,7 @@ export function PlotSpeciesTab({
           }
           onAddAudio={modal.mode === 'edit' ? handleAddAudioForModal : undefined}
           onRemoveAudio={modal.mode === 'edit' ? handleRemoveAudioForModal : undefined}
+          pager={modalPager}
           onCancel={() => {
             setPendingPhotos([]);
             setModal(null);
@@ -888,7 +959,7 @@ function SpeciesRow({
       onPress={onPress}
       onLongPress={onLongPress}
       delayLongPress={350}
-      className={`flex-row items-start border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${uploaded ? 'bg-lime-50 dark:bg-lime-900/30 active:bg-lime-100 dark:active:bg-lime-900/50' : 'bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800'}`}
+      className={`flex-row items-start border-b border-gray-100 px-4 py-3 dark:border-gray-800 ${uploaded ? 'bg-lime-50 active:bg-lime-100 dark:bg-lime-900/30 dark:active:bg-lime-900/50' : 'bg-white active:bg-gray-50 dark:bg-gray-900 dark:active:bg-gray-800'}`}
     >
       <View className="flex-1">
         <View className="flex-row items-center" style={{ flexWrap: 'wrap' }}>
@@ -896,13 +967,19 @@ function SpeciesRow({
             {record.common_name_c || tr('species.noChineseName')}
           </Text>
           {record.is_endemic === 'true' ? (
-            <Text className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">{tr('species.endemicShort')}</Text>
+            <Text className="ml-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+              {tr('species.endemicShort')}
+            </Text>
           ) : null}
           {ab ? (
-            <Text className={`ml-1.5 text-[11px] font-medium ${ab.textClass}`}>{ab.shortLabel}</Text>
+            <Text className={`ml-1.5 text-[11px] font-medium ${ab.textClass}`}>
+              {ab.shortLabel}
+            </Text>
           ) : null}
           {record.is_hybrid === 'true' ? (
-            <Text className="ml-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">{tr('plotSpecies.hybridShort')}</Text>
+            <Text className="ml-1.5 text-[11px] font-medium text-purple-700 dark:text-purple-300">
+              {tr('plotSpecies.hybridShort')}
+            </Text>
           ) : null}
         </View>
         <ScientificName
@@ -930,7 +1007,10 @@ function SpeciesRow({
           </View>
         ) : null}
         {record.notes ? (
-          <Text className="mt-0.5 text-[11px] italic text-gray-500 dark:text-gray-400" numberOfLines={1}>
+          <Text
+            className="mt-0.5 text-[11px] italic text-gray-500 dark:text-gray-400"
+            numberOfLines={1}
+          >
             {record.notes}
           </Text>
         ) : null}
@@ -957,13 +1037,21 @@ function ValueBadge({
   if (kind === 'count' && onAdjust) {
     return (
       <View className="flex-row items-center">
-        <Pressable onPress={() => onAdjust(-1)} hitSlop={10} className="px-1.5 py-1 active:opacity-50">
+        <Pressable
+          onPress={() => onAdjust(-1)}
+          hitSlop={10}
+          className="px-1.5 py-1 active:opacity-50"
+        >
           <Ionicons name="remove-circle-outline" size={22} color="#ea580c" />
         </Pressable>
-        <View className="min-w-[40px] items-center rounded-md bg-slate-100 dark:bg-slate-800 px-2 py-1.5">
+        <View className="min-w-[40px] items-center rounded-md bg-slate-100 px-2 py-1.5 dark:bg-slate-800">
           <Text className="text-sm font-semibold text-slate-700 dark:text-slate-200">{badge}</Text>
         </View>
-        <Pressable onPress={() => onAdjust(1)} hitSlop={10} className="px-1.5 py-1 active:opacity-50">
+        <Pressable
+          onPress={() => onAdjust(1)}
+          hitSlop={10}
+          className="px-1.5 py-1 active:opacity-50"
+        >
           <Ionicons name="add-circle-outline" size={22} color="#ea580c" />
         </Pressable>
       </View>
@@ -973,7 +1061,10 @@ function ValueBadge({
   // Tone by kind
   const tone =
     kind === 'BB'
-      ? { bg: 'bg-emerald-100 dark:bg-emerald-900/60', text: 'text-emerald-700 dark:text-emerald-300' }
+      ? {
+          bg: 'bg-emerald-100 dark:bg-emerald-900/60',
+          text: 'text-emerald-700 dark:text-emerald-300',
+        }
       : kind === 'percent'
         ? { bg: 'bg-blue-100 dark:bg-blue-900/60', text: 'text-blue-700 dark:text-blue-300' }
         : kind === 'DBH'
@@ -1030,7 +1121,7 @@ function MiniNum({
   }, [value]);
   const toast = useToast((s) => s.show);
   return (
-    <View className="flex-1 flex-row items-center rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2">
+    <View className="flex-1 flex-row items-center rounded-md border border-gray-200 bg-white px-2 dark:border-gray-700 dark:bg-gray-900">
       <TextInput
         value={draft}
         onChangeText={setDraft}
@@ -1057,7 +1148,9 @@ function MiniNum({
         keyboardType="decimal-pad"
         className="flex-1 py-1.5 text-sm text-gray-900 dark:text-gray-100"
       />
-      {suffix ? <Text className="ml-1 text-[11px] text-gray-500 dark:text-gray-400">{suffix}</Text> : null}
+      {suffix ? (
+        <Text className="ml-1 text-[11px] text-gray-500 dark:text-gray-400">{suffix}</Text>
+      ) : null}
     </View>
   );
 }
@@ -1083,7 +1176,11 @@ function SubplotLayerInputs({
   if (activeLayers.length === 0) return null;
   return (
     <View className="mt-2">
-      <Pressable onPress={() => setOpen((o) => !o)} className="flex-row items-center py-1" hitSlop={6}>
+      <Pressable
+        onPress={() => setOpen((o) => !o)}
+        className="flex-row items-center py-1"
+        hitSlop={6}
+      >
         <Ionicons name={open ? 'chevron-down' : 'chevron-forward'} size={14} color="#6b7280" />
         <Text className="ml-1 text-xs font-medium text-gray-600 dark:text-gray-400">
           {tr('plotSpecies.subplotCoverHeight')}

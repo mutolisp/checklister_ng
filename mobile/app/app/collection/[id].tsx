@@ -39,6 +39,7 @@ import {
   type SpecimenWithTaxon,
 } from '~/db';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
+import { RecordStepBar } from '~/components/RecordStepBar';
 import { showActionSheet } from '~/components/ActionSheet';
 import { deleteAudioFile } from '~/lib/audioCapture';
 import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
@@ -156,7 +157,7 @@ function SpecimenRow({
   return (
     <Pressable
       onPress={onPress}
-      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 py-3 ${uploaded ? 'bg-lime-50 dark:bg-lime-900/30 active:bg-lime-100 dark:active:bg-lime-900/50' : 'bg-white dark:bg-gray-900 active:bg-gray-50 dark:active:bg-gray-800'}`}
+      className={`flex-row items-center border-b border-gray-100 px-4 py-3 dark:border-gray-800 ${uploaded ? 'bg-lime-50 active:bg-lime-100 dark:bg-lime-900/30 dark:active:bg-lime-900/50' : 'bg-white active:bg-gray-50 dark:bg-gray-900 dark:active:bg-gray-800'}`}
     >
       {selectMode ? (
         <Ionicons
@@ -225,7 +226,10 @@ function SpecimenRow({
             <Ionicons name="location" size={11} color="#2563eb" style={{ marginLeft: 6 }} />
           ) : null}
           {attributes ? (
-            <Text className="ml-2 flex-1 text-[11px] text-emerald-700 dark:text-emerald-400" numberOfLines={1}>
+            <Text
+              className="ml-2 flex-1 text-[11px] text-emerald-700 dark:text-emerald-400"
+              numberOfLines={1}
+            >
               {attributes}
             </Text>
           ) : null}
@@ -370,6 +374,21 @@ export default function CollectionTripScreen() {
   // same array, so labels come out in whatever order is on screen.
   const display = sortSpecimens(specimens, sortKey);
 
+  /** Step the detail sheet through `display` — the order actually on screen. */
+  const detailPager = useMemo(() => {
+    if (!active) return undefined;
+    const index = display.findIndex((s) => s.id === active.id);
+    if (index < 0) return undefined;
+    return {
+      index,
+      total: display.length,
+      onStep: (dir: -1 | 1) => {
+        const next = display[index + dir];
+        if (next) setActive(next);
+      },
+    };
+  }, [display, active]);
+
   const handlePickSort = async () => {
     const keys: CollectionSort[] = ['collected', 'number', 'family', 'name'];
     const idx = await showActionSheet({
@@ -464,9 +483,8 @@ export default function CollectionTripScreen() {
   const handleAddPhoto = async (mode: 'camera' | 'library') => {
     if (!active) return;
     try {
-      const { captureAndSavePhoto, pickPhotos, buildContextFromSpecimen } = await import(
-        '~/lib/photoCapture'
-      );
+      const { captureAndSavePhoto, pickPhotos, buildContextFromSpecimen } =
+        await import('~/lib/photoCapture');
       let newUris: string[] = [];
       if (mode === 'camera') {
         const uri = await captureAndSavePhoto(buildContextFromSpecimen(active));
@@ -494,7 +512,11 @@ export default function CollectionTripScreen() {
   // One record → the upload page with only this row pre-selected (see
   // app/session/[id].tsx handleUploadInat for the media gate rationale).
   const handleUploadInat = (specimen: SpecimenWithTaxon) => {
-    if (parsePhotoPaths(specimen.photo_paths).length + parsePhotoPaths(specimen.audio_paths).length === 0) {
+    if (
+      parsePhotoPaths(specimen.photo_paths).length +
+        parsePhotoPaths(specimen.audio_paths).length ===
+      0
+    ) {
       toast(t('inat.noMediaRecord'));
       return;
     }
@@ -503,7 +525,10 @@ export default function CollectionTripScreen() {
 
   const inatSyncingId = useInatSync((s) => s.runningId);
   const activeInatChanged = useMemo(
-    () => (active && active.inat_uploaded_at != null ? hasInatChanges({ kind: 'collection', id: tripId }, active.id) : false),
+    () =>
+      active && active.inat_uploaded_at != null
+        ? hasInatChanges({ kind: 'collection', id: tripId }, active.id)
+        : false,
     [active, tripId],
   );
   const handleInatSync = async (specimen: SpecimenWithTaxon) => {
@@ -517,7 +542,11 @@ export default function CollectionTripScreen() {
       toast(
         r.noop
           ? t('inat.syncNoChange')
-          : t('inat.syncDone', { added: r.annotationsAdded, removed: r.annotationsRemoved, media: r.mediaSent }),
+          : t('inat.syncDone', {
+              added: r.annotationsAdded,
+              removed: r.annotationsRemoved,
+              media: r.mediaSent,
+            }),
       );
       refreshActive(specimen.id);
     } catch (e) {
@@ -533,7 +562,10 @@ export default function CollectionTripScreen() {
 
   const handleRemoveAudio = (uri: string) => {
     if (!active) return;
-    updateSpecimenAudio(active.id, parsePhotoPaths(active.audio_paths).filter((u) => u !== uri));
+    updateSpecimenAudio(
+      active.id,
+      parsePhotoPaths(active.audio_paths).filter((u) => u !== uri),
+    );
     void deleteAudioFile(uri);
     refreshActive(active.id);
   };
@@ -600,7 +632,9 @@ export default function CollectionTripScreen() {
               <Pressable
                 onPress={() =>
                   setPicked(
-                    picked.size === display.length ? new Set() : new Set(display.map((sp) => sp.id)),
+                    picked.size === display.length
+                      ? new Set()
+                      : new Set(display.map((sp) => sp.id)),
                   )
                 }
                 hitSlop={8}
@@ -634,64 +668,75 @@ export default function CollectionTripScreen() {
             </View>
           </View>
         ) : (
-        <View className="flex-row items-center gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
-          <Pressable onPress={() => setProjectSheetOpen(true)} hitSlop={8} className="active:opacity-70">
-            <Ionicons
-              name={project && project.id !== 0 ? 'folder' : 'folder-open-outline'}
-              size={18}
-              color={project && project.id !== 0 ? '#2563eb' : '#9ca3af'}
-            />
-          </Pressable>
-          <Pressable
-            onPress={() => setSurveyorSheetOpen(true)}
-            hitSlop={6}
-            className="flex-1 flex-row items-center active:opacity-70"
-          >
-            <Ionicons
-              name="people-outline"
-              size={14}
-              color={trip.recorded_by ? '#2563eb' : '#9ca3af'}
-            />
-            <Text
-              className={`ml-1 flex-1 text-xs ${trip.recorded_by ? 'font-medium text-blue-700 dark:text-blue-300' : 'italic text-gray-500 dark:text-gray-400'}`}
-              numberOfLines={1}
+          <View className="flex-row items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-900">
+            <Pressable
+              onPress={() => setProjectSheetOpen(true)}
+              hitSlop={8}
+              className="active:opacity-70"
             >
-              {trip.recorded_by || t('collection.collectorEmpty')}
+              <Ionicons
+                name={project && project.id !== 0 ? 'folder' : 'folder-open-outline'}
+                size={18}
+                color={project && project.id !== 0 ? '#2563eb' : '#9ca3af'}
+              />
+            </Pressable>
+            <Pressable
+              onPress={() => setSurveyorSheetOpen(true)}
+              hitSlop={6}
+              className="flex-1 flex-row items-center active:opacity-70"
+            >
+              <Ionicons
+                name="people-outline"
+                size={14}
+                color={trip.recorded_by ? '#2563eb' : '#9ca3af'}
+              />
+              <Text
+                className={`ml-1 flex-1 text-xs ${trip.recorded_by ? 'font-medium text-blue-700 dark:text-blue-300' : 'italic text-gray-500 dark:text-gray-400'}`}
+                numberOfLines={1}
+              >
+                {trip.recorded_by || t('collection.collectorEmpty')}
+              </Text>
+            </Pressable>
+            {specimens.length > 0 ? (
+              <>
+                <Pressable
+                  onPress={handlePickSort}
+                  hitSlop={6}
+                  className="flex-row items-center rounded-full bg-gray-100 px-2.5 py-1 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
+                >
+                  <Ionicons name="swap-vertical" size={13} color="#4b5563" />
+                  <Text className="ml-1 text-[11px] font-medium text-gray-700 dark:text-gray-300">
+                    {t(SORT_LABEL[sortKey])}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setSelectMode(true)}
+                  hitSlop={8}
+                  className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
+                >
+                  <Ionicons name="checkbox-outline" size={15} color="#4b5563" />
+                </Pressable>
+              </>
+            ) : null}
+            <Text className="text-xs text-gray-500 dark:text-gray-400">
+              {t('collection.specimenCount', { count: specimens.length })}
             </Text>
-          </Pressable>
-          {specimens.length > 0 ? (
-            <>
-              <Pressable
-                onPress={handlePickSort}
-                hitSlop={6}
-                className="flex-row items-center rounded-full bg-gray-100 px-2.5 py-1 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
-              >
-                <Ionicons name="swap-vertical" size={13} color="#4b5563" />
-                <Text className="ml-1 text-[11px] font-medium text-gray-700 dark:text-gray-300">
-                  {t(SORT_LABEL[sortKey])}
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setSelectMode(true)}
-                hitSlop={8}
-                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
-              >
-                <Ionicons name="checkbox-outline" size={15} color="#4b5563" />
-              </Pressable>
-            </>
-          ) : null}
-          <Text className="text-xs text-gray-500 dark:text-gray-400">
-            {t('collection.specimenCount', { count: specimens.length })}
-          </Text>
-        </View>
+          </View>
         )}
         {replaceTarget ? (
-          <View className="flex-row items-center border-b border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-2">
+          <View className="flex-row items-center border-b border-amber-200 bg-amber-50 px-4 py-2 dark:border-amber-900 dark:bg-amber-950/40">
             <Ionicons name="swap-horizontal" size={14} color="#d97706" />
-            <Text className="ml-2 flex-1 text-xs text-amber-800 dark:text-amber-300" numberOfLines={1}>
+            <Text
+              className="ml-2 flex-1 text-xs text-amber-800 dark:text-amber-300"
+              numberOfLines={1}
+            >
               {t('collection.changeTaxonBanner', { number: replaceTarget.record_number })}
             </Text>
-            <Pressable onPress={() => setReplaceTarget(null)} hitSlop={8} className="active:opacity-70">
+            <Pressable
+              onPress={() => setReplaceTarget(null)}
+              hitSlop={8}
+              className="active:opacity-70"
+            >
               <Text className="text-xs font-medium text-amber-800 dark:text-amber-300">
                 {t('common.cancel')}
               </Text>
@@ -749,6 +794,8 @@ export default function CollectionTripScreen() {
         )}
       </View>
 
+      {/* Above the dock on purpose — see RecordStepBar's header comment. */}
+      <RecordStepBar kind="collection" id={tripId} />
       <LabelExportSheet
         visible={labelSheetOpen}
         count={picked.size}
@@ -786,6 +833,7 @@ export default function CollectionTripScreen() {
           setActive(null);
         }}
         duplicate={active ? dupNumbers.has(active.record_number) : false}
+        pager={detailPager}
         onDelete={() => {
           if (active) handleDelete(active);
         }}

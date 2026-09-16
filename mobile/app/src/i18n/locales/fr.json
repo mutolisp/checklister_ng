@@ -15,7 +15,8 @@
     "continue": "Continuer",
     "undo": "UNDO",
     "remove": "Retirer",
-    "loading": "Chargement..."
+    "loading": "Chargement...",
+    "more": "Plus"
   },
   "group": {
     "plantae": "Plantes",
@@ -126,7 +127,7 @@
   },
   "gps": {
     "permTitle": "Autorisation de localisation requise",
-    "permMsg": "Allez dans Réglages → Checklister → Position et activez « Lorsque l'app est active »",
+    "permMsg": "Allez dans Réglages → Mitalivana → Position et activez « Lorsque l'app est active »",
     "posRecorded": "Position actuelle enregistrée",
     "posFailTitle": "Impossible d'obtenir la position",
     "trackBusyTitle": "Un autre enregistrement enregistre déjà une trace",
@@ -236,7 +237,34 @@
     "collectionCount_one": "Récoltes {{count}}",
     "collectionCount_many": "Récoltes {{count}}",
     "collectionCount_other": "Récoltes {{count}}",
-    "uploadInat": "iNat"
+    "uploadInat": "iNat",
+    "mergeProvenance": "Fusionné à partir de : {{sources}}",
+    "moveToProject": "Déplacer vers un projet",
+    "movedToProject_one": "{{count}} relevé déplacé vers « {{name}} »",
+    "movedToProject_many": "{{count}} relevés déplacés vers « {{name}} »",
+    "movedToProject_other": "{{count}} relevés déplacés vers « {{name}} »",
+    "merge": "Fusionner",
+    "mergeTitle": "Fusionner les {{noun}}",
+    "mergeCount_one": "Fusion de {{count}} relevé",
+    "mergeCount_many": "Fusion de {{count}} relevés",
+    "mergeCount_other": "Fusion de {{count}} relevés",
+    "mergePrimary": "Relevé principal",
+    "mergePrimaryHint": "Les coordonnées, les données environnementales, le projet et le site proviennent du relevé principal ; la période couvre tous les relevés.",
+    "mergeDedupe": "Regrouper les espèces répétées",
+    "mergeDedupeHint": "Désactivé : chaque observation est conservée, même si une espèce revient plusieurs fois.",
+    "mergeKeepSources": "Conserver les relevés d’origine",
+    "mergeKeepSourcesHint": "Désactivé : les relevés fusionnés sont supprimés une fois le nouveau écrit.",
+    "mergeDeleteWarn_one": "Le {{count}} relevé d’origine sera supprimé. Cette action est irréversible.",
+    "mergeDeleteWarn_many": "Les {{count}} relevés d’origine seront supprimés. Cette action est irréversible.",
+    "mergeDeleteWarn_other": "Les {{count}} relevés d’origine seront supprimés. Cette action est irréversible.",
+    "mergeExplain": "Chaque observation conserve sa date, ses coordonnées, ses photos et ses sons. L’état d’envoi vers iNaturalist n’est pas repris.",
+    "mergeNeedTwo": "Sélectionnez au moins deux relevés",
+    "mergeSameKind": "Seuls des relevés de même type peuvent être fusionnés",
+    "mergeNoCollection": "Les récoltes ne peuvent pas être fusionnées — les numéros de récolte correspondent à des spécimens physiques",
+    "mergeSamePlotType": "Seules des placettes utilisant la même méthode peuvent être fusionnées",
+    "mergeFailed": "Échec de la fusion",
+    "merged": "Fusionné sous « {{name}} »",
+    "open": "Ouvrir"
   },
   "export": {
     "preparing": "Préparation…",
@@ -258,7 +286,6 @@
     "key": "Clé de détermination",
     "projects": "Gestion des projets",
     "sites": "Gestion des sites",
-    "settings": "Préférences",
     "surveyors": "Observateurs",
     "about": "À propos",
     "favorites": "Favoris",
@@ -279,7 +306,8 @@
     "projectsDesc": "Projets et leurs listes d'espèces / placettes",
     "sites": "Sites géographiques",
     "sitesDesc": "Points / lignes / polygones sur la carte",
-    "backupDesc": "Sauvegarde et restauration des données / photos"
+    "backupDesc": "Sauvegarde et restauration des données / photos",
+    "favoritesDesc": "Listes d'espèces habituelles ; ajoutables en bloc à un relevé"
   },
   "record": {
     "kindSession": "Liste d'espèces rapide",
@@ -292,7 +320,8 @@
     "defaultPlot": "Par défaut : inventaire de placette",
     "kindCollection": "Enregistrement de récolte",
     "defaultCollection": "Par défaut : enregistrement de récolte",
-    "kindImport": "Importer un enregistrement (.yml / .zip)"
+    "kindImport": "Importer un enregistrement (.yml / .zip)",
+    "lastUpdated": "Dernière modification"
   },
   "rank": {
     "kingdom": "Règne",
@@ -362,6 +391,8 @@
     "longPressClear": "Appui long pour effacer",
     "tapGps": "Touchez GPS",
     "externalLinks": "Liens externes",
+    "inatObservation": "Observation iNaturalist",
+    "inatTaxon": "Taxon iNaturalist",
     "addToRecord": "Ajouter à l'enregistrement en cours",
     "inFavorites": "Dans les favoris",
     "matchedSynonymPre": "Vous avez saisi ",
@@ -386,6 +417,7 @@
     "lifeStageLabel": "Stade de développement (lifeStage)",
     "reproLabel": "Fleur / fruit (reproductiveCondition, sélection multiple)",
     "leafLabel": "Feuille (leafPhenology, sélection multiple)",
+    "establishmentLabel": "Sauvage / géré (degreeOfEstablishment)",
     "sex": {
       "female": "Femelle",
       "male": "Mâle",
@@ -418,6 +450,11 @@
       "shedding": "Chute des feuilles",
       "green": "Feuilles vertes",
       "colored": "Feuilles colorées"
+    },
+    "establishment": {
+      "wild": "Sauvage",
+      "captive": "Captif",
+      "cultivated": "Cultivé"
     },
     "filledCount_one": "{{count}} renseigné",
     "filledCount_many": "{{count}} renseignés",
@@ -544,14 +581,12 @@
     "manualCoord": "positionné manuellement"
   },
   "settings": {
-    "title": "Préférences",
-    "sectionAppearance": "Apparence",
-    "sectionInteraction": "Interaction",
-    "sectionRegions": "Listes régionales",
-    "sectionSurvey": "Inventaire",
-    "sectionExport": "Export",
+    "sectionAppearance": "Apparence et interaction",
+    "sectionSurvey": "Réglages d'inventaire",
     "exportPrefDesc": "Formats géo, photos, rangs et statuts de conservation, formats d'analyse",
     "sectionData": "Données",
+    "sectionRecords": "Relevés",
+    "sectionSync": "Listes et synchronisation",
     "theme": "Thème",
     "themeAuto": "Selon le système",
     "themeLight": "Clair",
@@ -627,7 +662,6 @@
     "nRows_one": "{{count}} ligne",
     "nRows_many": "{{count}} lignes",
     "nRows_other": "{{count}} lignes",
-    "sectionInat": "iNaturalist",
     "inaturalist": "Compte iNaturalist",
     "inaturalistDesc": "Liez votre compte pour envoyer les enregistrements avec photos ou sons comme observations",
     "inaturalistLinked": "Lié : {{login}}"
@@ -675,7 +709,7 @@
     "restoreFromFile": "Restaurer depuis un fichier de sauvegarde",
     "invalidFile": "Ce n'est pas un fichier de sauvegarde valide (user.db ou manifest.json manquant)",
     "corrupt": "Fichier de sauvegarde corrompu (manifest.json illisible)",
-    "notChecklister": "Ce n'est pas un fichier de sauvegarde Checklister",
+    "notChecklister": "Ce n'est pas un fichier de sauvegarde Mitalivana",
     "tooNew": "Cette sauvegarde provient d'une version plus récente de l'app (structure v{{version}}) ; mettez l'app à jour avant de restaurer.",
     "safetyTitle": "Sauvegardes de sécurité automatiques",
     "safetyDesc": "Instantanés créés par l'app avant une réparation des données. Vous pouvez les supprimer une fois vos données vérifiées.",
@@ -1965,6 +1999,7 @@
     "openTokenPage": "Ouvrir la page du jeton dans le navigateur",
     "pasteToken": "Coller le jeton depuis le presse-papiers",
     "geoprivacy": "Confidentialité de la position",
+    "uuidMismatch": "iNaturalist a attribué un uuid différent (envoyé {{sent}}, reçu {{got}}) ; cet enregistrement ne peut pas être synchronisé.",
     "geoprivacyOpen": "Ouverte",
     "geoprivacyObscured": "Floutée",
     "geoprivacyPrivate": "Privée",
@@ -1990,7 +2025,7 @@
     "recordsHeader": "Enregistrements à envoyer",
     "toggleAll": "Tout / aucun",
     "emptyList": "Aucun enregistrement ici n'a de photo ou de son",
-    "resultCompleted": "Dernier envoi : {{ok}} réussi(s), {{failed}} échoué(s), {{unresolved}} sans taxon iNat (nom seul)",
+    "resultCompleted": "Dernier envoi : {{ok}} réussi(s), {{failed}} échoué(s), {{unresolved}} sans taxon iNaturalist (nom seul)",
     "resultCancelled": "Dernier envoi annulé : {{ok}} réussi(s), {{failed}} échoué(s)",
     "resultOffline": "Dernier envoi interrompu (hors ligne) : {{ok}} réussi(s), {{failed}} échoué(s) ; les incomplets peuvent être renvoyés",
     "resultAuth": "Dernier envoi interrompu (connexion expirée) : {{ok}} réussi(s), {{failed}} échoué(s)",
@@ -2004,17 +2039,16 @@
     "noMediaRecord": "Cet enregistrement n'a ni photo ni son et ne peut pas être envoyé vers iNaturalist",
     "rowUploading": "Envoi…",
     "progressRequests": "{{done}} / {{total}} requêtes",
-    "uploadedBadge": "Sur iNat",
-    "uploadButton": "Envoyer vers iNat",
-    "syncButton": "Synchroniser avec iNat",
-    "syncChanged": "Synchroniser avec iNat (modifié)",
+    "uploadButton": "Envoyer vers iNaturalist",
+    "syncButton": "Synchroniser avec iNaturalist",
+    "syncChanged": "Synchroniser avec iNaturalist (modifié)",
     "syncing": "Synchronisation…",
-    "syncNoChange": "Déjà à jour sur iNat",
-    "syncDone": "Synchronisé avec iNat : annotations +{{added}} −{{removed}}, nouveaux médias {{media}}",
+    "syncNoChange": "Déjà à jour sur iNaturalist",
+    "syncDone": "Synchronisé avec iNaturalist : annotations +{{added}} −{{removed}}, nouveaux médias {{media}}",
     "syncFailed": "Échec de la synchronisation : {{msg}}",
-    "syncNotUploaded": "Cet enregistrement n’est pas encore sur iNat",
-    "syncAuth": "Connexion iNat expirée – reliez le compte dans les réglages",
+    "syncNotUploaded": "Cet enregistrement n’est pas encore sur iNaturalist",
+    "syncAuth": "Connexion iNaturalist expirée – reliez le compte dans les réglages",
     "syncOffline": "Hors ligne – synchronisation impossible",
-    "busy": "Un autre envoi ou une autre synchronisation iNat est en cours"
+    "busy": "Un autre envoi ou une autre synchronisation iNaturalist est en cours"
   }
 }

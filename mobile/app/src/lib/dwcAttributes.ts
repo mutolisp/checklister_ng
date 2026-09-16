@@ -5,7 +5,7 @@
  */
 
 import i18n from '~/i18n';
-import { parseMultiAttribute, serializeMultiAttribute } from './dwcMultiValue';
+import { establishmentDwcValue, parseMultiAttribute, serializeMultiAttribute } from './dwcMultiValue';
 
 // ────────── sex ──────────
 
@@ -140,6 +140,44 @@ export function reproductiveLabel(v: string | null | undefined): string {
 
 export type LeafPhenology = 'budding_leaf' | 'shedding' | 'green' | 'colored';
 
+// ────────── degreeOfEstablishment (wild / captive / cultivated) ──────────
+
+/**
+ * DwC `degreeOfEstablishment`. `captive` (B1) and `cultivated` (B2) are taken
+ * verbatim from the TDWG vocabulary
+ * (rs.gbif.org/vocabulary/dwc/degree_of_establishment_2022-02-02.xml).
+ *
+ * `wild` is OURS, not TDWG's: that vocabulary has no term for "a wild
+ * individual". Its nearest value, `native`, means "not transported beyond
+ * limits of native range" — a biogeographic claim, which a wild individual of a
+ * naturalised species would flatly contradict. So `wild` is recorded and round-
+ * tripped internally, and drives iNaturalist's `captive_flag: false`, but the
+ * DwC export leaves `degreeOfEstablishment` empty for it rather than emit a
+ * value GBIF would reject or a claim we cannot support.
+ */
+export type Establishment = 'wild' | 'captive' | 'cultivated';
+
+export function establishmentOptions(): Array<{ value: Establishment; label: string }> {
+  return [
+    { value: 'wild', label: i18n.t('attr.establishment.wild') },
+    { value: 'captive', label: i18n.t('attr.establishment.captive') },
+    { value: 'cultivated', label: i18n.t('attr.establishment.cultivated') },
+  ];
+}
+
+export function establishmentLabel(v: string | null | undefined): string {
+  return v ? i18n.t(`attr.establishment.${v}`) : '';
+}
+
+/** iNaturalist has one boolean, not three states: captive/cultivated → true,
+ *  wild → an explicit false, unrecorded → undefined so the field is omitted and
+ *  iNat keeps its own default. */
+export function establishmentCaptiveFlag(v: string | null | undefined): boolean | undefined {
+  if (v === 'captive' || v === 'cultivated') return true;
+  if (v === 'wild') return false;
+  return undefined;
+}
+
 export function leafPhenologyOptions(): Array<{ value: LeafPhenology; label: string }> {
   return [
     { value: 'budding_leaf', label: i18n.t('attr.leaf.buddingLeaf') },
@@ -164,6 +202,7 @@ export type SpeciesAttributes = {
   life_stage: LifeStage | null;
   reproductive_condition: ReproductiveCondition | null;
   leaf_phenology: LeafPhenology | null;
+  degree_of_establishment: Establishment | null;
 };
 
 export const EMPTY_ATTRIBUTES: SpeciesAttributes = {
@@ -171,6 +210,7 @@ export const EMPTY_ATTRIBUTES: SpeciesAttributes = {
   life_stage: null,
   reproductive_condition: null,
   leaf_phenology: null,
+  degree_of_establishment: null,
 };
 
 type AnyAttributes = {
@@ -178,6 +218,7 @@ type AnyAttributes = {
   life_stage?: string | null;
   reproductive_condition?: string | string[] | null;
   leaf_phenology?: string | string[] | null;
+  degree_of_establishment?: string | null;
 };
 
 function nonEmpty(v: string | string[] | null | undefined): boolean {
@@ -189,7 +230,11 @@ function nonEmpty(v: string | string[] | null | undefined): boolean {
 /** Has any attribute been set? (used to show a hint chip on the record card) */
 export function hasAttributes(a: AnyAttributes): boolean {
   return Boolean(
-    a.sex || a.life_stage || nonEmpty(a.reproductive_condition) || nonEmpty(a.leaf_phenology),
+    a.sex ||
+      a.life_stage ||
+      a.degree_of_establishment ||
+      nonEmpty(a.reproductive_condition) ||
+      nonEmpty(a.leaf_phenology),
   );
 }
 
@@ -200,6 +245,7 @@ type DraftShaped = {
   life_stage: string | null;
   reproductive_condition: string[];
   leaf_phenology: string[];
+  degree_of_establishment: string | null;
 };
 
 type RecordShape = {
@@ -207,6 +253,7 @@ type RecordShape = {
   life_stage?: string | null;
   reproductive_condition?: string | null;
   leaf_phenology?: string | null;
+  degree_of_establishment?: string | null;
 };
 
 /** Build a draft from raw DB record fields. */
@@ -216,6 +263,7 @@ export function attributesFromRecord(r: RecordShape): DraftShaped {
     life_stage: r.life_stage ?? null,
     reproductive_condition: parseMultiAttribute(r.reproductive_condition),
     leaf_phenology: parseMultiAttribute(r.leaf_phenology),
+    degree_of_establishment: r.degree_of_establishment ?? null,
   };
 }
 
@@ -226,6 +274,7 @@ export function attributesToColumns(d: DraftShaped) {
     life_stage: d.life_stage,
     reproductive_condition: serializeMultiAttribute(d.reproductive_condition),
     leaf_phenology: serializeMultiAttribute(d.leaf_phenology),
+    degree_of_establishment: d.degree_of_establishment,
   };
 }
 
@@ -234,11 +283,12 @@ export const EMPTY_DRAFT: DraftShaped = {
   life_stage: null,
   reproductive_condition: [],
   leaf_phenology: [],
+  degree_of_establishment: null,
 };
 
 // ────────── Multi-value helpers (JSON array <-> string[]) ──────────
 
-export { parseMultiAttribute, serializeMultiAttribute };
+export { establishmentDwcValue, parseMultiAttribute, serializeMultiAttribute };
 
 /** Toggle membership of `value` in `arr`. */
 export function toggleMultiValue(arr: string[], value: string): string[] {

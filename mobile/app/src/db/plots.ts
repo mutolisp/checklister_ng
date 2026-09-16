@@ -18,6 +18,7 @@ import { ensureExternalCopy } from './regionpacks';
 import { existingProjectId, resolveProjectIdByName } from './projects';
 import { createSite, deleteSiteIfUnreferenced, type ImportedSite } from './sites';
 import type { DuplicateRecordOptions } from './duplicate';
+import { latest, mergeOrder, unionSurveyors, unionTracks, type MergeRecordOptions } from './merge';
 import { defaultSurveyorString } from './surveyors';
 import i18n from '~/i18n';
 
@@ -167,6 +168,13 @@ export type PlotSpeciesRecord = {
   photo_paths: string | null;
   observed_at: number;
   created_at: number;
+  /** Last time the user changed this record's content (v32). iNat bookkeeping
+   *  writes in `inatSync.ts` deliberately do not count. */
+  updated_at: number;
+  /** DwC degreeOfEstablishment (v33): 'wild' | 'captive' | 'cultivated'.
+   *  NULL = 未記錄, which is a different statement from an explicit 'wild'.
+   *  Per-INDIVIDUAL — not to be confused with the taxon-level `alien_type`. */
+  degree_of_establishment: string | null;
   // DwC species attributes (v8)
   sex: string | null;
   life_stage: string | null;
@@ -199,33 +207,34 @@ export type PlotSpeciesRecord = {
   inat_sync_hash: string | null;
 };
 
-export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord & AdoptionStatus & {
-  simple_name: string;
-  name_author: string;
-  common_name_c: string;
-  family: string;
-  family_c: string;
-  rank: string;
-  is_endemic: string;
-  alien_type: string;
-  is_hybrid: string;
-  kingdom: string;
-  kingdom_c: string;
-  /** Class name from TaiCOL (used by life-stage UI for animals). */
-  class: string;
-  class_c: string;
-  phylum: string;
-  phylum_c: string;
-  order: string;
-  order_c: string;
-  genus: string;
-  genus_c: string;
-  // Conservation status (for checklist export). From TaiCOL.
-  redlist: string;
-  iucn: string;
-  cites: string;
-  protected: string;
-};
+export type PlotSpeciesRecordWithTaxon = PlotSpeciesRecord &
+  AdoptionStatus & {
+    simple_name: string;
+    name_author: string;
+    common_name_c: string;
+    family: string;
+    family_c: string;
+    rank: string;
+    is_endemic: string;
+    alien_type: string;
+    is_hybrid: string;
+    kingdom: string;
+    kingdom_c: string;
+    /** Class name from TaiCOL (used by life-stage UI for animals). */
+    class: string;
+    class_c: string;
+    phylum: string;
+    phylum_c: string;
+    order: string;
+    order_c: string;
+    genus: string;
+    genus_c: string;
+    // Conservation status (for checklist export). From TaiCOL.
+    redlist: string;
+    iucn: string;
+    cites: string;
+    protected: string;
+  };
 
 // 實作移到 ./uuid（SQLite CSPRNG）。這裡 re-export 讓既有 import 路徑不變。
 export { generateUuid };
@@ -475,7 +484,14 @@ export function setSubplotCount(plotId: number, count: number): void {
   }
   for (const s of existing) {
     if (s.idx > clamped) {
-      db.executeSync(`UPDATE plot_species_records SET subplot_id = NULL WHERE subplot_id = ?`, [s.id]);
+      // Counts as a user edit: they shrank the subplot count, so these records
+      // genuinely lost their 小區. (The same statement in `cleanup.ts` does NOT
+      // stamp — that one repairs orphaned references at startup, and stamping
+      // there would refresh every affected record's timestamp on launch.)
+      db.executeSync(
+        `UPDATE plot_species_records SET subplot_id = NULL, updated_at = ? WHERE subplot_id = ?`,
+        [Date.now(), s.id],
+      );
       db.executeSync(`DELETE FROM plot_subplots WHERE id = ?`, [s.id]);
     }
   }
@@ -673,30 +689,30 @@ export { buildTrackGeoJSON, parseTrackSegments, trackLengthMeters, type TrackSeg
 /** Replace the plot's track with the given segments (fast path used by UI). */
 export function writePlotTrack(plotId: number, segments: TrackSegment[]): void {
   const db = getUserDb();
-  db.executeSync(
-    `UPDATE plot_surveys SET track_geojson = ?, updated_at = ? WHERE id = ?`,
-    [buildTrackGeoJSON(segments), Date.now(), plotId],
-  );
+  db.executeSync(`UPDATE plot_surveys SET track_geojson = ?, updated_at = ? WHERE id = ?`, [
+    buildTrackGeoJSON(segments),
+    Date.now(),
+    plotId,
+  ]);
 }
 
 /** Mark the track finalized (locked from further append). Plot itself stays active. */
 export function finalizePlotTrack(plotId: number): void {
   const db = getUserDb();
-  db.executeSync(
-    `UPDATE plot_surveys SET track_finalized = 1, updated_at = ? WHERE id = ?`,
-    [Date.now(), plotId],
-  );
+  db.executeSync(`UPDATE plot_surveys SET track_finalized = 1, updated_at = ? WHERE id = ?`, [
+    Date.now(),
+    plotId,
+  ]);
 }
 
 /** Reverse of finalize: allow further track recording. */
 export function unfinalizePlotTrack(plotId: number): void {
   const db = getUserDb();
-  db.executeSync(
-    `UPDATE plot_surveys SET track_finalized = 0, updated_at = ? WHERE id = ?`,
-    [Date.now(), plotId],
-  );
+  db.executeSync(`UPDATE plot_surveys SET track_finalized = 0, updated_at = ? WHERE id = ?`, [
+    Date.now(),
+    plotId,
+  ]);
 }
-
 
 export function endPlotSurvey(id: number): void {
   const db = getUserDb();
@@ -789,6 +805,7 @@ export type AddPlotSpeciesInput = {
   life_stage?: string | null;
   reproductive_condition?: string | null;
   leaf_phenology?: string | null;
+  degree_of_establishment?: string | null;
   /** Per-record GPS (v13). */
   lat?: number | null;
   lng?: number | null;
@@ -807,11 +824,11 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
     `INSERT INTO plot_species_records
        (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
         organism_quantity, organism_quantity_type,
-        notes, sex, life_stage, reproductive_condition, leaf_phenology,
+        notes, sex, life_stage, reproductive_condition, leaf_phenology, degree_of_establishment,
         lat, lng, accuracy, detection_type,
         used_name_id, used_scientific_name,
-        observed_at, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        observed_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.plot_survey_id,
       input.taxon_id,
@@ -825,12 +842,14 @@ export function addPlotSpecies(input: AddPlotSpeciesInput): number {
       input.life_stage ?? null,
       input.reproductive_condition ?? null,
       input.leaf_phenology ?? null,
+      input.degree_of_establishment ?? null,
       input.lat ?? null,
       input.lng ?? null,
       input.accuracy ?? null,
       input.detection_type ?? null,
       input.adopted?.name_id ?? null,
       input.adopted?.scientific_name ?? null,
+      now,
       now,
       now,
     ],
@@ -849,12 +868,20 @@ export function deletePlotSpecies(id: number): void {
  *  re-determination path — the observation is the same, only the name changes. */
 export function updatePlotSpeciesTaxon(id: number, taxonId: string): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE plot_species_records SET taxon_id = ? WHERE id = ?`, [taxonId, id]);
+  db.executeSync(`UPDATE plot_species_records SET taxon_id = ?, updated_at = ? WHERE id = ?`, [
+    taxonId,
+    Date.now(),
+    id,
+  ]);
 }
 
 export function updatePlotSpeciesLayer(id: number, layer: Layer): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE plot_species_records SET layer = ? WHERE id = ?`, [layer, id]);
+  db.executeSync(`UPDATE plot_species_records SET layer = ?, updated_at = ? WHERE id = ?`, [
+    layer,
+    Date.now(),
+    id,
+  ]);
 }
 
 export function parseDbhValues(s: string | null): number[] {
@@ -873,6 +900,7 @@ export type PlotSpeciesAttributePatch = Partial<{
   life_stage: string | null;
   reproductive_condition: string | null;
   leaf_phenology: string | null;
+  degree_of_establishment: string | null;
   detection_type: string | null;
 }>;
 
@@ -904,6 +932,7 @@ export function updatePlotSpeciesValue(
     'life_stage',
     'reproductive_condition',
     'leaf_phenology',
+    'degree_of_establishment',
     'detection_type',
   ] as const) {
     if (col in patch) {
@@ -912,7 +941,8 @@ export function updatePlotSpeciesValue(
     }
   }
   if (sets.length === 0) return;
-  args.push(id);
+  sets.push('updated_at = ?');
+  args.push(Date.now(), id);
   db.executeSync(`UPDATE plot_species_records SET ${sets.join(', ')} WHERE id = ?`, args);
 }
 
@@ -925,12 +955,10 @@ export function updatePlotSpeciesLocation(
   accuracy: number | null = null,
 ): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE plot_species_records SET lat = ?, lng = ?, accuracy = ? WHERE id = ?`, [
-    lat,
-    lng,
-    accuracy,
-    id,
-  ]);
+  db.executeSync(
+    `UPDATE plot_species_records SET lat = ?, lng = ?, accuracy = ?, updated_at = ? WHERE id = ?`,
+    [lat, lng, accuracy, Date.now(), id],
+  );
 }
 
 /** Persist the list of photo URIs (`ph://` or `file://`) for a plot species
@@ -938,14 +966,22 @@ export function updatePlotSpeciesLocation(
 export function updatePlotSpeciesPhotos(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE plot_species_records SET photo_paths = ? WHERE id = ?`, [value, id]);
+  db.executeSync(`UPDATE plot_species_records SET photo_paths = ?, updated_at = ? WHERE id = ?`, [
+    value,
+    Date.now(),
+    id,
+  ]);
 }
 
 /** Same contract as `updatePlotSpeciesPhotos`, for `audio_paths`. */
 export function updatePlotSpeciesAudio(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE plot_species_records SET audio_paths = ? WHERE id = ?`, [value, id]);
+  db.executeSync(`UPDATE plot_species_records SET audio_paths = ?, updated_at = ? WHERE id = ?`, [
+    value,
+    Date.now(),
+    id,
+  ]);
 }
 
 /** Last species observation epoch (ms) for the given plot; null if none. */
@@ -1186,7 +1222,14 @@ function importPlotSurveyTx(
       db.executeSync(
         `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, cover_pct, height_cm, height_unit, method)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [plotId, l.layer_index, l.cover_pct ?? null, l.height_cm ?? null, l.height_unit ?? 'cm', l.method ?? 'BB'],
+        [
+          plotId,
+          l.layer_index,
+          l.cover_pct ?? null,
+          l.height_cm ?? null,
+          l.height_unit ?? 'cm',
+          l.method ?? 'BB',
+        ],
       );
     }
   }
@@ -1210,7 +1253,7 @@ function importPlotSurveyTx(
 
   const fallbackLayer: Layer = data.plot_type === 'fixed' ? 'E1' : TRANSECT_LAYER;
   for (const sp of data.species ?? []) {
-    const subplotId = sp.subplot ? subplotIdByLabel.get(sp.subplot) ?? null : null;
+    const subplotId = sp.subplot ? (subplotIdByLabel.get(sp.subplot) ?? null) : null;
     // `layer` has a CHECK constraint; anything else (a pre-v12 yml still using
     // 'E0', a hand-edited file) would throw here and abort the import after the
     // previous copy was already deleted. Coerce instead.
@@ -1223,8 +1266,8 @@ function importPlotSurveyTx(
          plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
          organism_quantity, organism_quantity_type, notes, sex, life_stage,
          reproductive_condition, leaf_phenology, lat, lng, accuracy, detection_type,
-         photo_paths, used_name_id, used_scientific_name, observed_at, created_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         photo_paths, used_name_id, used_scientific_name, observed_at, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         plotId,
         sp.taxon_id,
@@ -1248,6 +1291,7 @@ function importPlotSurveyTx(
         sp.used_name_id ?? null,
         sp.used_scientific_name ?? null,
         sp.observed_at ?? now,
+        now,
         now,
       ],
     );
@@ -1289,10 +1333,7 @@ function importPlotSurveyTx(
  * bound site, environment photos, and every per-record observation value —
  * those describe one survey, not the setup it shared.
  */
-export function duplicatePlotSurvey(
-  id: number,
-  opts: DuplicateRecordOptions,
-): number | null {
+export function duplicatePlotSurvey(id: number, opts: DuplicateRecordOptions): number | null {
   return withTransaction(() => duplicatePlotSurveyTx(id, opts));
 }
 
@@ -1328,19 +1369,20 @@ function duplicatePlotSurveyTx(id: number, opts: DuplicateRecordOptions): number
         [id],
       ).rows ?? []) as unknown as Array<
         Pick<
-        PlotSpeciesRecord,
-        'taxon_id' | 'layer' | 'subplot_id' | 'used_name_id' | 'used_scientific_name'
-      >
+          PlotSpeciesRecord,
+          'taxon_id' | 'layer' | 'subplot_id' | 'used_name_id' | 'used_scientific_name'
+        >
       >)
     : [];
   const usedLayerIdx = species.reduce(
-    (max, sp) => (sp.layer !== TRANSECT_LAYER ? Math.max(max, Number(sp.layer.slice(1)) || 0) : max),
+    (max, sp) =>
+      sp.layer !== TRANSECT_LAYER ? Math.max(max, Number(sp.layer.slice(1)) || 0) : max,
     0,
   );
   const layerCount = opts.includeEnv
     ? source.layer_count
     : Math.min(MAX_LAYER_COUNT, Math.max(DEFAULT_LAYER_COUNT, usedLayerIdx));
-  const env = <T,>(v: T): T | null => (opts.includeEnv ? v : null);
+  const env = <T>(v: T): T | null => (opts.includeEnv ? v : null);
 
   const res = db.executeSync(
     `INSERT INTO plot_surveys (
@@ -1453,8 +1495,8 @@ function duplicatePlotSurveyTx(id: number, opts: DuplicateRecordOptions): number
       db.executeSync(
         `INSERT INTO plot_species_records
            (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
-            used_name_id, used_scientific_name, observed_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            used_name_id, used_scientific_name, observed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newId,
           sp.taxon_id,
@@ -1465,10 +1507,245 @@ function duplicatePlotSurveyTx(id: number, opts: DuplicateRecordOptions): number
           sp.used_scientific_name ?? null,
           now,
           now,
+          now,
         ],
       );
     }
   }
 
+  return newId;
+}
+
+// ── 合併樣區 (merge) ────────────────────────────────────────────────────────
+// See src/db/merge.ts for what the merged record inherits and why.
+
+/**
+ * Fold two or more plot surveys of the SAME `plot_type` into a new one.
+ *
+ * Refuses a mixed-type selection: a fixed quadrat's stratified cover and a
+ * transect's track are not the same measurement, so a merged record could not
+ * describe both. Returns null (rolling the transaction back) in that case, as
+ * it does when fewer than two of the ids still exist.
+ *
+ * Environmental values — slope, aspect, every cover percentage, the per-layer
+ * cover and height — come from the primary alone. They are measurements of one
+ * place at one time; averaging or concatenating them would fabricate a reading.
+ * The species records from every source are kept.
+ */
+export function mergePlotSurveys(ids: number[], opts: MergeRecordOptions): number | null {
+  return withTransaction(() => mergePlotSurveysTx(ids, opts));
+}
+
+function mergePlotSurveysTx(ids: number[], opts: MergeRecordOptions): number | null {
+  const name = opts.name.trim();
+  if (!name) return null;
+  const order = mergeOrder(ids, opts.primaryId);
+  const sources = order.map((id) => getPlotSurvey(id)).filter((p): p is PlotSurvey => p !== null);
+  if (sources.length < 2) return null;
+
+  const primary = sources[0];
+  if (sources.some((p) => p.plot_type !== primary.plot_type)) return null;
+
+  const db = getUserDb();
+  const now = Date.now();
+
+  // Read the species up front: they decide how many layers the merged plot
+  // needs, for the same reason duplicatePlotSurvey does it — a row in a layer
+  // beyond layer_count renders nowhere and cannot be deleted.
+  const speciesBySource = sources.map(
+    (src) =>
+      [
+        src,
+        (db.executeSync(
+          `SELECT * FROM plot_species_records
+            WHERE plot_survey_id = ? AND taxon_id IS NOT NULL AND taxon_id != ''
+            ORDER BY id`,
+          [src.id],
+        ).rows ?? []) as unknown as PlotSpeciesRecord[],
+      ] as const,
+  );
+  const usedLayerIdx = speciesBySource.reduce(
+    (max, [, rows]) =>
+      rows.reduce(
+        (m, sp) => (sp.layer !== TRANSECT_LAYER ? Math.max(m, Number(sp.layer.slice(1)) || 0) : m),
+        max,
+      ),
+    0,
+  );
+  const layerCount = Math.min(
+    MAX_LAYER_COUNT,
+    Math.max(primary.layer_count ?? DEFAULT_LAYER_COUNT, usedLayerIdx, 1),
+  );
+
+  const startTs = Math.min(...sources.map((p) => p.start_ts ?? p.created_at));
+  const stopTs = latest(...sources.map((p) => p.stop_ts ?? p.updated_at ?? now));
+  const track = unionTracks(sources.map((p) => p.track_geojson));
+
+  const provenance = i18n.t('records.mergeProvenance', {
+    sources: sources.map((p) => p.plotid).join('、'),
+  });
+  const fieldNote = primary.field_note ? `${primary.field_note}\n${provenance}` : provenance;
+
+  const res = db.executeSync(
+    `INSERT INTO plot_surveys (
+       uuid, plotid, plot_type, project_id, site_id, status, recorded_by, sampling_protocol,
+       layer_count, sample_size_value, sample_size_unit, point_radius_m,
+       decimal_latitude, decimal_longitude, coord_uncertainty_m,
+       locality, field_note, elevation_m, slope_deg, aspect_deg, terrain_position,
+       total_cover_pct, rock_cover_pct, gravel_cover_pct, bareland_cover_pct,
+       vascular_cover_pct, bryophyte_cover_pct, lichen_cover_pct, litter_cover_pct,
+       track_geojson, track_finalized, env_photos_json,
+       start_ts, stop_ts, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, 'done', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      generateUuid(),
+      name,
+      primary.plot_type,
+      existingProjectId(primary.project_id),
+      primary.site_id,
+      unionSurveyors(sources.map((p) => p.recorded_by)),
+      primary.sampling_protocol,
+      layerCount,
+      primary.sample_size_value,
+      primary.sample_size_unit,
+      primary.point_radius_m,
+      primary.decimal_latitude,
+      primary.decimal_longitude,
+      primary.coord_uncertainty_m,
+      primary.locality,
+      fieldNote,
+      primary.elevation_m,
+      primary.slope_deg,
+      primary.aspect_deg,
+      primary.terrain_position,
+      primary.total_cover_pct,
+      primary.rock_cover_pct,
+      primary.gravel_cover_pct,
+      primary.bareland_cover_pct,
+      primary.vascular_cover_pct,
+      primary.bryophyte_cover_pct,
+      primary.lichen_cover_pct,
+      primary.litter_cover_pct,
+      track,
+      track ? 1 : 0,
+      primary.env_photos_json,
+      startTs,
+      stopTs,
+      now,
+      now,
+    ],
+  );
+  const newId = res.insertId ?? 0;
+  if (newId === 0) return null;
+
+  // Layers stay in lockstep with layer_count (setPlotLayerCount's invariant);
+  // values come from the primary, extra layers are seeded like a new plot.
+  if (primary.plot_type === 'fixed') {
+    const primaryLayers = new Map(getPlotLayers(primary.id).map((l) => [l.layer_index, l]));
+    for (let i = 1; i <= layerCount; i++) {
+      const l = primaryLayers.get(i);
+      db.executeSync(
+        `INSERT INTO plot_survey_layers (plot_survey_id, layer_index, cover_pct, height_cm, height_unit, method)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          i,
+          l?.cover_pct ?? null,
+          l?.height_cm ?? null,
+          l?.height_unit ?? 'cm',
+          l?.method ?? (i === 4 ? 'DBH' : 'percent'),
+        ],
+      );
+    }
+  }
+
+  // Subplots: every source's subplots survive, because a subplot is a place
+  // inside the quadrat and two sources' 「A」 are not the same place. Colliding
+  // labels get the source's plotid appended so they stay tellable apart.
+  const subplotIdByOld = new Map<string, number>();
+  const usedLabels = new Set<string>();
+  let idx = 0;
+  for (const src of sources) {
+    for (const s of listSubplots(src.id)) {
+      let label = s.label;
+      if (usedLabels.has(label)) label = `${s.label} (${src.plotid})`;
+      let n = 2;
+      while (usedLabels.has(label)) label = `${s.label} (${src.plotid} ${n++})`;
+      usedLabels.add(label);
+      idx += 1;
+      const sres = db.executeSync(
+        `INSERT INTO plot_subplots (plot_survey_id, idx, label, width_m, length_m, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [newId, idx, label, s.width_m, s.length_m, now],
+      );
+      const newSubplotId = sres.insertId ?? 0;
+      subplotIdByOld.set(`${src.id}:${s.id}`, newSubplotId);
+      for (const sl of getSubplotLayers(s.id)) {
+        db.executeSync(
+          `INSERT INTO subplot_layers (subplot_id, layer_index, cover_pct, height_cm) VALUES (?, ?, ?, ?)`,
+          [newSubplotId, sl.layer_index, sl.cover_pct, sl.height_cm],
+        );
+      }
+    }
+  }
+
+  const activeLayers = getActiveLayers(layerCount) as string[];
+  const seen = new Set<string>();
+  for (const [src, rows] of speciesBySource) {
+    for (const sp of rows) {
+      const layer: Layer =
+        sp.layer === TRANSECT_LAYER || activeLayers.includes(sp.layer) ? sp.layer : 'E1';
+      const subplotId = subplotIdByOld.get(`${src.id}:${sp.subplot_id ?? -1}`) ?? null;
+      const key = `${sp.taxon_id}|${layer}|${subplotId ?? ''}|${sp.used_scientific_name ?? ''}`;
+      if (opts.dedupe) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      db.executeSync(
+        `INSERT INTO plot_species_records
+           (plot_survey_id, taxon_id, occurrence_id, subplot_id, layer,
+            bb_value, percent, dbh_values_json, notes, photo_paths, audio_paths,
+            observed_at, created_at, updated_at, degree_of_establishment,
+            sex, life_stage, reproductive_condition, leaf_phenology,
+            organism_quantity, organism_quantity_type, lat, lng, accuracy,
+            detection_type, used_name_id, used_scientific_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          sp.taxon_id,
+          // New occurrence — see mergeSessions for why the old id cannot ride along.
+          generateUuid(),
+          subplotId,
+          layer,
+          sp.bb_value,
+          sp.percent,
+          sp.dbh_values_json,
+          sp.notes,
+          sp.photo_paths,
+          sp.audio_paths,
+          sp.observed_at,
+          now,
+          now,
+          sp.degree_of_establishment,
+          sp.sex,
+          sp.life_stage,
+          sp.reproductive_condition,
+          sp.leaf_phenology,
+          sp.organism_quantity,
+          sp.organism_quantity_type,
+          sp.lat,
+          sp.lng,
+          sp.accuracy,
+          sp.detection_type,
+          sp.used_name_id,
+          sp.used_scientific_name,
+        ],
+      );
+    }
+  }
+
+  if (!opts.keepSources) {
+    for (const p of sources) deletePlotSurvey(p.id);
+  }
   return newId;
 }

@@ -15,7 +15,8 @@
     "continue": "繼續",
     "undo": "UNDO",
     "remove": "移除",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "more": "更多"
   },
   "group": {
     "plantae": "植物",
@@ -94,7 +95,7 @@
   },
   "gps": {
     "permTitle": "需要定位權限",
-    "permMsg": "請至 設定 → Checklister → 位置 開啟「使用 App 期間」",
+    "permMsg": "請至 設定 → Mitalivana → 位置 開啟「使用 App 期間」",
     "posRecorded": "已記錄目前位置",
     "posFailTitle": "無法取得位置",
     "trackBusyTitle": "已有記錄正在錄製軌跡",
@@ -194,7 +195,28 @@
     "selectedCount_other": "已選 {{count}}",
     "deleteMsg_other": "「{{title}}」與其下 {{count}} 筆紀錄將全部移除，無法復原。",
     "collectionCount_other": "採集 {{count}}",
-    "uploadInat": "iNat"
+    "uploadInat": "iNat",
+    "mergeProvenance": "合併自：{{sources}}",
+    "moveToProject": "移動到專案",
+    "movedToProject_other": "已將 {{count}} 筆記錄移到「{{name}}」",
+    "merge": "合併",
+    "mergeTitle": "合併{{noun}}",
+    "mergeCount_other": "將合併 {{count}} 筆記錄",
+    "mergePrimary": "主記錄",
+    "mergePrimaryHint": "座標、環境資料、專案與樣點沿用主記錄；起訖時間取所有記錄的聯集。",
+    "mergeDedupe": "相同物種只保留一筆",
+    "mergeDedupeHint": "關閉則保留每一筆觀察記錄，含重複出現的物種。",
+    "mergeKeepSources": "保留原始記錄",
+    "mergeKeepSourcesHint": "關閉則合併完成後刪除被合併的記錄。",
+    "mergeDeleteWarn_other": "合併後將刪除這 {{count}} 筆原始記錄，且無法復原。",
+    "mergeExplain": "物種記錄連同各自的時間、座標、照片與聲音一併帶入；iNaturalist 上傳狀態不會帶過去。",
+    "mergeNeedTwo": "請選取兩筆以上的記錄",
+    "mergeSameKind": "只能合併同一類型的記錄",
+    "mergeNoCollection": "採集不支援合併：採集號屬於實體標本，無法重新配號",
+    "mergeSamePlotType": "只能合併同一種調查法的樣區",
+    "mergeFailed": "合併失敗",
+    "merged": "已合併為「{{name}}」",
+    "open": "開啟"
   },
   "export": {
     "preparing": "準備中…",
@@ -216,7 +238,6 @@
     "key": "檢索表",
     "projects": "專案管理",
     "sites": "樣區管理",
-    "settings": "偏好設定",
     "surveyors": "調查者",
     "about": "關於",
     "favorites": "常用名錄",
@@ -237,7 +258,8 @@
     "projectsDesc": "專案及其下的名錄/樣區",
     "sites": "地理樣區",
     "sitesDesc": "地圖上的點位/路線/範圍",
-    "backupDesc": "資料/照片備份與回復"
+    "backupDesc": "資料/照片備份與回復",
+    "favoritesDesc": "常用物種清單,調查時可整批加入記錄"
   },
   "record": {
     "kindSession": "快速名錄",
@@ -250,7 +272,8 @@
     "defaultPlot": "預設：樣區調查",
     "kindCollection": "採集記錄",
     "defaultCollection": "預設：採集記錄",
-    "kindImport": "匯入記錄（.yml / .zip）"
+    "kindImport": "匯入記錄（.yml / .zip）",
+    "lastUpdated": "最後更新"
   },
   "rank": {
     "kingdom": "界",
@@ -318,6 +341,8 @@
     "longPressClear": "長按清除",
     "tapGps": "點選 GPS",
     "externalLinks": "外部連結",
+    "inatObservation": "iNaturalist 觀察記錄",
+    "inatTaxon": "iNaturalist 物種頁面",
     "addToRecord": "加到當前記錄",
     "inFavorites": "已在常用名錄",
     "matchedSynonymPre": "你輸入的是 ",
@@ -342,6 +367,7 @@
     "lifeStageLabel": "生命階段 (lifeStage)",
     "reproLabel": "花/果 (reproductiveCondition，可複選)",
     "leafLabel": "葉 (leafPhenology，可複選)",
+    "establishmentLabel": "野生/人為 (degreeOfEstablishment)",
     "sex": {
       "female": "雌",
       "male": "雄",
@@ -374,6 +400,11 @@
       "shedding": "落葉",
       "green": "綠葉",
       "colored": "有色葉"
+    },
+    "establishment": {
+      "wild": "野生",
+      "captive": "圈養",
+      "cultivated": "栽培"
     },
     "filledCount_other": "{{count}} 項"
   },
@@ -496,14 +527,12 @@
     "manualCoord": "手動定位"
   },
   "settings": {
-    "title": "偏好設定",
-    "sectionAppearance": "外觀",
-    "sectionInteraction": "互動",
-    "sectionRegions": "區域名錄",
-    "sectionSurvey": "調查",
-    "sectionExport": "匯出",
+    "sectionAppearance": "外觀與操作",
+    "sectionSurvey": "調查設定",
     "exportPrefDesc": "地理格式、照片、階層與保育欄位、分析格式",
     "sectionData": "資料",
+    "sectionRecords": "記錄管理",
+    "sectionSync": "名錄與同步",
     "theme": "主題",
     "themeAuto": "跟隨系統",
     "themeLight": "淺色",
@@ -567,7 +596,6 @@
     "integrityAdopted_other": "{{table}}：{{count}} 筆採用名與現行名錄對不上（名錄改版後該名字被更名、移到別的分類群或已移除）。記錄仍顯示你當初選的名字，要不要跟著改由你決定。",
     "nDupGroups_other": "{{count}} 組重複 occurrenceID",
     "nRows_other": "共 {{count}} 筆",
-    "sectionInat": "iNaturalist",
     "inaturalist": "iNaturalist 帳號",
     "inaturalistDesc": "連結帳號後可把有照片或錄音的記錄上傳成觀察",
     "inaturalistLinked": "已連結：{{login}}"
@@ -615,7 +643,7 @@
     "restoreFromFile": "從備份檔回復",
     "invalidFile": "這不是有效的備份檔（缺少 user.db 或 manifest.json）",
     "corrupt": "備份檔損毀（manifest.json 無法解析）",
-    "notChecklister": "這不是 Checklister 的備份檔",
+    "notChecklister": "這不是 Mitalivana 的備份檔",
     "tooNew": "此備份由較新版本的 app 建立（資料結構 v{{version}}），請先更新 app 再回復。",
     "safetyTitle": "自動安全備份",
     "safetyDesc": "App 在修復資料前自動建立的快照。確認資料無誤後可以刪除。",
@@ -1747,6 +1775,7 @@
     "openTokenPage": "在瀏覽器開啟 token 頁",
     "pasteToken": "從剪貼簿貼上 token",
     "geoprivacy": "座標隱私",
+    "uuidMismatch": "iNaturalist 指定了不同的 uuid（送出 {{sent}}，取得 {{got}}），這筆記錄無法同步。",
     "geoprivacyOpen": "公開",
     "geoprivacyObscured": "模糊",
     "geoprivacyPrivate": "私密",
@@ -1772,7 +1801,7 @@
     "recordsHeader": "要上傳的記錄",
     "toggleAll": "全選／全不選",
     "emptyList": "這份記錄沒有帶照片或錄音的物種",
-    "resultCompleted": "上次結果：{{ok}} 筆成功、{{failed}} 筆失敗、{{unresolved}} 筆未對到 iNat 分類群（只帶學名）",
+    "resultCompleted": "上次結果：{{ok}} 筆成功、{{failed}} 筆失敗、{{unresolved}} 筆未對到 iNaturalist 分類群（只帶學名）",
     "resultCancelled": "上次已取消：{{ok}} 筆成功、{{failed}} 筆失敗",
     "resultOffline": "上次因離線停止：{{ok}} 筆成功、{{failed}} 筆失敗；未完成的可再上傳",
     "resultAuth": "上次因登入失效停止：{{ok}} 筆成功、{{failed}} 筆失敗",
@@ -1786,17 +1815,16 @@
     "noMediaRecord": "這筆沒有照片或錄音，無法上傳 iNaturalist",
     "rowUploading": "上傳中…",
     "progressRequests": "{{done}} / {{total}} 次請求",
-    "uploadedBadge": "已上傳 iNat",
-    "uploadButton": "上傳到 iNat",
-    "syncButton": "同步 iNat",
-    "syncChanged": "同步 iNat（有變更）",
+    "uploadButton": "上傳 iNaturalist",
+    "syncButton": "同步 iNaturalist",
+    "syncChanged": "同步 iNaturalist（有變更）",
     "syncing": "同步中…",
-    "syncNoChange": "iNat 已是最新，無需同步",
-    "syncDone": "已同步 iNat：註解 +{{added}} −{{removed}}、新媒體 {{media}}",
+    "syncNoChange": "iNaturalist 已是最新，無需同步",
+    "syncDone": "已同步 iNaturalist：註解 +{{added}} −{{removed}}、新媒體 {{media}}",
     "syncFailed": "同步失敗：{{msg}}",
-    "syncNotUploaded": "這筆尚未上傳 iNat",
-    "syncAuth": "iNat 登入已失效，請到設定重新連結",
+    "syncNotUploaded": "這筆尚未上傳 iNaturalist",
+    "syncAuth": "iNaturalist 登入已失效，請到設定重新連結",
     "syncOffline": "沒有網路，無法同步",
-    "busy": "另一個 iNat 上傳或同步正在進行"
+    "busy": "另一個 iNaturalist 上傳或同步正在進行"
   }
 }

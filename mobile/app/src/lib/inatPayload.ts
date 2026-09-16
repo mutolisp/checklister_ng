@@ -17,6 +17,18 @@
 
 export type Geoprivacy = 'open' | 'obscured' | 'private';
 
+/**
+ * degreeOfEstablishment → iNat's boolean. Inlined rather than imported from
+ * `dwcAttributes.ts` because that module pulls in `~/i18n`, and this one must
+ * stay runnable under plain Node for `scripts/check-inat-payload.mjs` — the
+ * same reason `dwcMultiValue.ts` was split out.
+ */
+function establishmentCaptiveFlag(v: string | null | undefined): boolean | undefined {
+  if (v === 'captive' || v === 'cultivated') return true;
+  if (v === 'wild') return false;
+  return undefined;
+}
+
 export const GEOPRIVACY_VALUES: Geoprivacy[] = ['open', 'obscured', 'private'];
 
 /** Where a record's coordinates came from — shown in the upload list. */
@@ -46,6 +58,8 @@ export type InatRecordInput = {
   placeGuess?: string | null;
   notes: string | null;
   attributes: InatAttribute[];
+  /** DwC degreeOfEstablishment: 'wild' | 'captive' | 'cultivated' | null. */
+  degreeOfEstablishment?: string | null;
 };
 
 export type BatchOptions = {
@@ -65,6 +79,15 @@ export type ObservationPayload = {
   geoprivacy: Geoprivacy;
   description?: string;
   tag_list?: string;
+  /**
+   * iNaturalist's 「captive / cultivated」 flag (`ObservationsCreate.observation
+   * .captive_flag`, boolean, verified against api.inaturalist.org/v2/api-docs).
+   * It is a field, NOT a controlled annotation — hence not in INAT_TERMS.
+   *
+   * Three-state on our side collapses to boolean-or-absent here: 圈養/栽培 →
+   * true, 野生 → an explicit false, 未記錄 → omitted so iNat keeps its default.
+   */
+  captive_flag?: boolean;
 };
 
 /** External taxa minted from iNaturalist carry the iNat id in the local id
@@ -122,6 +145,8 @@ export function buildObservationPayload(
     geoprivacy: batch.geoprivacy,
   };
   if (taxonId !== null) p.taxon_id = taxonId;
+  const captive = establishmentCaptiveFlag(input.degreeOfEstablishment);
+  if (captive !== undefined) p.captive_flag = captive;
   if (input.location) {
     p.latitude = input.location.lat;
     p.longitude = input.location.lng;

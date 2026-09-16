@@ -1,6 +1,6 @@
 {
   "gps": {
-    "permMsg": "Vaya a Configuración → Checklister → Ubicación y active «Al usar la app»"
+    "permMsg": "Vaya a Configuración → Mitalivana → Ubicación y active «Al usar la app»"
   },
   "nav": {
     "backup": "Respaldo"
@@ -23,7 +23,7 @@
     "restoreFromFile": "Restaurar desde un archivo de respaldo",
     "invalidFile": "No es un archivo de respaldo válido (falta user.db o manifest.json)",
     "corrupt": "Archivo de respaldo dañado (no se puede leer manifest.json)",
-    "notChecklister": "No es un archivo de respaldo de Checklister",
+    "notChecklister": "No es un archivo de respaldo de Mitalivana",
     "tooNew": "Este respaldo se creó con una versión más reciente de la app (esquema v{{version}}); actualice la app antes de restaurarlo.",
     "safetyTitle": "Respaldos automáticos de protección",
     "includePacks": "Incluir los «paquetes de lista nacional» en el respaldo"

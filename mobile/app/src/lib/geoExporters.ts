@@ -98,7 +98,7 @@ export function sitesToKML(sites: Site[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
-    <name>Checklister sites</name>
+    <name>Mitalivana sites</name>
 ${placemarks}
   </Document>
 </kml>`;
@@ -161,7 +161,7 @@ ${rings
 export function sitesToGPX(sites: Site[]): string {
   const body = sites.map((s) => geometryToGpx(s, parseGeometry(s))).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
-<gpx version="1.1" creator="Checklister" xmlns="http://www.topografix.com/GPX/1/1">
+<gpx version="1.1" creator="Mitalivana" xmlns="http://www.topografix.com/GPX/1/1">
 ${body}
 </gpx>`;
 }

@@ -17,6 +17,8 @@
 import yaml from 'js-yaml';
 import { strToU8, zipSync } from 'fflate';
 import { buildPlotYamlDoc, buildSessionYamlDoc, recordToYamlItem } from '../src/lib/bundleYaml.ts';
+import { convertToDwc } from '../src/lib/dwcMapper.ts';
+import { establishmentDwcValue } from '../src/lib/dwcMultiValue.ts';
 import { parsePlotYaml } from '../src/lib/plotImport.ts';
 import { parseSessionYaml } from '../src/lib/sessionImport.ts';
 import {
@@ -133,6 +135,7 @@ const plotSpecies = [
     sex: 'unknown', life_stage: 'adult', reproductive_condition: '["flowering","fruiting"]',
     leaf_phenology: '["evergreen"]', organism_quantity: '3', organism_quantity_type: 'individuals',
     lat: 24.71, lng: 121.51, accuracy: 4, detection_type: 'seen',
+    degree_of_establishment: 'cultivated',
     used_name_id: 165943, used_scientific_name: 'Lycopodium tamariscinum',
     used_status: 'not-accepted', used_stale: false, used_accepted_name: 'Selaginella tamariscina',
     simple_name: 'Lycopodium tamariscinum', name_author: '(P.Beauv.) Desv.', common_name_c: '小西氏石櫟',
@@ -147,6 +150,7 @@ const plotSpecies = [
     layer: 'E1', bb_value: null, percent: null, dbh_values_json: null, notes: null,
     photo_paths: '["ph://c"]', observed_at: 1756500200000, created_at: 1,
     sex: null, life_stage: null, reproductive_condition: null, leaf_phenology: null,
+    degree_of_establishment: null,
     organism_quantity: '2', organism_quantity_type: 'individuals',
     lat: null, lng: null, accuracy: null, detection_type: null,
     used_name_id: null, used_scientific_name: null,
@@ -229,6 +233,7 @@ console.log('check:roundtrip');
   eq('species[0].life_stage', s0.life_stage, 'adult');
   eq('species[0].reproductive_condition', s0.reproductive_condition, '["flowering","fruiting"]');
   eq('species[0].leaf_phenology', s0.leaf_phenology, '["evergreen"]');
+  eq('species[0].degree_of_establishment', s0.degree_of_establishment, 'cultivated');
   eq('species[0].detection_type', s0.detection_type, 'seen');
   eq('species[0].gps', [s0.lat, s0.lng, s0.accuracy], [24.71, 121.51, 4]);
   eq('species[0].observed_at', s0.observed_at, 1756500100000);
@@ -263,6 +268,7 @@ console.log('check:roundtrip');
       observed_at: 1756500300000, notes: '路邊', photo_paths: '["ph://x"]',
       lat: 24.72, lng: 121.52, accuracy: 8, sex: 'female', life_stage: 'adult',
       reproductive_condition: '["flowering"]', leaf_phenology: '["deciduous"]',
+      degree_of_establishment: 'wild',
       organism_quantity: '5', organism_quantity_type: 'individuals',
       used_name_id: 166665, used_scientific_name: 'Lycopodium circinale',
       used_status: 'misapplied', used_stale: false, used_accepted_name: 'Ficus caulocarpa',
@@ -310,6 +316,21 @@ console.log('check:roundtrip');
   eq('record.life_stage', r0.life_stage, 'adult');
   eq('record.reproductive_condition', r0.reproductive_condition, '["flowering"]');
   eq('record.leaf_phenology', r0.leaf_phenology, '["deciduous"]');
+  eq('record.degree_of_establishment', r0.degree_of_establishment, 'wild');
+
+  // The yml and the _sp.csv share one item builder but answer to different
+  // masters: the yml round-trips back into the app and must keep 'wild', while
+  // the CSV is a DwC deliverable and must not emit a value TDWG never defined.
+  // These two assertions are what stop the split from silently collapsing.
+  const ymlItem = convertToDwc(recordToYamlItem(records[0]));
+  eq('yml keeps raw establishment', ymlItem.degreeOfEstablishment, 'wild');
+  eq(
+    'csv blanks non-TDWG establishment',
+    establishmentDwcValue(ymlItem.degreeOfEstablishment),
+    '',
+  );
+  eq('scientificNameAuthorship is the bare author', ymlItem.scientificNameAuthorship, 'L.');
+  eq('fullname is not emitted as a column', ymlItem.fullname, undefined);
   eq('record.photo_files', r0.photo_files, ['t0455_大葉雀榕_1.jpg']);
   eq('record.name', r0.name, 'Lycopodium circinale');
   eq('record.used_name_id', r0.used_name_id, 166665);

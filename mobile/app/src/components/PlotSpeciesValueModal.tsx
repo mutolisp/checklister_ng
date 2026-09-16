@@ -9,32 +9,29 @@ import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '~/stores/settings';
-import {
-  Alert,
-  Modal,
-  Platform,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Modal, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import * as Location from 'expo-location';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { KeyboardAvoidingView } from './KeyboardAvoidingView';
+import { GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import {
+  SwipeNavArea,
+  SwipeNavPager,
+  usePagerNav,
+  type SwipeNavPagerState,
+} from './SwipeNavigator';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { RecordMetaFooter } from './RecordMetaFooter';
 import { PhotoGrid, PhotoViewerModal } from './PhotoGrid';
 import { AudioClipRows, AudioRecordTile } from './AudioClipList';
-import { InatSyncButton, InatUploadedBadge, type InatSheetState } from './InatUploadedBadge';
+import { InatSyncButton, type InatSheetState } from './InatSyncButton';
 import { useColorScheme as useNwColorScheme } from 'nativewind';
 import { useRouter } from 'expo-router';
 import { getKeysForScope, type Layer, type Rank, type IdentificationKey } from '~/db';
 import { ScientificName } from './ScientificName';
 import { RecordLocationMap } from './RecordLocationMap';
 import { TaxonomyJumpChip } from './TaxonomyJumpChip';
-import {
-  SpeciesAttributesBlock,
-  type SpeciesAttributesDraft,
-} from './SpeciesAttributesBlock';
+import { SpeciesAttributesBlock, type SpeciesAttributesDraft } from './SpeciesAttributesBlock';
 import { EMPTY_DRAFT, detectionOptions } from '~/lib/dwcAttributes';
 import {
   quantityTypes,
@@ -64,6 +61,27 @@ const EMPTY: PlotValueDraft = {
   detection_type: null,
   ...EMPTY_DRAFT,
 };
+
+/** Fields of a PlotValueDraft that are plain scalars; the two multi-value ones
+ *  (reproductive_condition / leaf_phenology) are arrays and compared apart. */
+const SCALAR_DRAFT_KEYS = [
+  'organism_quantity',
+  'organism_quantity_type',
+  'notes',
+  'detection_type',
+  'sex',
+  'life_stage',
+  'degree_of_establishment',
+] as const;
+
+function sameDraft(a: PlotValueDraft, b: PlotValueDraft): boolean {
+  for (const k of SCALAR_DRAFT_KEYS) if ((a[k] ?? null) !== (b[k] ?? null)) return false;
+  return (
+    JSON.stringify(a.reproductive_condition ?? []) ===
+      JSON.stringify(b.reproductive_condition ?? []) &&
+    JSON.stringify(a.leaf_phenology ?? []) === JSON.stringify(b.leaf_phenology ?? [])
+  );
+}
 
 /** Structured taxon header so the modal can render an italic scientific name +
  *  a tappable classification path + identification-key chips (replacing the
@@ -118,6 +136,9 @@ type Props = {
   onAddPhoto?: (mode: 'camera' | 'library') => void;
   onRemovePhoto?: (uri: string) => void;
   /** iNaturalist state of the record (edit mode only): shows the 「已上傳」 badge. */
+  /** Identity footer, edit mode only — absent when adding a new record. */
+  occurrenceId?: string | null;
+  updatedAt?: number | null;
   inatObservationId?: number | null;
   inatUploadedAt?: number | null;
   /** 上傳／同步 iNat row (edit mode only). */
@@ -128,6 +149,9 @@ type Props = {
   onRemoveAudio?: (uri: string) => void;
   onCancel: () => void;
   onSave: (v: PlotValueDraft) => void;
+  /** Position in the layer list ON SCREEN, so the modal can step to the
+   *  neighbouring species by swipe or chevron. Edit mode only. */
+  pager?: SwipeNavPagerState;
 };
 
 export function PlotSpeciesValueModal({
@@ -154,9 +178,12 @@ export function PlotSpeciesValueModal({
   onRemoveAudio,
   inatObservationId,
   inatUploadedAt,
+  occurrenceId,
+  updatedAt,
   inat,
   onCancel,
   onSave,
+  pager,
 }: Props) {
   const { t } = useTranslation();
   const resolvedDefaultType =
@@ -206,12 +233,14 @@ export function PlotSpeciesValueModal({
     life_stage: initial?.life_stage ?? null,
     reproductive_condition: initial?.reproductive_condition ?? [],
     leaf_phenology: initial?.leaf_phenology ?? [],
+    degree_of_establishment: initial?.degree_of_establishment ?? null,
   });
 
   // Rehydrate fields whenever the modal opens or the initial draft changes.
   useEffect(() => {
     if (!visible) return;
-    const startType = initial?.organism_quantity_type ?? defaultType ?? defaultQuantityTypeFor(kingdom);
+    const startType =
+      initial?.organism_quantity_type ?? defaultType ?? defaultQuantityTypeFor(kingdom);
     setQtyType(startType);
     setNotes(initial?.notes ?? '');
     setDetection(initial?.detection_type ?? null);
@@ -220,6 +249,7 @@ export function PlotSpeciesValueModal({
       life_stage: initial?.life_stage ?? null,
       reproductive_condition: initial?.reproductive_condition ?? [],
       leaf_phenology: initial?.leaf_phenology ?? [],
+      degree_of_establishment: initial?.degree_of_establishment ?? null,
     });
 
     const k = kindForType(startType);
@@ -271,12 +301,11 @@ export function PlotSpeciesValueModal({
       return numericValue.trim() !== '' && Number.isFinite(n) && n > 0 && n <= 100;
     }
     if (currentKind === 'DBH') return stems.length > 0;
-    if (currentKind === 'custom')
-      return customValue.trim() !== '' && customType.trim() !== '';
+    if (currentKind === 'custom') return customValue.trim() !== '' && customType.trim() !== '';
     return false;
   })();
 
-  const handleSave = () => {
+  const buildDraft = (): PlotValueDraft => {
     const base = { ...EMPTY, ...attrs, notes: notes || null, detection_type: detection };
     let quantity: string | null = null;
     let type: string | null = qtyType;
@@ -287,369 +316,459 @@ export function PlotSpeciesValueModal({
       quantity = customValue.trim();
       type = customType.trim();
     }
-    onSave({ ...base, organism_quantity: quantity, organism_quantity_type: type });
+    return { ...base, organism_quantity: quantity, organism_quantity_type: type };
   };
+
+  const handleSave = () => onSave(buildDraft());
+
+  /**
+   * Swiping to the next species commits what is on screen first.
+   *
+   * This modal is where abundance gets typed species by species, so "next" has
+   * to mean "save and next" — silently dropping the value the user just entered
+   * would be the worst possible reading of the gesture. An untouched record is
+   * left alone so merely browsing does not bump `updated_at` (which would mark
+   * every row it passes as needing an iNaturalist re-sync), and an incomplete
+   * value (`!canSave`) is discarded rather than half-written.
+   */
+  const stepPager = useMemo<SwipeNavPagerState | undefined>(() => {
+    if (!pager) return undefined;
+    return {
+      ...pager,
+      onStep: (dir) => {
+        if (canSave && !sameDraft(buildDraft(), { ...EMPTY, ...(initial ?? {}) })) handleSave();
+        pager.onStep(dir);
+      },
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    pager,
+    canSave,
+    initial,
+    attrs,
+    notes,
+    detection,
+    qtyType,
+    bb,
+    numericValue,
+    stems,
+    customValue,
+    customType,
+    currentKind,
+  ]);
+  const nav = usePagerNav(stepPager);
 
   const insets = useSafeAreaInsets();
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onCancel}>
-      <KeyboardAvoidingView behavior="padding" className="flex-1 justify-end">
-        <Pressable
-          onPress={onCancel}
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-          }}
-        />
-        {/* `marginTop = insets.top + 16` puts the top of the sheet below the
+      {/* gesture-handler needs its own root inside a Modal's view hierarchy. */}
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <KeyboardAvoidingView behavior="padding" className="flex-1 justify-end">
+          <Pressable
+            onPress={onCancel}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.4)',
+            }}
+          />
+          {/* `marginTop = insets.top + 16` puts the top of the sheet below the
             Dynamic Island / notch even when the keyboard pushes content up.
             `flex-1` lets the sheet fill the remaining viewport so the inner
             ScrollView's height is properly bounded. */}
-        <View
-          style={{ marginTop: insets.top + 16 }}
-          className="flex-1 rounded-t-2xl bg-white dark:bg-gray-900"
-        >
-          <SafeAreaView edges={['bottom']} className="flex-1">
-            <View className="items-center pt-2">
-              <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
-            </View>
-            {/* Title region is INSIDE the scroll so when content is long, the
+          <View
+            style={{ marginTop: insets.top + 16 }}
+            className="flex-1 rounded-t-2xl bg-white dark:bg-gray-900"
+          >
+            <SafeAreaView edges={['bottom']} className="flex-1">
+              <SwipeNavPager state={stepPager} grabber />
+              {/* Title region is INSIDE the scroll so when content is long, the
                 user can scroll the title up out of the way. iOS bottom-sheet
                 guidance + the user spec ("做成可以 scroll"). */}
-            <KeyboardAwareScrollView
-              className="flex-1"
-              contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
-              keyboardShouldPersistTaps="handled"
-              bottomOffset={24}
-            >
-              <View className="mb-3 border-b border-gray-100 dark:border-gray-800 pb-3">
-                <View className="flex-row items-start">
-                  <Text className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-100" numberOfLines={2}>
-                    {header ? header.cname || t('species.noChineseName') : title}
-                  </Text>
-                  {inatUploadedAt != null && inatObservationId ? (
-                    <InatUploadedBadge observationId={inatObservationId} />
-                  ) : null}
-                </View>
-                {header ? (
-                  <ScientificName
-                    name={header.name}
-                    author={header.author}
-                    kingdom={header.kingdom}
-                    className="text-sm text-gray-700 dark:text-gray-300"
-                  />
-                ) : null}
-                {/* Classification path (each rank tappable → taxonomy tree) +
+              <SwipeNavArea nav={nav}>
+                <KeyboardAwareScrollView
+                  className="flex-1"
+                  contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12 }}
+                  keyboardShouldPersistTaps="handled"
+                  bottomOffset={24}
+                >
+                  <View className="mb-3 border-b border-gray-100 pb-3 dark:border-gray-800">
+                    <View className="flex-row items-start">
+                      <Text
+                        className="flex-1 text-base font-semibold text-gray-900 dark:text-gray-100"
+                        numberOfLines={2}
+                      >
+                        {header ? header.cname || t('species.noChineseName') : title}
+                      </Text>
+                    </View>
+                    {header ? (
+                      <ScientificName
+                        name={header.name}
+                        author={header.author}
+                        kingdom={header.kingdom}
+                        className="text-sm text-gray-700 dark:text-gray-300"
+                      />
+                    ) : null}
+                    {/* Classification path (each rank tappable → taxonomy tree) +
                     identification-key chips. Shown for ALL plot types so fixed
                     plots also get the jump links; fixed plots additionally show
                     their vegetation layer below. */}
-                {header ? (
-                    <View className="mt-2 flex-row flex-wrap items-center" style={{ gap: 6 }}>
-                      {(
-                        [
-                          { rank: 'kingdom', name: header.kingdom },
-                          { rank: 'phylum', name: header.phylum },
-                          { rank: 'class', name: header.class_name },
-                          { rank: 'order', name: header.order },
-                          { rank: 'family', name: header.family, nameC: header.family_c },
-                          { rank: 'genus', name: header.genus },
-                        ] as Array<{ rank: Rank; name: string; nameC?: string }>
-                      )
-                        .filter((r) => r.name)
-                        .map((r) => (
-                          <TaxonomyJumpChip
-                            key={r.rank}
-                            rank={r.rank}
-                            lineage={{
-                              kingdom: header.kingdom,
-                              phylum: header.phylum,
-                              class: header.class_name,
-                              order: header.order,
-                              family: header.family,
-                              genus: header.genus,
+                    {header ? (
+                      <View className="mt-2 flex-row flex-wrap items-center" style={{ gap: 6 }}>
+                        {(
+                          [
+                            { rank: 'kingdom', name: header.kingdom },
+                            { rank: 'phylum', name: header.phylum },
+                            { rank: 'class', name: header.class_name },
+                            { rank: 'order', name: header.order },
+                            { rank: 'family', name: header.family, nameC: header.family_c },
+                            { rank: 'genus', name: header.genus },
+                          ] as Array<{ rank: Rank; name: string; nameC?: string }>
+                        )
+                          .filter((r) => r.name)
+                          .map((r) => (
+                            <TaxonomyJumpChip
+                              key={r.rank}
+                              rank={r.rank}
+                              lineage={{
+                                kingdom: header.kingdom,
+                                phylum: header.phylum,
+                                class: header.class_name,
+                                order: header.order,
+                                family: header.family,
+                                genus: header.genus,
+                              }}
+                              name={r.name}
+                              nameC={r.nameC}
+                              beforeJump={onCancel}
+                            />
+                          ))}
+                        {parentKeys.map((k) => (
+                          <Pressable
+                            key={k.id}
+                            onPress={() => {
+                              onCancel();
+                              requestAnimationFrame(() => router.push(`/key/${k.id}`));
                             }}
-                            name={r.name}
-                            nameC={r.nameC}
-                            beforeJump={onCancel}
-                          />
-                        ))}
-                      {parentKeys.map((k) => (
-                        <Pressable
-                          key={k.id}
-                          onPress={() => {
-                            onCancel();
-                            requestAnimationFrame(() => router.push(`/key/${k.id}`));
-                          }}
-                          className={`flex-row items-center rounded-full px-2.5 py-1 active:opacity-80 ${
-                            k.mode === 'multi_access'
-                              ? 'bg-blue-100 dark:bg-blue-900/60'
-                              : 'bg-emerald-100 dark:bg-emerald-900/60'
-                          }`}
-                          hitSlop={4}
-                        >
-                          <Ionicons
-                            name="key"
-                            size={12}
-                            color={k.mode === 'multi_access' ? '#2563eb' : '#10b981'}
-                          />
-                          <Text
-                            className={`ml-1 text-xs font-medium ${
+                            className={`flex-row items-center rounded-full px-2.5 py-1 active:opacity-80 ${
                               k.mode === 'multi_access'
-                                ? 'text-blue-700 dark:text-blue-300'
-                                : 'text-emerald-700 dark:text-emerald-300'
+                                ? 'bg-blue-100 dark:bg-blue-900/60'
+                                : 'bg-emerald-100 dark:bg-emerald-900/60'
                             }`}
+                            hitSlop={4}
                           >
-                            {t('nav.key')} ({k.scope_name})
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  ) : null}
-                {layer !== 'T' ? (
-                  <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">{t('plotValue.layer', { layer })}</Text>
-                ) : null}
-              </View>
-              {/* Quantity type picker */}
-              <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.abundanceUnit')}</Text>
-              <View className="flex-row flex-wrap gap-1.5">
-                {quantityTypes().filter(
-                  (opt) =>
-                    opt.value === qtyType ||
-                    !(hideBbDbh && (opt.kind === 'BB' || opt.kind === 'DBH')),
-                ).map((opt) => {
-                  const active = qtyType === opt.value;
-                  return (
+                            <Ionicons
+                              name="key"
+                              size={12}
+                              color={k.mode === 'multi_access' ? '#2563eb' : '#10b981'}
+                            />
+                            <Text
+                              className={`ml-1 text-xs font-medium ${
+                                k.mode === 'multi_access'
+                                  ? 'text-blue-700 dark:text-blue-300'
+                                  : 'text-emerald-700 dark:text-emerald-300'
+                              }`}
+                            >
+                              {t('nav.key')} ({k.scope_name})
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    ) : null}
+                    {layer !== 'T' ? (
+                      <Text className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {t('plotValue.layer', { layer })}
+                      </Text>
+                    ) : null}
+                  </View>
+                  {/* Quantity type picker */}
+                  <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+                    {t('plotValue.abundanceUnit')}
+                  </Text>
+                  <View className="flex-row flex-wrap gap-1.5">
+                    {quantityTypes()
+                      .filter(
+                        (opt) =>
+                          opt.value === qtyType ||
+                          !(hideBbDbh && (opt.kind === 'BB' || opt.kind === 'DBH')),
+                      )
+                      .map((opt) => {
+                        const active = qtyType === opt.value;
+                        return (
+                          <Pressable
+                            key={opt.value}
+                            onPress={() => handleSwitchType(opt.value)}
+                            className={`rounded-full border px-3 py-1.5 ${active ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'}`}
+                          >
+                            <Text
+                              className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                            >
+                              {opt.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
                     <Pressable
-                      key={opt.value}
-                      onPress={() => handleSwitchType(opt.value)}
-                      className={`rounded-full border px-3 py-1.5 ${active ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+                      onPress={() => handleSwitchType('__custom__')}
+                      className={`rounded-full border px-3 py-1.5 ${currentKind === 'custom' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'}`}
                     >
                       <Text
-                        className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                        className={`text-xs font-medium ${currentKind === 'custom' ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
                       >
-                        {opt.label}
+                        {t('plotValue.custom')}
                       </Text>
                     </Pressable>
-                  );
-                })}
-                <Pressable
-                  onPress={() => handleSwitchType('__custom__')}
-                  className={`rounded-full border px-3 py-1.5 ${currentKind === 'custom' ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
-                >
-                  <Text
-                    className={`text-xs font-medium ${currentKind === 'custom' ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
-                  >
-                    {t('plotValue.custom')}
-                  </Text>
-                </Pressable>
-              </View>
+                  </View>
 
-              {/* Value input switches on kind */}
-              <View className="mt-4">
-                {currentKind === 'BB' ? <BBInput value={bb} onChange={setBb} /> : null}
-                {currentKind === 'percent' ? (
-                  <PercentInput value={numericValue} onChange={setNumericValue} />
-                ) : null}
-                {currentKind === 'count' ? (
-                  <CountInput
-                    value={numericValue}
-                    onChange={setNumericValue}
-                    suffix={findQuantityType(qtyType)?.suffix ?? ''}
-                  />
-                ) : null}
-                {currentKind === 'DBH' ? (
-                  <DBHInput
-                    stems={stems}
-                    stemDraft={stemDraft}
-                    setStemDraft={setStemDraft}
-                    onAdd={addStem}
-                    onRemove={removeStem}
-                  />
-                ) : null}
-                {currentKind === 'custom' ? (
-                  <CustomInput
-                    typeValue={customType}
-                    setTypeValue={setCustomType}
-                    quantityValue={customValue}
-                    setQuantityValue={setCustomValue}
-                  />
-                ) : null}
-              </View>
+                  {/* Value input switches on kind */}
+                  <View className="mt-4">
+                    {currentKind === 'BB' ? <BBInput value={bb} onChange={setBb} /> : null}
+                    {currentKind === 'percent' ? (
+                      <PercentInput value={numericValue} onChange={setNumericValue} />
+                    ) : null}
+                    {currentKind === 'count' ? (
+                      <CountInput
+                        value={numericValue}
+                        onChange={setNumericValue}
+                        suffix={findQuantityType(qtyType)?.suffix ?? ''}
+                      />
+                    ) : null}
+                    {currentKind === 'DBH' ? (
+                      <DBHInput
+                        stems={stems}
+                        stemDraft={stemDraft}
+                        setStemDraft={setStemDraft}
+                        onAdd={addStem}
+                        onRemove={removeStem}
+                      />
+                    ) : null}
+                    {currentKind === 'custom' ? (
+                      <CustomInput
+                        typeValue={customType}
+                        setTypeValue={setCustomType}
+                        quantityValue={customValue}
+                        setQuantityValue={setCustomValue}
+                      />
+                    ) : null}
+                  </View>
 
-              <View className="mt-4">
-                <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('endSession.notesOptional')}</Text>
-                <TextInput
-                  value={notes}
-                  onChangeText={setNotes}
-                  placeholder={t('plotValue.notesPlaceholder')}
-                  placeholderTextColor="#9ca3af"
-                  multiline
-                  className="min-h-[60px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
-                />
-              </View>
+                  <View className="mt-4">
+                    <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {t('endSession.notesOptional')}
+                    </Text>
+                    <TextInput
+                      value={notes}
+                      onChangeText={setNotes}
+                      placeholder={t('plotValue.notesPlaceholder')}
+                      placeholderTextColor="#9ca3af"
+                      multiline
+                      className="min-h-[60px] rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                    />
+                  </View>
 
-              <View className="mt-4">
-                <SpeciesAttributesBlock
-                  kingdom={kingdom ?? null}
-                  className={className ?? null}
-                  value={attrs}
-                  onChange={setAttrs}
-                />
-              </View>
+                  <View className="mt-4">
+                    <SpeciesAttributesBlock
+                      kingdom={kingdom ?? null}
+                      className={className ?? null}
+                      value={attrs}
+                      onChange={setAttrs}
+                    />
+                  </View>
 
-              {showDetection ? (
-                <View className="mt-4">
-                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.detectionLabel')}</Text>
-                  <View className="flex-row gap-1.5">
-                    {detectionOptions().map((o) => {
-                      const on = detection === o.value;
-                      return (
+                  {showDetection ? (
+                    <View className="mt-4">
+                      <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {t('plotValue.detectionLabel')}
+                      </Text>
+                      <View className="flex-row gap-1.5">
+                        {detectionOptions().map((o) => {
+                          const on = detection === o.value;
+                          return (
+                            <Pressable
+                              key={o.value}
+                              onPress={() => setDetection(on ? null : o.value)}
+                              className={`rounded-full border px-3 py-1.5 ${on ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'}`}
+                            >
+                              <Text
+                                className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+                              >
+                                {o.label}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+
+                  {onSaveLocation ? (
+                    <View className="mt-4">
+                      <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                        {t('plotValue.coordOptional')}
+                      </Text>
+                      <View className="flex-row items-center gap-2">
                         <Pressable
-                          key={o.value}
-                          onPress={() => setDetection(on ? null : o.value)}
-                          className={`rounded-full border px-3 py-1.5 ${on ? 'border-emerald-500 bg-emerald-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+                          onPress={async () => {
+                            const perm = await Location.requestForegroundPermissionsAsync();
+                            if (perm.status !== 'granted') {
+                              Alert.alert(t('gps.permTitle'), t('plotValue.permMsg'));
+                              return;
+                            }
+                            try {
+                              const pos = await Location.getCurrentPositionAsync({
+                                accuracy: Location.Accuracy.Balanced,
+                              });
+                              onSaveLocation(
+                                pos.coords.latitude,
+                                pos.coords.longitude,
+                                pos.coords.accuracy ?? null,
+                              );
+                            } catch (e) {
+                              Alert.alert(
+                                t('plotValue.locateFailed'),
+                                e instanceof Error ? e.message : String(e),
+                              );
+                            }
+                          }}
+                          onLongPress={
+                            lat != null
+                              ? () => {
+                                  Alert.alert('GPS', undefined, [
+                                    { text: t('common.cancel'), style: 'cancel' },
+                                    {
+                                      text: t('species.clearCoord'),
+                                      style: 'destructive',
+                                      onPress: () => onSaveLocation(null, null, null),
+                                    },
+                                  ]);
+                                }
+                              : undefined
+                          }
+                          className="flex-1 flex-row items-center rounded-lg border border-gray-200 px-3 py-2.5 active:bg-gray-50 dark:border-gray-700 dark:active:bg-gray-800"
                         >
-                          <Text className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
-                            {o.label}
+                          <Ionicons
+                            name={lat != null ? 'location' : 'location-outline'}
+                            size={18}
+                            color={lat != null ? '#2563eb' : '#4b5563'}
+                          />
+                          <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
+                            {lat != null && lng != null
+                              ? `${lat.toFixed(5)}, ${lng.toFixed(5)}${accuracy != null ? ` (±${Math.round(accuracy)}m)` : ''}`
+                              : t('species.locateSpecies')}
+                          </Text>
+                          <Text className="text-[11px] text-gray-400">
+                            {lat != null ? t('species.longPressClear') : t('species.tapGps')}
                           </Text>
                         </Pressable>
-                      );
-                    })}
-                  </View>
-                </View>
-              ) : null}
-
-              {onSaveLocation ? (
-                <View className="mt-4">
-                  <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.coordOptional')}</Text>
-                  <View className="flex-row items-center gap-2">
-                  <Pressable
-                    onPress={async () => {
-                      const perm = await Location.requestForegroundPermissionsAsync();
-                      if (perm.status !== 'granted') {
-                        Alert.alert(t('gps.permTitle'), t('plotValue.permMsg'));
-                        return;
-                      }
-                      try {
-                        const pos = await Location.getCurrentPositionAsync({
-                          accuracy: Location.Accuracy.Balanced,
-                        });
-                        onSaveLocation(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy ?? null);
-                      } catch (e) {
-                        Alert.alert(t('plotValue.locateFailed'), e instanceof Error ? e.message : String(e));
-                      }
-                    }}
-                    onLongPress={
-                      lat != null
-                        ? () => {
-                            Alert.alert('GPS', undefined, [
-                              { text: t('common.cancel'), style: 'cancel' },
-                              {
-                                text: t('species.clearCoord'),
-                                style: 'destructive',
-                                onPress: () => onSaveLocation(null, null, null),
-                              },
-                            ]);
-                          }
-                        : undefined
-                    }
-                    className="flex-1 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
-                  >
-                    <Ionicons
-                      name={lat != null ? 'location' : 'location-outline'}
-                      size={18}
-                      color={lat != null ? '#2563eb' : '#4b5563'}
-                    />
-                    <Text className="ml-2 flex-1 text-sm text-gray-700 dark:text-gray-300">
-                      {lat != null && lng != null
-                        ? `${lat.toFixed(5)}, ${lng.toFixed(5)}${accuracy != null ? ` (±${Math.round(accuracy)}m)` : ''}`
-                        : t('species.locateSpecies')}
-                    </Text>
-                    <Text className="text-[11px] text-gray-400">{lat != null ? t('species.longPressClear') : t('species.tapGps')}</Text>
-                  </Pressable>
-                  </View>
-                  {onChangeLocation ? (
-                    <RecordLocationMap
-                      lat={lat ?? null}
-                      lng={lng ?? null}
-                      accuracy={accuracy ?? null}
-                      onChange={onChangeLocation}
-                      reference={
-                        plotGeo && plotGeo.lat != null && plotGeo.lng != null
-                          ? { center: { lat: plotGeo.lat, lng: plotGeo.lng }, radiusM: plotGeo.radiusM }
-                          : undefined
-                      }
-                    />
+                      </View>
+                      {onChangeLocation ? (
+                        // The map pans on its own; block the swipe so a sideways
+                        // drag moves the map instead of stepping to the next species.
+                        <GestureDetector gesture={nav.blocker}>
+                          <View>
+                            <RecordLocationMap
+                              lat={lat ?? null}
+                              lng={lng ?? null}
+                              accuracy={accuracy ?? null}
+                              onChange={onChangeLocation}
+                              reference={
+                                plotGeo && plotGeo.lat != null && plotGeo.lng != null
+                                  ? {
+                                      center: { lat: plotGeo.lat, lng: plotGeo.lng },
+                                      radiusM: plotGeo.radiusM,
+                                    }
+                                  : undefined
+                              }
+                            />
+                          </View>
+                        </GestureDetector>
+                      ) : null}
+                    </View>
                   ) : null}
-                </View>
-              ) : null}
 
-              {/* Photos and audio side by side (both plot types share this
+                  {/* Photos and audio side by side (both plot types share this
                   modal); audio is edit-mode only, so create mode shows the
                   photo column alone. */}
-              {onAddPhoto || onAddAudio ? (
-                <View className="mt-4">
-                  {/* Photo tiles and the square record tile sit shoulder to
+                  {onAddPhoto || onAddAudio ? (
+                    <View className="mt-4">
+                      {/* Photo tiles and the square record tile sit shoulder to
                       shoulder: the photo column shrinks (and its grid wraps)
                       when there are many thumbnails, the audio column never
                       does. Recorded clips are listed full-width underneath. */}
-                  <View className="flex-row items-start gap-3">
-                    {onAddPhoto ? (
-                      <View className="shrink">
-                        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.photo')}</Text>
-                        <PhotoGrid
-                          photos={photoUris ?? []}
-                          onView={(idx) => setViewerIndex(idx)}
-                          onAdd={() => onAddPhoto('camera')}
-                          onPickLibrary={() => onAddPhoto('library')}
-                          onRemove={onRemovePhoto}
+                      <View className="flex-row items-start gap-3">
+                        {onAddPhoto ? (
+                          <View className="shrink">
+                            <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {t('plotValue.photo')}
+                            </Text>
+                            <PhotoGrid
+                              photos={photoUris ?? []}
+                              onView={(idx) => setViewerIndex(idx)}
+                              onAdd={() => onAddPhoto('camera')}
+                              onPickLibrary={() => onAddPhoto('library')}
+                              onRemove={onRemovePhoto}
+                            />
+                          </View>
+                        ) : null}
+                        {onAddAudio ? (
+                          <View className="shrink-0">
+                            <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                              {t('species.audioClips')}
+                            </Text>
+                            <AudioRecordTile onAdd={onAddAudio} />
+                          </View>
+                        ) : null}
+                      </View>
+                      {onAddAudio ? (
+                        <AudioClipRows
+                          clips={audioUris ?? []}
+                          onRemove={onRemoveAudio ?? (() => {})}
                         />
-                      </View>
-                    ) : null}
-                    {onAddAudio ? (
-                      <View className="shrink-0">
-                        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('species.audioClips')}</Text>
-                        <AudioRecordTile onAdd={onAddAudio} />
-                      </View>
-                    ) : null}
-                  </View>
-                  {onAddAudio ? <AudioClipRows clips={audioUris ?? []} onRemove={onRemoveAudio ?? (() => {})} /> : null}
-                </View>
-              ) : null}
-              {inat ? <InatSyncButton state={inat} /> : null}
+                      ) : null}
+                    </View>
+                  ) : null}
+                  {inat ? <InatSyncButton state={inat} /> : null}
 
-              <View className="h-4" />
-            </KeyboardAwareScrollView>
+                  <RecordMetaFooter
+                    occurrenceId={occurrenceId ?? null}
+                    updatedAt={updatedAt ?? null}
+                    inatObservationId={inatUploadedAt != null ? inatObservationId : null}
+                  />
 
-            <View className="flex-row gap-3 border-t border-gray-100 dark:border-gray-800 px-4 py-3">
-              <Pressable
-                onPress={onCancel}
-                className="flex-1 items-center justify-center rounded-lg bg-gray-100 dark:bg-gray-800 py-3 active:bg-gray-200 dark:active:bg-gray-700"
-              >
-                <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.cancel')}</Text>
-              </Pressable>
-              <Pressable
-                onPress={canSave ? handleSave : undefined}
-                className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? 'bg-emerald-500 active:bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
-              >
-                <Text className="text-sm font-medium text-white">{t('common.save')}</Text>
-              </Pressable>
-            </View>
-          </SafeAreaView>
-        </View>
-      </KeyboardAvoidingView>
+                  <View className="h-4" />
+                </KeyboardAwareScrollView>
+              </SwipeNavArea>
+
+              <View className="flex-row gap-3 border-t border-gray-100 px-4 py-3 dark:border-gray-800">
+                <Pressable
+                  onPress={onCancel}
+                  className="flex-1 items-center justify-center rounded-lg bg-gray-100 py-3 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
+                >
+                  <Text className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {t('common.cancel')}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={canSave ? handleSave : undefined}
+                  className={`flex-1 items-center justify-center rounded-lg py-3 ${canSave ? 'bg-emerald-500 active:bg-emerald-600' : 'bg-gray-200 dark:bg-gray-700'}`}
+                >
+                  <Text className="text-sm font-medium text-white">{t('common.save')}</Text>
+                </Pressable>
+              </View>
+            </SafeAreaView>
+          </View>
+        </KeyboardAvoidingView>
+      </GestureHandlerRootView>
 
       <PhotoViewerModal
         photos={photoUris ?? []}
         index={viewerIndex}
         onClose={() => setViewerIndex(null)}
       />
-
     </Modal>
   );
 }
@@ -658,7 +777,9 @@ function BBInput({ value, onChange }: { value: string | null; onChange: (v: stri
   const { t } = useTranslation();
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.bbLevel')}</Text>
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+        {t('plotValue.bbLevel')}
+      </Text>
       <View className="flex-row flex-wrap gap-2">
         {BB_OPTIONS.map((v) => {
           const on = value === v;
@@ -668,7 +789,9 @@ function BBInput({ value, onChange }: { value: string | null; onChange: (v: stri
               onPress={() => onChange(v)}
               className={`h-12 w-12 items-center justify-center rounded-lg ${on ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800'}`}
             >
-              <Text className={`text-lg font-semibold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>
+              <Text
+                className={`text-lg font-semibold ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+              >
                 {v}
               </Text>
             </Pressable>
@@ -683,8 +806,10 @@ function PercentInput({ value, onChange }: { value: string; onChange: (v: string
   const { t } = useTranslation();
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.coverPct')}</Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+        {t('plotValue.coverPct')}
+      </Text>
+      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-900">
         <TextInput
           value={value}
           onChangeText={onChange}
@@ -708,7 +833,7 @@ function PercentInput({ value, onChange }: { value: string; onChange: (v: string
           <Pressable
             key={v}
             onPress={() => onChange(String(v))}
-            className="rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 active:bg-gray-200 dark:active:bg-gray-700"
+            className="rounded-full bg-gray-100 px-3 py-1 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
           >
             <Text className="text-xs text-gray-700 dark:text-gray-300">{v}%</Text>
           </Pressable>
@@ -730,8 +855,10 @@ function CountInput({
   const { t } = useTranslation();
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.quantity')}</Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+        {t('plotValue.quantity')}
+      </Text>
+      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-900">
         <TextInput
           value={value}
           onChangeText={onChange}
@@ -741,7 +868,9 @@ function CountInput({
           autoFocus
           className="flex-1 py-3 text-base text-gray-900 dark:text-gray-100"
         />
-        {suffix ? <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">{suffix}</Text> : null}
+        {suffix ? (
+          <Text className="ml-1 text-sm text-gray-500 dark:text-gray-400">{suffix}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -764,8 +893,10 @@ function DBHInput({
   const totalBA = basalArea(stems);
   return (
     <View>
-      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">{t('abundance.dbh')}</Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
+      <Text className="mb-2 text-xs font-medium text-gray-600 dark:text-gray-400">
+        {t('abundance.dbh')}
+      </Text>
+      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-900">
         <TextInput
           value={stemDraft}
           onChangeText={setStemDraft}
@@ -796,7 +927,9 @@ function DBHInput({
           </Text>
         </>
       ) : (
-        <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">{t('plotValue.noStems')}</Text>
+        <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+          {t('plotValue.noStems')}
+        </Text>
       )}
     </View>
   );
@@ -809,7 +942,7 @@ function DbhStemChip({ value, onRemove }: { value: number; onRemove: () => void 
     <Pressable
       onLongPress={onRemove}
       delayLongPress={300}
-      className="flex-row items-center rounded-full bg-blue-100 dark:bg-blue-900/60 px-3 py-1.5"
+      className="flex-row items-center rounded-full bg-blue-100 px-3 py-1.5 dark:bg-blue-900/60"
     >
       <Text className="text-sm font-medium text-blue-800 dark:text-white">{value} cm</Text>
       <Pressable onPress={onRemove} hitSlop={8} className="ml-1.5">
@@ -843,17 +976,19 @@ function CustomInput({
           placeholder={t('plotValue.customUnitPlaceholder')}
           placeholderTextColor="#9ca3af"
           autoCapitalize="none"
-          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-base text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
         />
       </View>
       <View>
-        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">{t('plotValue.quantity')}</Text>
+        <Text className="mb-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+          {t('plotValue.quantity')}
+        </Text>
         <TextInput
           value={quantityValue}
           onChangeText={setQuantityValue}
           placeholder={t('plotValue.customQtyPlaceholder')}
           placeholderTextColor="#9ca3af"
-          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 text-base text-gray-900 dark:text-gray-100"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-3 text-base text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
         />
       </View>
     </View>

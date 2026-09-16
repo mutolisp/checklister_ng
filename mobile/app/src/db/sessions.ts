@@ -4,6 +4,9 @@ import { createSite, deleteSiteIfUnreferenced, getSite, type ImportedSite } from
 import { defaultSurveyorString } from './surveyors';
 import { generateUuid } from './uuid';
 import type { DuplicateRecordOptions } from './duplicate';
+import { latest, mergeOrder, unionSurveyors, unionTracks, type MergeRecordOptions } from './merge';
+import type { ChecklistRecord } from './records';
+import i18n from '~/i18n';
 
 export type Session = {
   id: number;
@@ -42,7 +45,9 @@ function defaultSessionName(now: Date = new Date()): string {
 
 export function getActiveSession(): Session | null {
   const db = getUserDb();
-  const res = db.executeSync(`SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1`);
+  const res = db.executeSync(
+    `SELECT * FROM sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1`,
+  );
   const rows = (res.rows ?? []) as unknown as Session[];
   return rows[0] ?? null;
 }
@@ -64,7 +69,7 @@ export function listSessions(): SessionWithStats[] {
     JOIN projects p ON p.id = s.project_id
     ORDER BY s.started_at DESC
   `);
-  return ((res.rows ?? []) as unknown) as SessionWithStats[];
+  return (res.rows ?? []) as unknown as SessionWithStats[];
 }
 
 export type CreateSessionInput = {
@@ -120,7 +125,10 @@ export function createSession(input: CreateSessionInput = {}): number {
   return res.insertId ?? 0;
 }
 
-export function endSession(id: number, updates: Partial<Pick<Session, 'name' | 'project_id' | 'notes'>> = {}): void {
+export function endSession(
+  id: number,
+  updates: Partial<Pick<Session, 'name' | 'project_id' | 'notes'>> = {},
+): void {
   const db = getUserDb();
   const fields: string[] = ['ended_at = ?'];
   const params: (string | number | null)[] = [Date.now()];
@@ -305,8 +313,9 @@ function importSessionTx(
       `INSERT INTO checklist_records (
          session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths,
          lat, lng, accuracy, sex, life_stage, reproductive_condition, leaf_phenology,
-         organism_quantity, organism_quantity_type, used_name_id, used_scientific_name
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         organism_quantity, organism_quantity_type, used_name_id, used_scientific_name,
+         updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         sessionId,
         r.taxon_id,
@@ -326,6 +335,7 @@ function importSessionTx(
         r.organism_quantity_type ?? null,
         r.used_name_id ?? null,
         r.used_scientific_name ?? null,
+        Date.now(),
       ],
     );
   }
@@ -413,12 +423,149 @@ function duplicateSessionTx(id: number, opts: DuplicateRecordOptions): number | 
       if (!r.taxon_id) continue;
       db.executeSync(
         `INSERT INTO checklist_records
-           (session_id, taxon_id, occurrence_id, observed_at, used_name_id, used_scientific_name)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [newId, r.taxon_id, generateUuid(), now, r.used_name_id ?? null, r.used_scientific_name ?? null],
+           (session_id, taxon_id, occurrence_id, observed_at, used_name_id, used_scientific_name,
+            updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          r.taxon_id,
+          generateUuid(),
+          now,
+          r.used_name_id ?? null,
+          r.used_scientific_name ?? null,
+          now,
+        ],
       );
     }
   }
 
+  return newId;
+}
+
+// ── 合併名錄 (merge) ────────────────────────────────────────────────────────
+// See src/db/merge.ts for what the merged record inherits and why.
+
+/**
+ * Fold two or more sessions into a new one. Returns the new id, or null when
+ * fewer than two of the ids still exist (the whole thing rolls back).
+ */
+export function mergeSessions(ids: number[], opts: MergeRecordOptions): number | null {
+  return withTransaction(() => mergeSessionsTx(ids, opts));
+}
+
+function mergeSessionsTx(ids: number[], opts: MergeRecordOptions): number | null {
+  const name = opts.name.trim();
+  if (!name) return null;
+  const order = mergeOrder(ids, opts.primaryId);
+  const sources = order.map((id) => getSession(id)).filter((s): s is Session => s !== null);
+  if (sources.length < 2) return null;
+
+  const primary = sources[0];
+  const db = getUserDb();
+  const now = Date.now();
+
+  const startedAt = Math.min(...sources.map((s) => s.started_at));
+  // A still-open source ends here: the merged record is always finished.
+  const endedAt = latest(
+    ...sources.map((s) => s.ended_at ?? now),
+    ...sources.map((s) => s.started_at),
+    startedAt,
+  );
+
+  const provenance = i18n.t('records.mergeProvenance', {
+    sources: sources.map((s) => s.name).join('、'),
+  });
+  const notes = primary.notes ? `${primary.notes}\n${provenance}` : provenance;
+
+  const res = db.executeSync(
+    `INSERT INTO sessions
+       (uuid, name, type, project_id, site_id, recorded_by, gps_mode,
+        start_lat, start_lng, track_geojson, notes, started_at, ended_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      generateUuid(),
+      name,
+      primary.type,
+      existingProjectId(primary.project_id),
+      // The site is one physical place; it belongs to the primary or to
+      // nothing, never to an average of the sources.
+      primary.site_id,
+      unionSurveyors(sources.map((s) => s.recorded_by)),
+      primary.gps_mode,
+      primary.start_lat,
+      primary.start_lng,
+      unionTracks(sources.map((s) => s.track_geojson)),
+      notes,
+      startedAt,
+      endedAt,
+    ],
+  );
+  const newId = res.insertId ?? 0;
+  if (newId === 0) return null;
+
+  const seen = new Set<string>();
+  let maxObserved = 0;
+  for (const src of sources) {
+    const rows = (db.executeSync(
+      `SELECT * FROM checklist_records WHERE session_id = ? ORDER BY id`,
+      [src.id],
+    ).rows ?? []) as unknown as ChecklistRecord[];
+    for (const r of rows) {
+      if (!r.taxon_id) continue;
+      // The adopted name is part of the identity: one taxon filed under two
+      // names is two records, not a duplicate (same rule as duplicateSession).
+      const key = `${r.taxon_id}|${r.used_scientific_name ?? ''}`;
+      if (opts.dedupe) {
+        if (seen.has(key)) continue;
+        seen.add(key);
+      }
+      if (r.observed_at > maxObserved) maxObserved = r.observed_at;
+      db.executeSync(
+        `INSERT INTO checklist_records
+           (session_id, taxon_id, occurrence_id, observed_at, updated_at, notes, photo_paths,
+            lat, lng, accuracy, degree_of_establishment, sex, life_stage,
+            reproductive_condition, leaf_phenology, organism_quantity,
+            organism_quantity_type, used_name_id, used_scientific_name, audio_paths)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          newId,
+          r.taxon_id,
+          // A new occurrence: occurrenceID is globally unique, and keeping the
+          // old one would collide with the source row whenever it is kept.
+          generateUuid(),
+          r.observed_at,
+          now,
+          r.notes,
+          // The same file URIs — nothing deletes photos when a record goes, so
+          // the merged rows keep working even if the sources are removed.
+          r.photo_paths,
+          r.lat,
+          r.lng,
+          r.accuracy,
+          r.degree_of_establishment,
+          r.sex,
+          r.life_stage,
+          r.reproductive_condition,
+          r.leaf_phenology,
+          r.organism_quantity,
+          r.organism_quantity_type,
+          r.used_name_id,
+          r.used_scientific_name,
+          r.audio_paths,
+        ],
+      );
+      // iNaturalist columns are deliberately NOT carried over: two rows
+      // claiming the same observation id would make the next sync overwrite
+      // one with the other.
+    }
+  }
+
+  if (maxObserved > endedAt) {
+    db.executeSync(`UPDATE sessions SET ended_at = ? WHERE id = ?`, [maxObserved, newId]);
+  }
+
+  if (!opts.keepSources) {
+    for (const s of sources) deleteSession(s.id);
+  }
   return newId;
 }

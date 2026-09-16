@@ -47,6 +47,7 @@ import { classifyFailure } from './connectivity';
 import { formatQuantityBadge } from './dwcAbundance';
 import {
   detectionLabel,
+  establishmentLabel,
   leafPhenologyLabel,
   lifeStageLabel,
   parseMultiAttribute,
@@ -103,6 +104,8 @@ export type EligibleRecord = {
   audio: string[];
   location: InatLocation | null;
   attributes: InatAttribute[];
+  /** Raw degreeOfEstablishment, for the payload's `captive_flag`. */
+  degreeOfEstablishment: string | null;
   /** Phenology → iNat controlled terms (plants only). */
   annotations: InatAnnotation[];
   /** new = never uploaded; partial = observation exists, media incomplete; done = all up. */
@@ -142,8 +145,15 @@ function commonAttributes(r: {
   life_stage: string | null;
   reproductive_condition: string | null;
   leaf_phenology: string | null;
+  degree_of_establishment: string | null;
 }): InatAttribute[] {
   return [
+    // Also sent structurally as `captive_flag`; repeated in the description so
+    // 野生 is visible to a human reader, which a false flag alone is not.
+    pair(
+      i18n.t('attr.establishmentLabel'),
+      r.degree_of_establishment ? establishmentLabel(r.degree_of_establishment) : null,
+    ),
     pair(i18n.t('attr.sexLabel'), r.sex ? sexLabel(r.sex) : null),
     pair(i18n.t('attr.lifeStageLabel'), r.life_stage ? lifeStageLabel(r.life_stage) : null),
     multi(i18n.t('attr.reproLabel'), r.reproductive_condition, reproductiveLabel),
@@ -232,6 +242,7 @@ function collectCandidates(unit: UploadUnit): { title: string; all: EligibleReco
         photos: parsePhotoUris(r.photo_paths),
         audio: parseAudioPaths(r.audio_paths),
         location: recordLocation(r.lat, r.lng, r.accuracy) ?? fallback,
+        degreeOfEstablishment: r.degree_of_establishment,
         attributes: [
           ...commonAttributes(r),
           quantityAttr(r.organism_quantity, r.organism_quantity_type),
@@ -271,6 +282,7 @@ function collectCandidates(unit: UploadUnit): { title: string; all: EligibleReco
         photos: parsePhotoUris(r.photo_paths),
         audio: parseAudioPaths(r.audio_paths),
         location: recordLocation(r.lat, r.lng, r.accuracy) ?? fallback,
+        degreeOfEstablishment: r.degree_of_establishment,
         attributes: [
           ...commonAttributes(r),
           pair(i18n.t('plotValue.detectionLabel'), r.detection_type ? detectionLabel(r.detection_type) : null),
@@ -303,6 +315,7 @@ function collectCandidates(unit: UploadUnit): { title: string; all: EligibleReco
         photos: parsePhotoUris(r.photo_paths),
         audio: parseAudioPaths(r.audio_paths),
         location: recordLocation(r.lat, r.lng, r.accuracy),
+        degreeOfEstablishment: r.degree_of_establishment,
         attributes: [
           pair(i18n.t('collection.recordNumber'), r.record_number),
           ...commonAttributes(r),
@@ -532,6 +545,7 @@ function recordInput(rec: EligibleRecord): InatRecordInput {
     placeGuess: rec.placeGuess,
     notes: rec.notes,
     attributes: rec.attributes,
+    degreeOfEstablishment: rec.degreeOfEstablishment,
   };
 }
 
@@ -623,6 +637,23 @@ async function uploadOne(rec: EligibleRecord, batch: BatchOptions, ctx: BatchCon
     observationId = created.id;
     mediaDone = 0;
     markInatObservation(rec.kind, rec.id, observationId);
+    /**
+     * Everything downstream addresses the observation by OUR uuid, never by the
+     * numeric id: `uploadPhoto`/`uploadSound`/`createAnnotation` below, and
+     * every later sync's `updateObservation` / `fetchObservationAnnotations`.
+     * That only works because iNat keeps a client-supplied uuid — `set_uuid` in
+     * acts_as_uuidable is `self.uuid ||= SecureRandom.uuid`, so it fills in a
+     * uuid rather than replacing ours, and `:uuid` is in the controller's
+     * permitted params.
+     *
+     * So this should never fire. If it ever does, the record is unsyncable and
+     * saying so here beats letting it surface as a baffling 404 on the first
+     * photo. The id is already stored above, so a retry resumes this
+     * observation instead of creating a second one.
+     */
+    if (created.uuid.toLowerCase() !== rec.occurrenceId.toLowerCase()) {
+      throw new Error(i18n.t('inat.uuidMismatch', { sent: rec.occurrenceId, got: created.uuid }));
+    }
   }
 
   // C. media

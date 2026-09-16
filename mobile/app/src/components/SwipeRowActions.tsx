@@ -17,6 +17,7 @@ import { Pressable, Text, View } from 'react-native';
 import ReanimatedSwipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
+import { useSwipeBlock } from './SwipeNavigator';
 
 export type SwipeAction = {
   /** Display label next to the icon. */
@@ -53,6 +54,9 @@ type Props = {
 
 export function SwipeRowActions({ children, actions, disabled = false, teaser = false }: Props) {
   const ref = useRef<SwipeableMethods>(null);
+  // When the screen around this row is itself horizontally swipeable (樣區的
+  // 環境／物種 分頁), the row wins: revealing 刪除 must not switch tab.
+  const blockedBySwipe = useSwipeBlock();
 
   useEffect(() => {
     if (!teaser || disabled) return;
@@ -71,6 +75,7 @@ export function SwipeRowActions({ children, actions, disabled = false, teaser = 
   return (
     <ReanimatedSwipeable
       ref={ref}
+      blocksExternalGesture={blockedBySwipe}
       friction={2}
       rightThreshold={40}
       overshootRight={false}

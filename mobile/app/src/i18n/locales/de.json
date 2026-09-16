@@ -15,7 +15,8 @@
     "continue": "Weiter",
     "undo": "UNDO",
     "remove": "Entfernen",
-    "loading": "Wird geladen..."
+    "loading": "Wird geladen...",
+    "more": "Mehr"
   },
   "group": {
     "plantae": "Pflanzen",
@@ -110,7 +111,7 @@
   },
   "gps": {
     "permTitle": "Standortberechtigung erforderlich",
-    "permMsg": "Öffnen Sie Einstellungen → Checklister → Standort und aktivieren Sie „Beim Verwenden der App“",
+    "permMsg": "Öffnen Sie Einstellungen → Mitalivana → Standort und aktivieren Sie „Beim Verwenden der App“",
     "posRecorded": "Aktueller Standort erfasst",
     "posFailTitle": "Standort konnte nicht ermittelt werden",
     "trackBusyTitle": "Ein anderer Datensatz zeichnet bereits einen Track auf",
@@ -215,7 +216,31 @@
     "deleteMsg_other": "„{{title}}“ und die {{count}} zugehörigen Datensätze werden dauerhaft entfernt.",
     "collectionCount_one": "Aufsammlungen {{count}}",
     "collectionCount_other": "Aufsammlungen {{count}}",
-    "uploadInat": "iNat"
+    "uploadInat": "iNat",
+    "mergeProvenance": "Zusammengeführt aus: {{sources}}",
+    "moveToProject": "In Projekt verschieben",
+    "movedToProject_one": "{{count}} Aufzeichnung nach „{{name}}“ verschoben",
+    "movedToProject_other": "{{count}} Aufzeichnungen nach „{{name}}“ verschoben",
+    "merge": "Zusammenführen",
+    "mergeTitle": "{{noun}} zusammenführen",
+    "mergeCount_one": "{{count}} Aufzeichnung wird zusammengeführt",
+    "mergeCount_other": "{{count}} Aufzeichnungen werden zusammengeführt",
+    "mergePrimary": "Hauptaufzeichnung",
+    "mergePrimaryHint": "Koordinaten, Umweltdaten, Projekt und Standort stammen aus der Hauptaufzeichnung; der Zeitraum ist die Vereinigung aller Aufzeichnungen.",
+    "mergeDedupe": "Gleiche Arten zusammenfassen",
+    "mergeDedupeHint": "Aus: Jede Beobachtung bleibt erhalten, auch dieselbe Art mehrfach.",
+    "mergeKeepSources": "Originalaufzeichnungen behalten",
+    "mergeKeepSourcesHint": "Aus: Die zusammengeführten Aufzeichnungen werden danach gelöscht.",
+    "mergeDeleteWarn_one": "Die {{count}} Originalaufzeichnung wird gelöscht. Das lässt sich nicht rückgängig machen.",
+    "mergeDeleteWarn_other": "Alle {{count}} Originalaufzeichnungen werden gelöscht. Das lässt sich nicht rückgängig machen.",
+    "mergeExplain": "Artdatensätze behalten ihre eigene Zeit, Koordinaten, Fotos und Tonaufnahmen. Der iNaturalist-Upload-Status wird nicht übernommen.",
+    "mergeNeedTwo": "Mindestens zwei Aufzeichnungen auswählen",
+    "mergeSameKind": "Nur Aufzeichnungen derselben Art lassen sich zusammenführen",
+    "mergeNoCollection": "Aufsammlungen lassen sich nicht zusammenführen — Sammelnummern gehören zu physischen Belegen",
+    "mergeSamePlotType": "Nur Flächen mit derselben Aufnahmemethode lassen sich zusammenführen",
+    "mergeFailed": "Zusammenführen fehlgeschlagen",
+    "merged": "Zusammengeführt zu „{{name}}“",
+    "open": "Öffnen"
   },
   "export": {
     "preparing": "Wird vorbereitet…",
@@ -237,7 +262,6 @@
     "key": "Bestimmungsschlüssel",
     "projects": "Projekte",
     "sites": "Standorte",
-    "settings": "Einstellungen",
     "surveyors": "Erfasser",
     "about": "Über",
     "favorites": "Favoriten",
@@ -258,7 +282,8 @@
     "projectsDesc": "Projekte mit ihren Artenlisten / Probeflächen",
     "sites": "Geografische Standorte",
     "sitesDesc": "Punkte / Linien / Flächen auf der Karte",
-    "backupDesc": "Daten und Fotos sichern und wiederherstellen"
+    "backupDesc": "Daten und Fotos sichern und wiederherstellen",
+    "favoritesDesc": "Listen häufiger Arten; komplett in eine Aufnahme übernehmbar"
   },
   "record": {
     "kindSession": "Schnelle Artenliste",
@@ -271,7 +296,8 @@
     "defaultPlot": "Standard: Probeflächenaufnahme",
     "kindCollection": "Aufsammlung",
     "defaultCollection": "Standard: Aufsammlung",
-    "kindImport": "Datensatz importieren (.yml / .zip)"
+    "kindImport": "Datensatz importieren (.yml / .zip)",
+    "lastUpdated": "Zuletzt geändert"
   },
   "rank": {
     "kingdom": "Reich",
@@ -340,6 +366,8 @@
     "longPressClear": "Lange drücken zum Löschen",
     "tapGps": "GPS antippen",
     "externalLinks": "Externe Links",
+    "inatObservation": "iNaturalist-Beobachtung",
+    "inatTaxon": "iNaturalist-Taxon",
     "addToRecord": "Zum aktuellen Datensatz hinzufügen",
     "inFavorites": "In den Favoriten",
     "matchedSynonymPre": "Ihre Eingabe war ",
@@ -364,6 +392,7 @@
     "lifeStageLabel": "Lebensstadium (lifeStage)",
     "reproLabel": "Blüte / Frucht (reproductiveCondition, Mehrfachauswahl)",
     "leafLabel": "Blatt (leafPhenology, Mehrfachauswahl)",
+    "establishmentLabel": "Wild / gehalten (degreeOfEstablishment)",
     "sex": {
       "female": "Weiblich",
       "male": "Männlich",
@@ -396,6 +425,11 @@
       "shedding": "Laubfall",
       "green": "Grünes Laub",
       "colored": "Verfärbtes Laub"
+    },
+    "establishment": {
+      "wild": "Wild",
+      "captive": "Gehalten",
+      "cultivated": "Kultiviert"
     },
     "filledCount_one": "{{count}} gesetzt",
     "filledCount_other": "{{count}} gesetzt"
@@ -520,14 +554,12 @@
     "manualCoord": "manuell gesetzt"
   },
   "settings": {
-    "title": "Einstellungen",
-    "sectionAppearance": "Darstellung",
-    "sectionInteraction": "Interaktion",
-    "sectionRegions": "Regionale Artenlisten",
-    "sectionSurvey": "Erhebung",
-    "sectionExport": "Export",
+    "sectionAppearance": "Darstellung & Bedienung",
+    "sectionSurvey": "Erhebungseinstellungen",
     "exportPrefDesc": "Geoformate, Fotos, Ränge und Schutzstatus, Analyseformate",
     "sectionData": "Daten",
+    "sectionRecords": "Aufnahmen",
+    "sectionSync": "Artenlisten & Synchronisierung",
     "theme": "Design",
     "themeAuto": "Systemeinstellung folgen",
     "themeLight": "Hell",
@@ -597,7 +629,6 @@
     "nDupGroups_other": "{{count}} Gruppen mit doppelter occurrenceID",
     "nRows_one": "{{count}} Zeile",
     "nRows_other": "{{count}} Zeilen",
-    "sectionInat": "iNaturalist",
     "inaturalist": "iNaturalist-Konto",
     "inaturalistDesc": "Konto verknüpfen, um Einträge mit Fotos oder Aufnahmen als Beobachtungen hochzuladen",
     "inaturalistLinked": "Verknüpft: {{login}}"
@@ -645,7 +676,7 @@
     "restoreFromFile": "Aus Sicherungsdatei wiederherstellen",
     "invalidFile": "Keine gültige Sicherungsdatei (user.db oder manifest.json fehlt)",
     "corrupt": "Sicherungsdatei beschädigt (manifest.json nicht lesbar)",
-    "notChecklister": "Keine Checklister-Sicherungsdatei",
+    "notChecklister": "Keine Mitalivana-Sicherungsdatei",
     "tooNew": "Diese Sicherung stammt von einer neueren App-Version (Schema v{{version}}); bitte aktualisieren Sie die App vor dem Wiederherstellen.",
     "safetyTitle": "Automatische Sicherheitskopien",
     "safetyDesc": "Momentaufnahmen, die die App vor einer Datenreparatur angelegt hat. Nach Prüfung Ihrer Daten können sie gelöscht werden.",
@@ -1856,6 +1887,7 @@
     "openTokenPage": "Token-Seite im Browser öffnen",
     "pasteToken": "Token aus Zwischenablage einfügen",
     "geoprivacy": "Geodatenschutz",
+    "uuidMismatch": "iNaturalist hat eine andere uuid vergeben (gesendet {{sent}}, erhalten {{got}}); dieser Datensatz lässt sich nicht synchronisieren.",
     "geoprivacyOpen": "Offen",
     "geoprivacyObscured": "Verschleiert",
     "geoprivacyPrivate": "Privat",
@@ -1881,7 +1913,7 @@
     "recordsHeader": "Hochzuladende Einträge",
     "toggleAll": "Alle / keine",
     "emptyList": "Hier hat kein Eintrag ein Foto oder eine Aufnahme",
-    "resultCompleted": "Letzter Lauf: {{ok}} erfolgreich, {{failed}} fehlgeschlagen, {{unresolved}} ohne iNat-Taxon (nur Name)",
+    "resultCompleted": "Letzter Lauf: {{ok}} erfolgreich, {{failed}} fehlgeschlagen, {{unresolved}} ohne iNaturalist-Taxon (nur Name)",
     "resultCancelled": "Letzter Lauf abgebrochen: {{ok}} erfolgreich, {{failed}} fehlgeschlagen",
     "resultOffline": "Letzter Lauf offline gestoppt: {{ok}} erfolgreich, {{failed}} fehlgeschlagen; Unvollständige erneut hochladbar",
     "resultAuth": "Letzter Lauf gestoppt (Anmeldung abgelaufen): {{ok}} erfolgreich, {{failed}} fehlgeschlagen",
@@ -1895,17 +1927,16 @@
     "noMediaRecord": "Dieser Eintrag hat weder Foto noch Aufnahme und kann nicht zu iNaturalist hochgeladen werden",
     "rowUploading": "Wird hochgeladen …",
     "progressRequests": "{{done}} / {{total}} Anfragen",
-    "uploadedBadge": "Auf iNat",
-    "uploadButton": "Zu iNat hochladen",
-    "syncButton": "Mit iNat synchronisieren",
-    "syncChanged": "Mit iNat synchronisieren (geändert)",
+    "uploadButton": "Zu iNaturalist hochladen",
+    "syncButton": "Mit iNaturalist synchronisieren",
+    "syncChanged": "Mit iNaturalist synchronisieren (geändert)",
     "syncing": "Synchronisiere …",
-    "syncNoChange": "Auf iNat bereits aktuell",
-    "syncDone": "Mit iNat synchronisiert: Annotationen +{{added}} −{{removed}}, neue Medien {{media}}",
+    "syncNoChange": "Auf iNaturalist bereits aktuell",
+    "syncDone": "Mit iNaturalist synchronisiert: Annotationen +{{added}} −{{removed}}, neue Medien {{media}}",
     "syncFailed": "Synchronisierung fehlgeschlagen: {{msg}}",
-    "syncNotUploaded": "Dieser Eintrag ist noch nicht auf iNat",
-    "syncAuth": "iNat-Anmeldung abgelaufen – in den Einstellungen neu verknüpfen",
+    "syncNotUploaded": "Dieser Eintrag ist noch nicht auf iNaturalist",
+    "syncAuth": "iNaturalist-Anmeldung abgelaufen – in den Einstellungen neu verknüpfen",
     "syncOffline": "Offline – keine Synchronisierung möglich",
-    "busy": "Ein anderer iNat-Upload oder -Abgleich läuft"
+    "busy": "Ein anderer iNaturalist-Upload oder -Abgleich läuft"
   }
 }

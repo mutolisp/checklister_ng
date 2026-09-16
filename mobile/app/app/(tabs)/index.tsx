@@ -2,7 +2,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter, type Href } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, FlatList, LayoutAnimation, Modal, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  LayoutAnimation,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { isoDateTime } from '~/lib/datetime';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
@@ -10,11 +20,19 @@ import {
   deleteCollectionTrip,
   deletePlotSurvey,
   deleteSession,
+  getProject,
   listPlotSpecies,
   listRecordsSummary,
   listSessionRecords,
+  mergePlotSurveys,
+  mergeSessions,
   takenRecordNames,
   taxonIdsOfRecord,
+  updateCollectionTrip,
+  updatePlotSurvey,
+  updateSession,
+  withTransaction,
+  type MergeRecordOptions,
   type ProjectGroup,
   type RecordItem,
   type RecordKind,
@@ -30,17 +48,26 @@ import { confirmExportContent } from '~/components/AnalysisExportOptions';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { showActionSheet } from '~/components/ActionSheet';
 import { pickExportLanguage } from '~/lib/pickExportLanguage';
+import { DuplicateRecordModal, type DuplicateRequest } from '~/components/DuplicateRecordModal';
+import { MergeRecordsModal, type MergeRequest } from '~/components/MergeRecordsModal';
+import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import {
-  DuplicateRecordModal,
-  type DuplicateRequest,
-} from '~/components/DuplicateRecordModal';
-import { duplicateRecordAndOpen, importRecordPromptAndOpen, showCreateChooser } from '~/lib/recordCreate';
+  duplicateRecordAndOpen,
+  importRecordPromptAndOpen,
+  showCreateChooser,
+} from '~/lib/recordCreate';
 import { nextRecordName } from '~/lib/recordName';
 import { pickFavoriteFolder } from '~/lib/pickFavoriteFolder';
 import { useFavorites } from '~/stores/favorites';
 import { estimateBundleSize } from '~/lib/exportSize';
 import { bundleProject } from '~/lib/projectExport';
-import { betaSimilarity, chao2, computeDiversity, type Chao2Result, type DiversityRecord } from '~/lib/diversity';
+import {
+  betaSimilarity,
+  chao2,
+  computeDiversity,
+  type Chao2Result,
+  type DiversityRecord,
+} from '~/lib/diversity';
 import { BetaSimilarityBlock, Chao2ResultBlock } from '~/components/CrossPlotChao2Card';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useExportShare } from '~/lib/useExportShare';
@@ -96,8 +123,8 @@ function RecordRow({
   const compact = useSettings((s) => s.card_density) === 'compact';
   const showTimestamp = Boolean(
     item.kind === 'session' &&
-      item.session &&
-      item.session.name === formatTime(item.session.started_at),
+    item.session &&
+    item.session.name === formatTime(item.session.started_at),
   );
   return (
     <Pressable
@@ -107,38 +134,52 @@ function RecordRow({
       // Compact must be VISIBLY compact — an 8px padding delta alone reads as
       // "the setting does nothing". Tighter padding + smaller title + no
       // third line ≈ one-third shorter rows.
-      className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 px-4 ${compact ? 'py-1.5' : 'py-3'} active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
+      className={`flex-row items-center border-b border-gray-100 px-4 dark:border-gray-800 ${compact ? 'py-1.5' : 'py-3'} active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
     >
-      {selectMode ? <SelectCheckbox checked={selected} /> : <KindIcon kind={item.kind} active={item.active} />}
+      {selectMode ? (
+        <SelectCheckbox checked={selected} />
+      ) : (
+        <KindIcon kind={item.kind} active={item.active} />
+      )}
       <View className="flex-1">
         <View className="flex-row items-center">
           <View
             className={`mr-2 h-2 w-2 rounded-full ${item.active ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
           />
-          <Text className={`flex-shrink font-medium text-gray-900 dark:text-gray-100 ${compact ? 'text-sm' : 'text-base'}`} numberOfLines={1}>
+          <Text
+            className={`flex-shrink font-medium text-gray-900 dark:text-gray-100 ${compact ? 'text-sm' : 'text-base'}`}
+            numberOfLines={1}
+          >
             {showTimestamp ? formatTime(item.session!.started_at) : item.title}
           </Text>
           {item.active ? (
-            <View className="ml-2 rounded bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.5">
+            <View className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 dark:bg-emerald-900/60">
               <Text className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
                 {item.kind === 'session' ? t('records.recording') : t('records.inProgress')}
               </Text>
             </View>
           ) : null}
           {item.notReady ? (
-            <View className="ml-2 rounded bg-amber-100 dark:bg-amber-900/60 px-1.5 py-0.5">
-              <Text className="text-[11px] font-medium text-amber-700 dark:text-amber-300">{t('records.notReady')}</Text>
+            <View className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 dark:bg-amber-900/60">
+              <Text className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                {t('records.notReady')}
+              </Text>
             </View>
           ) : null}
         </View>
-        <Text className={`text-xs text-gray-500 dark:text-gray-400 ${compact ? '' : 'mt-0.5'}`} numberOfLines={1}>
+        <Text
+          className={`text-xs text-gray-500 dark:text-gray-400 ${compact ? '' : 'mt-0.5'}`}
+          numberOfLines={1}
+        >
           {showProject ? item.subtitlePlain : item.subtitle}
         </Text>
         <RowDiversityLine kind={item.kind} id={item.id} />
         {/* Third line dropped when the title IS the timestamp (auto-named
             sessions printed the same time twice) and in compact density. */}
         {item.startedAt > 0 && !showTimestamp && !compact ? (
-          <Text className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{formatTime(item.startedAt)}</Text>
+          <Text className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+            {formatTime(item.startedAt)}
+          </Text>
         ) : null}
       </View>
       {selectMode ? null : <Ionicons name="chevron-forward" size={18} color="#9ca3af" />}
@@ -178,8 +219,8 @@ function ProjectChao2Chip({ projectId, plotIds }: { projectId: number; plotIds: 
   const router = useRouter();
   const { t } = useTranslation();
   const key = `${projectId}:${plotIds.join('.')}`;
-  const [completeness, setCompleteness] = useState<number | null>(() =>
-    chao2ChipCache.get(key) ?? null,
+  const [completeness, setCompleteness] = useState<number | null>(
+    () => chao2ChipCache.get(key) ?? null,
   );
   useEffect(() => {
     if (plotIds.length < 2) {
@@ -208,7 +249,7 @@ function ProjectChao2Chip({ projectId, plotIds }: { projectId: number; plotIds: 
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={t('plotStats.crossTitle')}
-      className="ml-2 rounded-full bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 active:opacity-60"
+      className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 active:opacity-60 dark:bg-sky-900/50"
     >
       <Text className="text-[11px] font-medium text-sky-700 dark:text-sky-300">
         {t('plotStats.chipLabel', { pct: `${Math.round(completeness * 100)}%` })}
@@ -261,7 +302,10 @@ function RowDiversityLine({ kind, id }: { kind: RecordKind; id: number }) {
   }, [key, kind, id]);
   if (!val) return null;
   return (
-    <Text className="mt-0.5 text-[11px] text-emerald-700 dark:text-emerald-400" style={{ fontVariant: ['tabular-nums'] }}>
+    <Text
+      className="mt-0.5 text-[11px] text-emerald-700 dark:text-emerald-400"
+      style={{ fontVariant: ['tabular-nums'] }}
+    >
       {`S:${val.s}`}
       {val.h != null ? `, H′:${val.h.toFixed(2)}` : ''}
       {val.j != null ? `, Pielou J′:${val.j.toFixed(2)}` : ''}
@@ -310,7 +354,7 @@ function ProjectHeader({
       onPress={selectMode ? onToggleSelect : onToggle}
       onLongPress={selectMode ? undefined : onToggleAll}
       delayLongPress={350}
-      className="border-b border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 px-4 py-2 active:bg-gray-200 dark:active:bg-gray-700"
+      className="border-b border-gray-200 bg-gray-100 px-4 py-2 active:bg-gray-200 dark:border-gray-700 dark:bg-gray-800 dark:active:bg-gray-700"
     >
       <View className="flex-row items-center">
         {selectMode ? (
@@ -326,7 +370,9 @@ function ProjectHeader({
           />
         )}
         <Ionicons name="folder-outline" size={14} color="#4b5563" />
-        <Text className="ml-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200">{group.projectName}</Text>
+        <Text className="ml-1.5 text-sm font-semibold text-gray-800 dark:text-gray-200">
+          {group.projectName}
+        </Text>
         <Text className="ml-2 flex-1 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
           {parts.join(' · ')}
         </Text>
@@ -400,7 +446,15 @@ export default function RecordsListScreen() {
     plot: 0,
     collection: 0,
   });
-  const [duplicating, setDuplicating] = useState<{ item: RecordItem; request: DuplicateRequest } | null>(null);
+  const [duplicating, setDuplicating] = useState<{
+    item: RecordItem;
+    request: DuplicateRequest;
+  } | null>(null);
+  const [assigningProject, setAssigningProject] = useState(false);
+  const [merging, setMerging] = useState<{
+    kind: 'session' | 'plot';
+    request: MergeRequest;
+  } | null>(null);
   const {
     busy: exportBusy,
     progress: exportProgress,
@@ -496,7 +550,6 @@ export default function RecordsListScreen() {
     selectEnter(selectionKey(item.kind, item.id));
   };
 
-
   const handleExportOne = async (item: RecordItem) => {
     const bundleItem: BundleItem = { kind: item.kind, id: item.id };
     const est = await estimateBundleSize([bundleItem], { includePhotos });
@@ -506,7 +559,15 @@ export default function RecordsListScreen() {
     const lang = await pickExportLanguage(t, 'export.language');
     if (!lang) return;
 
-    const bundleOpts = { geoFormats, includePhotos, includeDocx, levels, conservationFields, lang, onProgress };
+    const bundleOpts = {
+      geoFormats,
+      includePhotos,
+      includeDocx,
+      levels,
+      conservationFields,
+      lang,
+      onProgress,
+    };
     await shareBundle(() => {
       if (item.kind === 'session') return bundleSession(item.id, bundleOpts);
       if (item.kind === 'collection') return bundleCollection(item.id, bundleOpts);
@@ -581,12 +642,17 @@ export default function RecordsListScreen() {
 
     await shareBundle(() =>
       bundleMany(bundleItems, {
-        geoFormats, includePhotos, includeDocx, levels, conservationFields, lang, onProgress,
+        geoFormats,
+        includePhotos,
+        includeDocx,
+        levels,
+        conservationFields,
+        lang,
+        onProgress,
       }),
     );
     selectClear();
   };
-
 
   const nounOf = (kind: RecordKind): string =>
     t(kind === 'session' ? 'nav.session' : kind === 'plot' ? 'nav.plot' : 'nav.collection');
@@ -655,6 +721,125 @@ export default function RecordsListScreen() {
         unresolved: t('favorites.nUnresolvedNames', { count: unresolved }),
       }),
     );
+  };
+
+  /** The selected keys resolved back to rows, in the list's own order. */
+  const selectedItems = useMemo(() => {
+    const byKey = new Map(items.map((it) => [selectionKey(it.kind, it.id), it]));
+    return [...selected].map((k) => byKey.get(k)).filter((it): it is RecordItem => !!it);
+  }, [items, selected]);
+
+  /** 移動到其他專案／另建專案 — one entry point, because ProjectAssignSheet's
+   *  「新建專案」row already covers the second half. */
+  const handleAssignSelectionProject = (projectId: number) => {
+    setAssigningProject(false);
+    const picked = selectedItems;
+    if (picked.length === 0) return;
+    withTransaction(() => {
+      for (const it of picked) {
+        if (it.kind === 'session') updateSession(it.id, { project_id: projectId });
+        else if (it.kind === 'plot') updatePlotSurvey(it.id, { project_id: projectId });
+        else updateCollectionTrip(it.id, { project_id: projectId });
+      }
+    });
+    reload();
+    selectClear();
+    toast(
+      t('records.movedToProject', {
+        count: picked.length,
+        name: getProject(projectId)?.name ?? '',
+      }),
+    );
+  };
+
+  /**
+   * 合併 — only within one kind, and for plots only within one plot_type.
+   *
+   * 採集 is excluded: a specimen's collection number comes from the collector's
+   * own career series, and merging two trips would have to re-issue numbers
+   * already written on the physical sheets.
+   */
+  const handleMergeSelection = () => {
+    const picked = selectedItems;
+    if (picked.length < 2) {
+      toast(t('records.mergeNeedTwo'));
+      return;
+    }
+    const kind = picked[0].kind;
+    if (picked.some((it) => it.kind !== kind)) {
+      toast(t('records.mergeSameKind'));
+      return;
+    }
+    if (kind === 'collection') {
+      toast(t('records.mergeNoCollection'));
+      return;
+    }
+    if (kind === 'plot') {
+      const type = picked[0].plot?.plot_type;
+      if (picked.some((it) => it.plot?.plot_type !== type)) {
+        toast(t('records.mergeSamePlotType'));
+        return;
+      }
+    }
+    const taken = takenRecordNames(kind);
+    setMerging({
+      kind,
+      request: {
+        kind,
+        sources: picked.map((it) => ({
+          id: it.id,
+          title: it.title,
+          subtitle: it.subtitlePlain || it.subtitle,
+        })),
+        suggested: nextRecordName(picked[0].title, taken),
+        taken,
+        noun: nounOf(kind),
+      },
+    });
+  };
+
+  const handleSelectionMore = async () => {
+    if (selectedItems.length === 0) {
+      toast(t('records.noneSelected'));
+      return;
+    }
+    const idx = await showActionSheet({
+      title: t('records.selectedCount', { count: selectedItems.length }),
+      cancelLabel: t('common.cancel'),
+      options: [{ label: t('records.moveToProject') }, { label: t('records.merge') }],
+    });
+    if (idx < 0) return;
+    // Presenting our own Modal in the same tick the system sheet is dismissing
+    // is the documented iOS no-op; let the dismissal land first.
+    await new Promise((r) => setTimeout(r, 250));
+    if (idx === 0) setAssigningProject(true);
+    else if (idx === 1) handleMergeSelection();
+  };
+
+  const handleMergeConfirm = (opts: MergeRecordOptions) => {
+    const pending = merging;
+    setMerging(null);
+    if (!pending) return;
+    const ids = pending.request.sources.map((s) => s.id);
+    const newId =
+      pending.kind === 'session' ? mergeSessions(ids, opts) : mergePlotSurveys(ids, opts);
+    if (newId === null) {
+      toast(t('records.mergeFailed'));
+      return;
+    }
+    // Deleting the sources can remove whichever record was active, and both
+    // stores cache that row.
+    useActiveSession.getState().refresh();
+    useActivePlot.getState().refresh();
+    reload();
+    selectClear();
+    useToast.getState().show(t('records.merged', { name: opts.name }), {
+      action: {
+        label: t('records.open'),
+        onPress: () =>
+          router.push(`${pending.kind === 'session' ? '/session' : '/plot'}/${newId}` as Href),
+      },
+    });
   };
 
   const handleDelete = (item: RecordItem) => {
@@ -831,61 +1016,79 @@ export default function RecordsListScreen() {
   return (
     <View className="flex-1 bg-gray-50 dark:bg-gray-950">
       <ExportProgressOverlay progress={exportProgress} />
-      <View className="border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-4">
+      <View className="border-b border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-gray-900">
         {selectMode ? (
           <View className="flex-row items-center justify-between">
             <Pressable onPress={selectClear} hitSlop={8}>
-              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">{t('common.cancel')}</Text>
+              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">
+                {t('common.cancel')}
+              </Text>
             </Pressable>
             <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
               {t('records.selectedCount', { count: selected.size })}
             </Text>
             <View className="flex-row items-center gap-4">
-            <Pressable
-              onPress={() =>
-                setChao2Sheet(
-                  selectedPlotIds.map((id) => ({
-                    id,
-                    title:
-                      items.find((it) => it.kind === 'plot' && it.id === id)?.title ?? String(id),
-                  })),
-                )
-              }
-              disabled={selectedPlotIds.length < 2}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t('plotStats.crossTitle')}
-            >
-              <Ionicons
-                name="analytics-outline"
-                size={20}
-                color={selectedPlotIds.length < 2 ? '#9ca3af' : '#0284c7'}
-              />
-            </Pressable>
-            <Pressable
-              onPress={handleSaveSelectionToFavorites}
-              disabled={selected.size === 0}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t('records.favorites')}
-            >
-              <Ionicons
-                name="star-outline"
-                size={20}
-                color={selected.size === 0 ? '#9ca3af' : '#d97706'}
-              />
-            </Pressable>
-            <Pressable
-              onPress={handleExportSelection}
-              disabled={selected.size === 0 || exportBusy}
-              hitSlop={8}
-            >
-              <Text
-                className={`text-base font-medium ${selected.size === 0 || exportBusy ? 'text-gray-400 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}`}
+              <Pressable
+                onPress={() =>
+                  setChao2Sheet(
+                    selectedPlotIds.map((id) => ({
+                      id,
+                      title:
+                        items.find((it) => it.kind === 'plot' && it.id === id)?.title ?? String(id),
+                    })),
+                  )
+                }
+                disabled={selectedPlotIds.length < 2}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('plotStats.crossTitle')}
               >
-                {t('common.export')}
-              </Text>
-            </Pressable>
+                <Ionicons
+                  name="analytics-outline"
+                  size={20}
+                  color={selectedPlotIds.length < 2 ? '#9ca3af' : '#0284c7'}
+                />
+              </Pressable>
+              <Pressable
+                onPress={handleSaveSelectionToFavorites}
+                disabled={selected.size === 0}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('records.favorites')}
+              >
+                <Ionicons
+                  name="star-outline"
+                  size={20}
+                  color={selected.size === 0 ? '#9ca3af' : '#d97706'}
+                />
+              </Pressable>
+              <Pressable
+                onPress={handleExportSelection}
+                disabled={selected.size === 0 || exportBusy}
+                hitSlop={8}
+              >
+                <Text
+                  className={`text-base font-medium ${selected.size === 0 || exportBusy ? 'text-gray-400 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}`}
+                >
+                  {t('common.export')}
+                </Text>
+              </Pressable>
+              {/* 專案 / 合併 live behind an overflow rather than as two more
+                icons: the bar already carries four controls and 已選 N, which
+                on a narrow phone leaves nothing to truncate. */}
+              <Pressable
+                onPress={handleSelectionMore}
+                disabled={selected.size === 0}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.more')}
+              >
+                <Ionicons
+                  name="ellipsis-horizontal"
+                  size={20}
+                  color={selected.size === 0 ? '#9ca3af' : '#374151'}
+                />
+              </Pressable>
             </View>
           </View>
         ) : (
@@ -926,10 +1129,12 @@ export default function RecordsListScreen() {
               <Pressable
                 onPress={() => router.push('/favorites')}
                 hitSlop={8}
-                className="flex-row items-center rounded-full bg-amber-50 dark:bg-amber-950/40 px-3 py-1.5 active:bg-amber-100 dark:active:bg-amber-900/60"
+                className="flex-row items-center rounded-full bg-amber-50 px-3 py-1.5 active:bg-amber-100 dark:bg-amber-950/40 dark:active:bg-amber-900/60"
               >
                 <Ionicons name="star" size={14} color="#d97706" />
-                <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">{t('records.favorites')}</Text>
+                <Text className="ml-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+                  {t('records.favorites')}
+                </Text>
               </Pressable>
               <Pressable
                 onPress={async () => {
@@ -939,7 +1144,7 @@ export default function RecordsListScreen() {
                 hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel={t('record.kindImport')}
-                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
+                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
               >
                 <Ionicons name="download-outline" size={16} color="#4b5563" />
               </Pressable>
@@ -952,9 +1157,13 @@ export default function RecordsListScreen() {
         <View className="flex-1 items-center justify-center px-6">
           <Ionicons name="add-circle-outline" size={56} color="#cbd5e1" />
           <Text className="mt-3 text-base font-medium text-gray-700 dark:text-gray-300">
-            {filter === 'all' ? t('records.empty') : t('records.emptyFiltered', { kind: filterLabel[filter] })}
+            {filter === 'all'
+              ? t('records.empty')
+              : t('records.emptyFiltered', { kind: filterLabel[filter] })}
           </Text>
-          <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">{t('records.emptyHint')}</Text>
+          <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
+            {t('records.emptyHint')}
+          </Text>
           <Pressable
             onPress={() => showCreateChooser()}
             className="mt-5 flex-row items-center rounded-lg bg-emerald-500 px-5 py-2.5 active:bg-emerald-600"
@@ -1007,7 +1216,7 @@ export default function RecordsListScreen() {
       >
         <Pressable className="flex-1 bg-black/40" onPress={() => setChao2Sheet(null)} />
         <View
-          className="rounded-t-2xl bg-white dark:bg-gray-900 px-4 pt-4"
+          className="rounded-t-2xl bg-white px-4 pt-4 dark:bg-gray-900"
           style={{ paddingBottom: Math.max(sheetInsets.bottom, 16) }}
         >
           <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
@@ -1046,6 +1255,19 @@ export default function RecordsListScreen() {
         request={duplicating?.request ?? null}
         onCancel={() => setDuplicating(null)}
         onConfirm={handleDuplicateConfirm}
+      />
+      <MergeRecordsModal
+        request={merging?.request ?? null}
+        onCancel={() => setMerging(null)}
+        onConfirm={handleMergeConfirm}
+      />
+      <ProjectAssignSheet
+        visible={assigningProject}
+        // A multi-record selection has no single current project; -1 matches
+        // nothing, so no row comes up pre-ticked.
+        currentProjectId={-1}
+        onCancel={() => setAssigningProject(false)}
+        onAssign={handleAssignSelectionProject}
       />
     </View>
   );

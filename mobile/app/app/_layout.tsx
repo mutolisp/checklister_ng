@@ -92,7 +92,6 @@ function ThemedShell() {
             <Stack.Screen name="key/[id]" options={{ title: t('nav.key') }} />
             <Stack.Screen name="projects" options={{ title: t('nav.projects') }} />
             <Stack.Screen name="sites" options={{ title: t('nav.sites') }} />
-            <Stack.Screen name="settings/index" options={{ title: t('nav.settings') }} />
             {/* Titles reuse the keys the rows already carry, so the header is
                 right before the screen mounts (no flash) and exportPref.title's
                 existing es-419 override keeps working. */}

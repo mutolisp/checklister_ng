@@ -69,6 +69,7 @@ export function recordToYamlItem(
     taxon_id: r.taxon_id,
     name: r.simple_name,
     fullname,
+    name_author: r.name_author,
     cname: r.common_name_c,
     family: r.family,
     family_c: r.family_c,
@@ -98,6 +99,7 @@ export function recordToYamlItem(
   if (repro) item.reproductive_condition = repro;
   const leaf = multiToPipe(r.leaf_phenology);
   if (leaf) item.leaf_phenology = leaf;
+  if (r.degree_of_establishment) item.degree_of_establishment = r.degree_of_establishment;
   // → DwC `associatedMedia`; the filenames inside the zip's photos/.
   const photos = photoField(photoNames, r.occurrence_id);
   if (photos) item.photo_files = photos;
@@ -215,6 +217,7 @@ export function buildPlotYamlDoc(input: PlotYamlInput): Record<string, unknown> 
     if (repro) item.reproductive_condition = repro;
     const leaf = multiToPipe(r.leaf_phenology);
     if (leaf) item.leaf_phenology = leaf;
+    if (r.degree_of_establishment) item.degree_of_establishment = r.degree_of_establishment;
     if (r.detection_type) item.detection_type = r.detection_type;
     if (r.lat !== null) item.lat = r.lat;
     if (r.lng !== null) item.lng = r.lng;
@@ -340,18 +343,21 @@ export function buildPlotEnvRows(
   push('coordinateUncertaintyInMeters', plot.coord_uncertainty_m);
   push('minimumElevationInMeters', plot.elevation_m);
 
-  // Site morphology (no standard DwC term — use descriptive keys)
-  push('slopeDeg', plot.slope_deg);
-  push('aspectDeg', plot.aspect_deg);
+  // Site morphology. Seven of these are terms from GBIF's Relevé extension
+  // (rs.gbif.org/extension/gbif/1.0/releve_2016-05-10.xml) — the vegetation-plot
+  // extension — so they carry their standard names. gravel / bareland /
+  // vascular cover and terrainPosition have no Relevé term and stay descriptive.
+  push('inclinationInDegrees', plot.slope_deg);
+  push('aspect', plot.aspect_deg);
   push('terrainPosition', plot.terrain_position);
-  push('totalCoverPct', plot.total_cover_pct);
-  push('rockCoverPct', plot.rock_cover_pct);
+  push('coverTotalInPercentage', plot.total_cover_pct);
+  push('coverRockInPercentage', plot.rock_cover_pct);
   push('gravelCoverPct', plot.gravel_cover_pct);
   push('barelandCoverPct', plot.bareland_cover_pct);
   push('vascularCoverPct', plot.vascular_cover_pct);
-  push('bryophyteCoverPct', plot.bryophyte_cover_pct);
-  push('lichenCoverPct', plot.lichen_cover_pct);
-  push('litterCoverPct', plot.litter_cover_pct);
+  push('coverMossesInPercentage', plot.bryophyte_cover_pct);
+  push('coverLichensInPercentage', plot.lichen_cover_pct);
+  push('coverLitterInPercentage', plot.litter_cover_pct);
 
   // Per-layer vegetation cover / height / abundance method (fixed plots only;
   // transect plots have no layer concept and `layers` comes in empty).

@@ -1,19 +1,19 @@
 import { Ionicons } from '@expo/vector-icons';
 import { RecordLocationMap } from '~/components/RecordLocationMap';
+import { RecordStepBar } from '~/components/RecordStepBar';
+import {
+  SwipeBlockedArea,
+  SwipeBlockProvider,
+  SwipeNavArea,
+  useSwipeNav,
+} from '~/components/SwipeNavigator';
 import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { BackHeaderLeft } from '~/lib/goBack';
 import * as Location from 'expo-location';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { isoTime } from '~/lib/datetime';
-import {
-  Alert,
-  Platform,
-  Pressable,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { Alert, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -53,11 +53,10 @@ import { ProjectAssignSheet } from '~/components/ProjectAssignSheet';
 import { SurveyorAssignSheet } from '~/components/SurveyorAssignSheet';
 import { TransectTrackControl } from '~/components/TransectTrackControl';
 import { isRecordingTarget, pauseIfNot, pauseRecording } from '~/lib/trackRecorder';
+import { useSettings, type PlotTab } from '~/stores/settings';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { captureEnvPhoto, pickPhotos } from '~/lib/photoCapture';
-
-type Tab = 'env' | 'species';
 
 export default function PlotDetailScreen() {
   const { t } = useTranslation();
@@ -66,7 +65,25 @@ export default function PlotDetailScreen() {
   const router = useRouter();
   const plotId = Number(id);
   const [plot, setPlot] = useState<PlotSurvey | null>(null);
-  const [tab, setTab] = useState<Tab>('env');
+  /**
+   * Restore the tab this plot was last left on — a survey is filled in 環境
+   * once and then lived in 物種, so landing back on 環境 after every trip out
+   * to the map or the camera is pure friction.
+   *
+   * Read once through `getState()`, not a selector: this is a starting point,
+   * not something that should yank the tab out from under the user if the
+   * setting changes while the screen is open. The store is already loaded —
+   * `DBProvider` gates the whole app render on it.
+   */
+  const [tab, setTab] = useState<PlotTab>(() => {
+    const last = useSettings.getState().plot_last_tab;
+    return last.plotId === plotId ? last.tab : 'env';
+  });
+
+  const selectTab = (next: PlotTab) => {
+    setTab(next);
+    useSettings.getState().set('plot_last_tab', { plotId, tab: next });
+  };
   const [speciesCount, setSpeciesCount] = useState(0);
   const refreshActivePlot = useActivePlot((s) => s.refresh);
   const refreshActiveSession = useActiveSession((s) => s.refresh);
@@ -82,6 +99,17 @@ export default function PlotDetailScreen() {
     reload();
   }, [reload]);
 
+  const ready = plot ? plotCanAcceptSpecies(plot) : false;
+
+  /** 環境 ↔ 物種 by horizontal swipe, mirroring the two tab buttons exactly —
+   *  including the 物種 tab staying shut until the survey can accept species.
+   *  Declared before the not-found early return so the hook order is stable. */
+  const tabNav = useSwipeNav({
+    onStep: (dir) => selectTab(dir === 1 ? 'species' : 'env'),
+    hasPrev: tab === 'species',
+    hasNext: tab === 'env' && ready,
+  });
+
   if (!plot) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
@@ -91,8 +119,6 @@ export default function PlotDetailScreen() {
     );
   }
 
-  const ready = plotCanAcceptSpecies(plot);
-
   return (
     <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
       <Stack.Screen
@@ -101,83 +127,88 @@ export default function PlotDetailScreen() {
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <View className="flex-row items-center gap-2">
-            <Pressable
-              onPress={() => router.push(`/report/plot/${plot.id}` as Href)}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={t('report.navTitle')}
-              className="h-9 w-9 items-center justify-center active:opacity-60"
-            >
-              <Ionicons name="document-text-outline" size={22} color="#2563eb" />
-            </Pressable>
-            <Pressable
-              onPress={() => {
-                if (plot.status === 'done') {
-                  // Reopen force-ends any other active record DB-side; stop a
-                  // GPS watch that belongs to something other than this plot.
-                  pauseIfNot({ kind: 'plot', id: plot.id });
-                  reopenPlotSurvey(plot.id);
-                  // Reopen force-ends any active session DB-side too; refresh
-                  // both stores so the UI bars + watchers reflect reality.
-                  refreshActivePlot();
-                  refreshActiveSession();
-                  reload();
-                } else {
-                  Alert.alert(t('plot.endTitle'), t('plot.endMsg'), [
-                    { text: t('common.cancel'), style: 'cancel' },
-                    {
-                      text: t('session.end'),
-                      onPress: () => {
-                        if (isRecordingTarget({ kind: 'plot', id: plot.id })) pauseRecording();
-                        endPlotSurvey(plot.id);
-                        reload();
+              <Pressable
+                onPress={() => router.push(`/report/plot/${plot.id}` as Href)}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('report.navTitle')}
+                className="h-9 w-9 items-center justify-center active:opacity-60"
+              >
+                <Ionicons name="document-text-outline" size={22} color="#2563eb" />
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (plot.status === 'done') {
+                    // Reopen force-ends any other active record DB-side; stop a
+                    // GPS watch that belongs to something other than this plot.
+                    pauseIfNot({ kind: 'plot', id: plot.id });
+                    reopenPlotSurvey(plot.id);
+                    // Reopen force-ends any active session DB-side too; refresh
+                    // both stores so the UI bars + watchers reflect reality.
+                    refreshActivePlot();
+                    refreshActiveSession();
+                    reload();
+                  } else {
+                    Alert.alert(t('plot.endTitle'), t('plot.endMsg'), [
+                      { text: t('common.cancel'), style: 'cancel' },
+                      {
+                        text: t('session.end'),
+                        onPress: () => {
+                          if (isRecordingTarget({ kind: 'plot', id: plot.id })) pauseRecording();
+                          endPlotSurvey(plot.id);
+                          reload();
+                        },
                       },
-                    },
-                  ]);
-                }
-              }}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={plot.status === 'done' ? t('plot.reopen') : t('session.end')}
-              className="h-9 w-9 items-center justify-center active:opacity-60"
-            >
-              {/* Icon-only: the words cost most of the header's width and the
+                    ]);
+                  }
+                }}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={plot.status === 'done' ? t('plot.reopen') : t('session.end')}
+                className="h-9 w-9 items-center justify-center active:opacity-60"
+              >
+                {/* Icon-only: the words cost most of the header's width and the
                    glyphs carry the same two states. The label survives for
                    screen readers. */}
-              <Ionicons
-                name={plot.status === 'done' ? 'refresh-outline' : 'stop-circle-outline'}
-                size={22}
-                color={plot.status === 'done' ? '#2563eb' : '#dc2626'}
-              />
-            </Pressable>
+                <Ionicons
+                  name={plot.status === 'done' ? 'refresh-outline' : 'stop-circle-outline'}
+                  size={22}
+                  color={plot.status === 'done' ? '#2563eb' : '#dc2626'}
+                />
+              </Pressable>
             </View>
           ),
         }}
       />
-      <View className="flex-row border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-        <TabBtn label={t('plot.tabEnv')} active={tab === 'env'} onPress={() => setTab('env')} />
+      <View className="flex-row border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <TabBtn label={t('plot.tabEnv')} active={tab === 'env'} onPress={() => selectTab('env')} />
         <TabBtn
           label={`${t('plot.tabSpecies')} ${speciesCount > 0 ? speciesCount : ''}`}
           active={tab === 'species'}
-          onPress={() => setTab('species')}
+          onPress={() => selectTab('species')}
           disabled={!ready}
         />
       </View>
 
-      <View className="flex-1">
-        {/* EnvTab wraps its content in a `KeyboardAwareScrollView` (from
+      <SwipeBlockProvider nav={tabNav}>
+        <SwipeNavArea nav={tabNav}>
+          {/* EnvTab wraps its content in a `KeyboardAwareScrollView` (from
             `react-native-keyboard-controller`) which auto-scrolls the focused
             TextInput above the keyboard. PlotSpeciesTab wraps its SearchBox
             in KeyboardStickyView so the search row follows the kbd top. */}
-        {tab === 'env' ? <EnvTab plot={plot} onUpdated={reload} /> : null}
-        {tab === 'species' ? (
-          ready ? (
-            <PlotSpeciesTab plot={plot} onChanged={reload} />
-          ) : (
-            <SpeciesGateScreen />
-          )
-        ) : null}
-      </View>
+          {tab === 'env' ? <EnvTab plot={plot} onUpdated={reload} /> : null}
+          {tab === 'species' ? (
+            ready ? (
+              <PlotSpeciesTab plot={plot} onChanged={reload} />
+            ) : (
+              <SpeciesGateScreen />
+            )
+          ) : null}
+        </SwipeNavArea>
+        {/* 物種 tab carries its own copy above its search dock; every other branch
+          has no dock, so the bar belongs here. */}
+        {tab === 'species' && ready ? null : <RecordStepBar kind="plot" id={plotId} />}
+      </SwipeBlockProvider>
     </SafeAreaView>
   );
 }
@@ -200,7 +231,11 @@ function TabBtn({
     >
       <Text
         className={`text-sm font-medium ${
-          disabled ? 'text-gray-300' : active ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-600 dark:text-gray-400'
+          disabled
+            ? 'text-gray-300'
+            : active
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-gray-600 dark:text-gray-400'
         }`}
       >
         {label}
@@ -296,7 +331,8 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         coord_uncertainty_m: pos.coords.accuracy ?? null,
         // Grab altitude (海拔) from the same GPS fix; keep existing value if the
         // device couldn't resolve altitude (often null indoors / poor signal).
-        elevation_m: pos.coords.altitude != null ? Math.round(pos.coords.altitude) : plot.elevation_m,
+        elevation_m:
+          pos.coords.altitude != null ? Math.round(pos.coords.altitude) : plot.elevation_m,
         start_ts: plot.start_ts ?? Date.now(),
       });
     } catch (e) {
@@ -313,18 +349,17 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
   const hasGps = hasCoord && plot.coord_uncertainty_m !== null;
 
   return (
-    <KeyboardAwareScrollView className="flex-1" keyboardShouldPersistTaps="handled" bottomOffset={24}>
+    <KeyboardAwareScrollView
+      className="flex-1"
+      keyboardShouldPersistTaps="handled"
+      bottomOffset={24}
+    >
       <Section title={t('plot.required')} required>
-        <Field
-          label="Plotid"
-          value={plot.plotid}
-          onSave={(v) => patch({ plotid: v })}
-          required
-        />
+        <Field label="Plotid" value={plot.plotid} onSave={(v) => patch({ plotid: v })} required />
 
         <Pressable
           onPress={() => setProjectSheetOpen(true)}
-          className="mt-3 flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+          className="mt-3 flex-row items-center rounded-lg border border-gray-200 bg-white px-3 py-3 active:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:active:bg-gray-800"
         >
           <Ionicons name="folder-outline" size={18} color="#4b5563" />
           <View className="ml-2 flex-1">
@@ -342,7 +377,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         {plot.plot_type === 'transect' ? (
           <TransectTrackControl plot={plot} onUpdated={onUpdated} />
         ) : (
-          <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
+          <View className="mt-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
             <View className="flex-row items-center">
               <Text className="flex-1 text-xs font-medium text-gray-600 dark:text-gray-400">
                 {t('plot.gpsLabel')} <Text className="text-red-500">*</Text>
@@ -369,25 +404,29 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 </Text>
               </Text>
             ) : (
-              <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">{t('plot.gpsNotYet')}</Text>
+              <Text className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+                {t('plot.gpsNotYet')}
+              </Text>
             )}
             {/* Same mini-map as the species record sheet — tap or drag to place
                 the plot centre when the GPS is unavailable or wrong, and zoom /
                 locate / switch basemap to check it against the terrain. */}
-            <RecordLocationMap
-              lat={plot.decimal_latitude}
-              lng={plot.decimal_longitude}
-              accuracy={plot.coord_uncertainty_m}
-              onChange={(lat, lng, accuracy) =>
-                patch({
-                  decimal_latitude: lat,
-                  decimal_longitude: lng,
-                  // Hand-placed arrives as null; an undo restores the measured
-                  // value that was there before.
-                  coord_uncertainty_m: accuracy,
-                })
-              }
-            />
+            <SwipeBlockedArea>
+              <RecordLocationMap
+                lat={plot.decimal_latitude}
+                lng={plot.decimal_longitude}
+                accuracy={plot.coord_uncertainty_m}
+                onChange={(lat, lng, accuracy) =>
+                  patch({
+                    decimal_latitude: lat,
+                    decimal_longitude: lng,
+                    // Hand-placed arrives as null; an undo restores the measured
+                    // value that was there before.
+                    coord_uncertainty_m: accuracy,
+                  })
+                }
+              />
+            </SwipeBlockedArea>
           </View>
         )}
 
@@ -404,12 +443,14 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 patch({ point_radius_m: Number.isFinite(n as number) ? (n as number) : null });
               }}
             />
-            <View className="mt-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3">
-              <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('plot.countTime')}</Text>
+            <View className="mt-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900">
+              <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                {t('plot.countTime')}
+              </Text>
               <View className="mt-2 flex-row gap-2">
                 <Pressable
                   onPress={() => patch({ start_ts: Date.now() })}
-                  className="flex-1 flex-row items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-2 active:opacity-70"
+                  className="flex-1 flex-row items-center justify-center rounded-md bg-gray-100 px-3 py-2 active:opacity-70 dark:bg-gray-800"
                 >
                   <Ionicons name="play" size={14} color="#16a34a" />
                   <Text className="ml-1 text-xs text-gray-700 dark:text-gray-300">
@@ -418,7 +459,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
                 </Pressable>
                 <Pressable
                   onPress={() => patch({ stop_ts: Date.now() })}
-                  className="flex-1 flex-row items-center justify-center rounded-md bg-gray-100 dark:bg-gray-800 px-3 py-2 active:opacity-70"
+                  className="flex-1 flex-row items-center justify-center rounded-md bg-gray-100 px-3 py-2 active:opacity-70 dark:bg-gray-800"
                 >
                   <Ionicons name="stop" size={14} color="#dc2626" />
                   <Text className="ml-1 text-xs text-gray-700 dark:text-gray-300">
@@ -436,7 +477,7 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
           </Text>
           <Pressable
             onPress={() => setSurveyorSheetOpen(true)}
-            className="flex-row items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2.5 active:bg-gray-50 dark:active:bg-gray-800"
+            className="flex-row items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2.5 active:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:active:bg-gray-800"
           >
             <Text
               className={`flex-1 text-sm ${plot.recorded_by ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}
@@ -500,13 +541,9 @@ function EnvTab({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => void }
         />
       </CollapsibleSection>
 
-      {plot.plot_type === 'fixed' ? (
-        <LayerSection plot={plot} onUpdated={onUpdated} />
-      ) : null}
+      {plot.plot_type === 'fixed' ? <LayerSection plot={plot} onUpdated={onUpdated} /> : null}
 
-      {plot.plot_type === 'fixed' ? (
-        <SubplotSection plot={plot} onUpdated={onUpdated} />
-      ) : null}
+      {plot.plot_type === 'fixed' ? <SubplotSection plot={plot} onUpdated={onUpdated} /> : null}
 
       <CollapsibleSection title={t('plot.advanced')}>
         <NumField
@@ -767,7 +804,9 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
         >
           <Ionicons name="add" size={18} color={stepIcon} />
         </Pressable>
-        <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">{t('plot.subplotCount')}</Text>
+        <Text className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">
+          {t('plot.subplotCount')}
+        </Text>
       </View>
 
       {count > 0 ? (
@@ -777,14 +816,18 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
             size={20}
             color={uniform ? '#2563eb' : scheme === 'dark' ? '#9ca3af' : '#6b7280'}
           />
-          <Text className="ml-2 text-sm text-gray-800 dark:text-gray-200">{t('plot.subplotUniform')}</Text>
+          <Text className="ml-2 text-sm text-gray-800 dark:text-gray-200">
+            {t('plot.subplotUniform')}
+          </Text>
         </Pressable>
       ) : null}
 
       {/* Uniform mode: one shared 寬/長 pair applied to all subplots. */}
       {uniform && count > 0 ? (
-        <View className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2">
-          <Text className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">{t('plot.subplotSharedSize')}</Text>
+        <View className="mb-2 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900">
+          <Text className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">
+            {t('plot.subplotSharedSize')}
+          </Text>
           <View className="flex-row gap-3">
             <View className="flex-1">
               <NumField
@@ -807,7 +850,7 @@ function SubplotSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () =
       {subplots.map((s) => (
         <View
           key={s.id}
-          className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2"
+          className="mb-2 rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-gray-700 dark:bg-gray-900"
         >
           <Field
             label={t('plot.subplotName', { idx: s.idx })}
@@ -879,7 +922,7 @@ function Field({
         {label}
         {required ? <Text className="text-red-500"> *</Text> : null}
       </Text>
-      <View className="flex-row items-center rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3">
+      <View className="flex-row items-center rounded-lg border border-gray-200 bg-white px-3 dark:border-gray-700 dark:bg-gray-900">
         <TextInput
           value={draft}
           onChangeText={setDraft}
@@ -892,7 +935,9 @@ function Field({
           keyboardType={keyboardType}
           className="flex-1 py-2 text-sm text-gray-900 dark:text-gray-100"
         />
-        {suffix ? <Text className="ml-1 text-xs text-gray-500 dark:text-gray-400">{suffix}</Text> : null}
+        {suffix ? (
+          <Text className="ml-1 text-xs text-gray-500 dark:text-gray-400">{suffix}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -1013,8 +1058,10 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
 
   return (
     <CollapsibleSection title={t('plot.layerSection')}>
-      <View className="mb-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3">
-        <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">{t('plot.layerCount')}</Text>
+      <View className="mb-3 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900">
+        <Text className="text-xs font-medium text-gray-600 dark:text-gray-400">
+          {t('plot.layerCount')}
+        </Text>
         <View className="mt-2 flex-row items-center">
           <Pressable
             onPress={decrement}
@@ -1057,7 +1104,7 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
         return (
           <View
             key={layerKey}
-            className="mb-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-3"
+            className="mb-2 rounded-lg border border-gray-200 bg-white px-3 py-3 dark:border-gray-700 dark:bg-gray-900"
           >
             <Text className="text-sm font-semibold text-gray-900 dark:text-gray-100">
               {layerLabel(layerKey)}
@@ -1077,7 +1124,11 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
                 {(() => {
                   const unit: HeightUnit = row?.height_unit ?? 'cm';
                   const display =
-                    row?.height_cm == null ? null : unit === 'm' ? row.height_cm / 100 : row.height_cm;
+                    row?.height_cm == null
+                      ? null
+                      : unit === 'm'
+                        ? row.height_cm / 100
+                        : row.height_cm;
                   return (
                     <>
                       <NumField
@@ -1128,7 +1179,11 @@ function LayerSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () => 
                     <Text
                       className={`text-xs font-medium ${on ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
                     >
-                      {m === 'BB' ? 'Braun-Blanquet' : m === 'percent' ? t('plot.percentUnit') : 'DBH'}
+                      {m === 'BB'
+                        ? 'Braun-Blanquet'
+                        : m === 'percent'
+                          ? t('plot.percentUnit')
+                          : 'DBH'}
                     </Text>
                   </Pressable>
                 );
@@ -1188,9 +1243,7 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
           {t('plot.envPhotos')}
         </Text>
         {photos.length > 0 ? (
-          <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">
-            ({photos.length})
-          </Text>
+          <Text className="ml-2 text-xs text-gray-500 dark:text-gray-400">({photos.length})</Text>
         ) : null}
       </View>
       <Text className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">
@@ -1203,11 +1256,7 @@ function EnvPhotoSection({ plot, onUpdated }: { plot: PlotSurvey; onUpdated: () 
         onView={(idx) => setViewerIndex(idx)}
         onRemove={remove}
       />
-      <PhotoViewerModal
-        photos={photos}
-        index={viewerIndex}
-        onClose={() => setViewerIndex(null)}
-      />
+      <PhotoViewerModal photos={photos} index={viewerIndex} onClose={() => setViewerIndex(null)} />
     </View>
   );
 }

@@ -9,7 +9,10 @@ dwc_field_map = {
     "accepted_name": "acceptedNameUsage",
     "accepted_taxon_id": "acceptedNameUsageID",
     "name": "scientificName",
-    "fullname": "scientificNameAuthorship",
+    # scientificNameAuthorship 依 TDWG 定義是「命名者資訊」，範例為
+    # `(Torr.) J.T. Howell`——只有命名者。顯示用的 fullname（學名+命名者）
+    # 過去對應到這裡，導致每一格命名者欄都重複整個學名。
+    "name_author": "scientificNameAuthorship",
     "cname": "vernacularName",
     "alternative_name_c": "alternativeVernacularName",
     "family": "family",
@@ -29,8 +32,12 @@ dwc_field_map = {
     "abundance": "individualCount",
     "source": "establishmentMeans",
     "iucn_category": "iucnRedListCategory",
-    "redlist": "nationalRedListCategory",
-    "cites": "CITES",
+    # 臺灣紅皮書 → Distribution 擴充的 threatStatus（http://iucn.org/terms/threatStatus）。
+    # 全球 IUCN 維持自訂欄名：兩者同時存在，扁平 CSV 放不下兩個 threatStatus。
+    "redlist": "threatStatus",
+    # GBIF Distribution 擴充詞彙（rs.gbif.org/terms/1.0/appendixCITES）；
+    # 原本的 "CITES" 全大寫既非 DwC 也不合 camelCase 慣例。
+    "cites": "appendixCITES",
     "protected": "protectionStatus",
     "endemic": "endemic",
     "is_hybrid": "isHybrid",
@@ -45,5 +52,14 @@ dwc_field_map = {
     "modified": "modified",
 }
 
+# 僅供文件排版/排序的欄位，沒有 DwC 詞彙，不可原樣變成欄位
+# （未對應的 key 會原樣穿透）。
+DISPLAY_ONLY = {"fullname"}
+
+
 def convert_to_dwc(obj: dict) -> dict:
-    return {dwc_field_map.get(k, k): v for k, v in obj.items()}
+    return {
+        dwc_field_map.get(k, k): v
+        for k, v in obj.items()
+        if k not in DISPLAY_ONLY
+    }

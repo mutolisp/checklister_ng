@@ -44,6 +44,7 @@ import {
   type ExportFile,
 } from './bundleExport';
 import { csvEscape, localIso, multiToPipe } from './bundleYaml';
+import { establishmentDwcValue } from './dwcAttributes';
 import { convertToDwc } from './dwcMapper';
 import { markdownToDocx } from './docx';
 import { generateMarkdown, type MarkdownItem } from './markdown';
@@ -449,6 +450,7 @@ function buildProjectDwca(
         sex: multiToPipe(r.sex),
         lifeStage: r.life_stage,
         reproductiveCondition: multiToPipe(r.reproductive_condition),
+        degreeOfEstablishment: establishmentDwcValue(r.degree_of_establishment),
         eventDate: r.observed_at != null ? localIso(r.observed_at) : '',
         decimalLatitude: r.lat,
         decimalLongitude: r.lng,
@@ -496,6 +498,7 @@ function buildProjectDwca(
         sex: multiToPipe(r.sex),
         lifeStage: r.life_stage,
         reproductiveCondition: multiToPipe(r.reproductive_condition),
+        degreeOfEstablishment: establishmentDwcValue(r.degree_of_establishment),
         eventDate: localIso(r.observed_at),
         decimalLatitude: r.lat,
         decimalLongitude: r.lng,
@@ -529,6 +532,7 @@ function buildProjectDwca(
         sex: multiToPipe(sp.sex),
         lifeStage: sp.life_stage,
         reproductiveCondition: multiToPipe(sp.reproductive_condition),
+        degreeOfEstablishment: establishmentDwcValue(sp.degree_of_establishment),
         eventDate: sp.collected_at != null ? localIso(sp.collected_at) : '',
         decimalLatitude: sp.lat,
         decimalLongitude: sp.lng,

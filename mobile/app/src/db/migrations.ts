@@ -952,6 +952,42 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  // v32：最後更新時間，顯示在物種／標本詳細頁的頁尾（連同 occurrence_id）。
+  //
+  // 「更新」= 使用者改了這筆記錄的內容（豐度、屬性、備註、座標、照片、聲音、
+  // 分層、分類群）。iNat 上傳回寫的 inat_* 欄位刻意不算 —— 那是我們的記帳，
+  // 不是野外資料的變動，全部集中在 src/db/inatSync.ts，不碰那個檔就自動排除。
+  //
+  // 既有列回填成該筆已知的最早時間（記錄／採集時間），而不是 migration 執行的
+  // 當下：那會讓所有舊資料看起來像剛剛才被改過。
+  {
+    version: 32,
+    up: (db) => {
+      for (const [t, seed] of [
+        ['checklist_records', 'observed_at'],
+        ['plot_species_records', 'created_at'],
+        ['collection_specimens', 'collected_at'],
+      ] as const) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN updated_at INTEGER;`);
+        db.executeSync(`UPDATE ${t} SET updated_at = ${seed} WHERE updated_at IS NULL;`);
+      }
+    },
+  },
+  // v33：degreeOfEstablishment（野生／圈養／栽培），per-record 的 DwC 屬性。
+  //
+  // 注意與 taxon 層的 alien_type 不同：那個講的是「這個分類群在臺灣是原生還是
+  // 外來」（TaiCOL 給的，整個物種一個值，匯出走 establishmentMeans）；這個講的
+  // 是「眼前這一筆個體是野生還是人為養殖／栽植」，同一個物種可以兩者都有。
+  //
+  // NULL = 未記錄，與明確記為 'wild' 是兩回事：前者沒說，後者說了。
+  {
+    version: 33,
+    up: (db) => {
+      for (const t of ['checklist_records', 'plot_species_records', 'collection_specimens']) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN degree_of_establishment TEXT;`);
+      }
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses

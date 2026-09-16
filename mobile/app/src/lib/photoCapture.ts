@@ -23,6 +23,7 @@ import {
 import { File, Paths } from 'expo-file-system';
 import i18n from '~/i18n';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import piexif from 'piexifjs';
 import { generateUuid } from '~/db';
@@ -48,7 +49,28 @@ export type PhotoSpeciesContext = {
   collection_trip_id?: number;
   /** Collector number (DwC recordNumber) — specimens only. */
   record_number?: string;
+  /** Coordinate uncertainty in metres (DwC coordinateUncertaintyInMeters). */
+  accuracy?: number | null;
+  // DwC species attributes. All optional and only emitted when they carry a
+  // value — an absent attribute and one recorded as "unknown" are different
+  // statements, and a JSON full of nulls says neither.
+  sex?: string | null;
+  life_stage?: string | null;
+  reproductive_condition?: string | null;
+  leaf_phenology?: string | null;
+  degree_of_establishment?: string | null;
+  detection_type?: string | null;
+  organism_quantity?: string | null;
+  organism_quantity_type?: string | null;
 };
+
+/** Drop keys with no value so the UserComment JSON states only what was
+ *  actually recorded. */
+function compact<T extends Record<string, unknown>>(o: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(o).filter(([, v]) => v !== null && v !== undefined && v !== ''),
+  ) as Partial<T>;
+}
 
 export function buildContext(record: RecordWithTaxon): PhotoSpeciesContext {
   return {
@@ -62,18 +84,47 @@ export function buildContext(record: RecordWithTaxon): PhotoSpeciesContext {
     notes: record.notes,
     lat: record.lat,
     lng: record.lng,
+    accuracy: record.accuracy,
     observed_at: record.observed_at,
     session_id: record.session_id,
+    sex: record.sex,
+    life_stage: record.life_stage,
+    reproductive_condition: record.reproductive_condition,
+    leaf_phenology: record.leaf_phenology,
+    degree_of_establishment: record.degree_of_establishment,
+    organism_quantity: record.organism_quantity,
+    organism_quantity_type: record.organism_quantity_type,
   };
 }
 
-/** Build a photo context from a plot species record. Plot species don't carry
- *  per-individual GPS (the plot itself does), so lat/lng are omitted here —
- *  the camera EXIF will still capture device GPS at capture time. */
+/**
+ * Build a photo context from a plot species record.
+ *
+ * A plot species record may carry its own coordinate (point counts, transects)
+ * but usually does not — the plot itself holds the position. Fall back to the
+ * plot's centre rather than leaving the photo unlocated: "somewhere in this
+ * plot" is the truth of the observation, and it is what every other export of
+ * that record already claims.
+ */
 export function buildContextFromPlotRecord(
   record: PlotSpeciesRecordWithTaxon,
+  plotGeo?: { lat: number | null; lng: number | null; accuracyM?: number | null } | null,
 ): PhotoSpeciesContext {
+  const lat = record.lat ?? plotGeo?.lat ?? null;
+  const lng = record.lng ?? plotGeo?.lng ?? null;
+  const accuracy = record.lat != null && record.lng != null ? record.accuracy : (plotGeo?.accuracyM ?? null);
   return {
+    lat,
+    lng,
+    accuracy,
+    sex: record.sex,
+    life_stage: record.life_stage,
+    reproductive_condition: record.reproductive_condition,
+    leaf_phenology: record.leaf_phenology,
+    degree_of_establishment: record.degree_of_establishment,
+    detection_type: record.detection_type,
+    organism_quantity: record.organism_quantity,
+    organism_quantity_type: record.organism_quantity_type,
     taxon_id: record.taxon_id,
     simple_name: record.simple_name,
     name_author: record.name_author,
@@ -102,6 +153,12 @@ export function buildContextFromSpecimen(sp: SpecimenWithTaxon): PhotoSpeciesCon
     notes: sp.notes,
     lat: sp.lat,
     lng: sp.lng,
+    accuracy: sp.accuracy,
+    sex: sp.sex,
+    life_stage: sp.life_stage,
+    reproductive_condition: sp.reproductive_condition,
+    leaf_phenology: sp.leaf_phenology,
+    degree_of_establishment: sp.degree_of_establishment,
     observed_at: sp.collected_at,
     collection_trip_id: sp.trip_id,
     record_number: sp.record_number,
@@ -321,19 +378,31 @@ function composeExif(
     schema: 'checklister.v1',
     taxon_id: ctx.taxon_id,
     name: ctx.simple_name,
-    author: ctx.name_author,
-    cname: ctx.common_name_c,
-    family: ctx.family,
-    family_c: ctx.family_c,
-    kingdom: ctx.kingdom,
-    notes: ctx.notes ?? null,
-    lat: ctx.lat ?? null,
-    lng: ctx.lng ?? null,
     observed_at: ctx.observed_at,
-    session_id: ctx.session_id,
-    plot_survey_id: ctx.plot_survey_id,
-    collection_trip_id: ctx.collection_trip_id,
-    record_number: ctx.record_number ?? null,
+    ...compact({
+      author: ctx.name_author,
+      cname: ctx.common_name_c,
+      family: ctx.family,
+      family_c: ctx.family_c,
+      kingdom: ctx.kingdom,
+      notes: ctx.notes,
+      lat: ctx.lat,
+      lng: ctx.lng,
+      coordinate_uncertainty_m: ctx.accuracy,
+      session_id: ctx.session_id,
+      plot_survey_id: ctx.plot_survey_id,
+      collection_trip_id: ctx.collection_trip_id,
+      record_number: ctx.record_number,
+      // DwC species attributes, English enum values exactly as stored.
+      sex: ctx.sex,
+      life_stage: ctx.life_stage,
+      reproductive_condition: ctx.reproductive_condition,
+      leaf_phenology: ctx.leaf_phenology,
+      degree_of_establishment: ctx.degree_of_establishment,
+      detection_type: ctx.detection_type,
+      organism_quantity: ctx.organism_quantity,
+      organism_quantity_type: ctx.organism_quantity_type,
+    }),
   });
   // EXIF UserComment supports a charset prefix. Use ASCII prefix; payload is
   // valid UTF-8 bytes which exiftool / Photos.app decode correctly.
@@ -380,6 +449,39 @@ function embedMetadata(
   const dataUrl = `data:image/jpeg;base64,${jpegBase64}`;
   const newDataUrl = piexif.insert(exifBytes, dataUrl);
   return newDataUrl.replace(/^data:image\/jpeg;base64,/, '');
+}
+
+/**
+ * Re-stamp a JPEG with the record's CURRENT metadata, for the exporter.
+ *
+ * Why this exists: a photo's metadata is written once, when it is saved to the
+ * Photos library — and `expo-media-library` offers no way to modify an asset
+ * afterwards (create / delete / read only). So a coordinate typed in after the
+ * shutter, an edited note, or an attribute filled in later never reaches the
+ * file in the user's library. The exported copy is the one place we can put
+ * the current truth without touching the user's original.
+ *
+ * Existing EXIF is loaded first, so the camera's own data (lens, exposure, and
+ * any GPS it recorded) survives; `composeExif` only overrides GPS when `ctx`
+ * actually has a coordinate, which is what lets a capture-time fix stand when
+ * the record still has none.
+ *
+ * JPEG only — piexif cannot write HEIC or PNG. Returns null when nothing could
+ * be changed, so callers fall back to the bytes they already have.
+ */
+export function restampJpegBase64(jpegBase64: string, ctx: PhotoSpeciesContext): string | null {
+  let existing: piexif.ExifDict;
+  try {
+    existing = piexif.load(`data:image/jpeg;base64,${jpegBase64}`);
+  } catch {
+    existing = { '0th': {}, Exif: {}, GPS: {} } as piexif.ExifDict;
+  }
+  try {
+    return embedMetadata(jpegBase64, existing, ctx, null);
+  } catch (e) {
+    if (__DEV__) console.warn('[photoCapture] restamp failed, keeping original:', e);
+    return null;
+  }
 }
 
 /** Ask for camera + media-library write access, then launch the system camera.
@@ -458,13 +560,51 @@ export async function captureEnvPhoto(): Promise<string | null> {
 }
 
 /**
+ * The coordinate to stamp on a photo taken for a record that has none yet.
+ *
+ * Photographing first and fixing the position afterwards is the normal field
+ * order, and it used to leave the photo with no GPS at all: the record had no
+ * coordinate to copy, and `expo-image-picker` does not reliably pass the
+ * camera's own GPS through the JPEG re-encode that `quality < 1` forces. Since
+ * the photo is being taken *here, now*, the device fix is the honest answer.
+ *
+ * Best-effort on purpose — no permission prompt of its own, no waiting around:
+ * a denied or slow fix must never cost the user the shot. `Balanced` accuracy
+ * matches what the 「定位」 buttons elsewhere ask for.
+ */
+async function currentFixForPhoto(): Promise<{ lat: number; lng: number; accuracy: number | null } | null> {
+  try {
+    const perm = await Location.getForegroundPermissionsAsync();
+    if (!perm.granted) return null;
+    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    return {
+      lat: pos.coords.latitude,
+      lng: pos.coords.longitude,
+      accuracy: pos.coords.accuracy ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Launch system camera, force JPEG, embed metadata, save to Photos.app.
  * Returns the asset URI (ph://...) on success, or null if cancelled.
+ *
+ * When the record carries no coordinate yet, the device's own fix is stamped
+ * instead. It is only ever written to the photo — the record is left alone, so
+ * the user's later choice (or a deliberate blank) still wins, and the exporter
+ * re-stamps from the record whenever it does have one.
  */
 export async function captureAndSavePhoto(ctx: PhotoSpeciesContext): Promise<string | null> {
   const asset = await launchCamera();
   if (!asset) return null;
-  return saveWithRestoredExif(asset, ctx);
+  let stamped = ctx;
+  if (ctx.lat == null || ctx.lng == null) {
+    const fix = await currentFixForPhoto();
+    if (fix) stamped = { ...ctx, lat: fix.lat, lng: fix.lng, accuracy: fix.accuracy };
+  }
+  return saveWithRestoredExif(asset, stamped);
 }
 
 /**

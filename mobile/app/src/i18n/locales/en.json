@@ -15,7 +15,8 @@
     "continue": "Continue",
     "undo": "UNDO",
     "remove": "Remove",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "more": "More"
   },
   "group": {
     "plantae": "Plants",
@@ -110,7 +111,7 @@
   },
   "gps": {
     "permTitle": "Location permission needed",
-    "permMsg": "Go to Settings → Checklister → Location and enable \"While Using the App\"",
+    "permMsg": "Go to Settings → Mitalivana → Location and enable \"While Using the App\"",
     "posRecorded": "Current location recorded",
     "posFailTitle": "Could not get location",
     "trackBusyTitle": "Another record is recording a track",
@@ -215,7 +216,31 @@
     "deleteMsg_other": "\"{{title}}\" and its {{count}} records will be permanently removed.",
     "collectionCount_one": "{{count}} collection",
     "collectionCount_other": "{{count}} collections",
-    "uploadInat": "iNat"
+    "uploadInat": "iNat",
+    "mergeProvenance": "Merged from: {{sources}}",
+    "moveToProject": "Move to project",
+    "movedToProject_one": "Moved {{count}} record to \"{{name}}\"",
+    "movedToProject_other": "Moved {{count}} records to \"{{name}}\"",
+    "merge": "Merge",
+    "mergeTitle": "Merge {{noun}}",
+    "mergeCount_one": "Merging {{count}} record",
+    "mergeCount_other": "Merging {{count}} records",
+    "mergePrimary": "Primary record",
+    "mergePrimaryHint": "Coordinates, environment, project and site come from the primary; the time span is the union of every record.",
+    "mergeDedupe": "Collapse repeated species",
+    "mergeDedupeHint": "Off keeps every observation, including the same species more than once.",
+    "mergeKeepSources": "Keep the original records",
+    "mergeKeepSourcesHint": "Off deletes the merged records once the new one is written.",
+    "mergeDeleteWarn_one": "The {{count}} original record will be deleted. This cannot be undone.",
+    "mergeDeleteWarn_other": "All {{count}} original records will be deleted. This cannot be undone.",
+    "mergeExplain": "Species records keep their own time, coordinates, photos and audio. iNaturalist upload state is not carried over.",
+    "mergeNeedTwo": "Select at least two records",
+    "mergeSameKind": "Only records of the same kind can be merged",
+    "mergeNoCollection": "Collections cannot be merged — collection numbers belong to physical specimens",
+    "mergeSamePlotType": "Only plots using the same survey method can be merged",
+    "mergeFailed": "Merge failed",
+    "merged": "Merged into \"{{name}}\"",
+    "open": "Open"
   },
   "export": {
     "preparing": "Preparing…",
@@ -237,7 +262,6 @@
     "key": "Key",
     "projects": "Projects",
     "sites": "Sites",
-    "settings": "Settings",
     "surveyors": "Surveyors",
     "about": "About",
     "favorites": "Favorites",
@@ -258,7 +282,8 @@
     "projectsDesc": "Projects and their checklists / plots",
     "sites": "Geographic sites",
     "sitesDesc": "Points / lines / polygons on the map",
-    "backupDesc": "Back up & restore data / photos"
+    "backupDesc": "Back up & restore data / photos",
+    "favoritesDesc": "Frequently-used species lists; add a whole list to a record at once"
   },
   "record": {
     "kindSession": "Quick checklist",
@@ -271,7 +296,8 @@
     "defaultPlot": "Default: plot survey",
     "kindCollection": "Collection",
     "defaultCollection": "Default: collection",
-    "kindImport": "Import a record (.yml / .zip)"
+    "kindImport": "Import a record (.yml / .zip)",
+    "lastUpdated": "Last updated"
   },
   "rank": {
     "kingdom": "Kingdom",
@@ -340,6 +366,8 @@
     "longPressClear": "Long-press to clear",
     "tapGps": "Tap GPS",
     "externalLinks": "External links",
+    "inatObservation": "iNaturalist observation",
+    "inatTaxon": "iNaturalist taxon",
     "addToRecord": "Add to current record",
     "inFavorites": "In favorites",
     "matchedSynonymPre": "You entered ",
@@ -364,6 +392,7 @@
     "lifeStageLabel": "Life stage (lifeStage)",
     "reproLabel": "Flower / fruit (reproductiveCondition, multi-select)",
     "leafLabel": "Leaf (leafPhenology, multi-select)",
+    "establishmentLabel": "Wild / managed (degreeOfEstablishment)",
     "sex": {
       "female": "Female",
       "male": "Male",
@@ -396,6 +425,11 @@
       "shedding": "Shedding",
       "green": "Green",
       "colored": "Colored"
+    },
+    "establishment": {
+      "wild": "Wild",
+      "captive": "Captive",
+      "cultivated": "Cultivated"
     },
     "filledCount_one": "{{count}} set",
     "filledCount_other": "{{count}} set"
@@ -520,14 +554,12 @@
     "manualCoord": "placed by hand"
   },
   "settings": {
-    "title": "Settings",
-    "sectionAppearance": "Appearance",
-    "sectionInteraction": "Interaction",
-    "sectionRegions": "Regional checklists",
-    "sectionSurvey": "Survey",
-    "sectionExport": "Export",
+    "sectionAppearance": "Appearance & interaction",
+    "sectionSurvey": "Survey settings",
     "exportPrefDesc": "Geo formats, photos, ranks and conservation fields, analysis formats",
     "sectionData": "Data",
+    "sectionRecords": "Records",
+    "sectionSync": "Checklists & sync",
     "theme": "Theme",
     "themeAuto": "Follow system",
     "themeLight": "Light",
@@ -597,7 +629,6 @@
     "nDupGroups_other": "{{count}} duplicate occurrenceID groups",
     "nRows_one": "{{count}} row",
     "nRows_other": "{{count}} rows",
-    "sectionInat": "iNaturalist",
     "inaturalist": "iNaturalist account",
     "inaturalistDesc": "Link your account to upload records with photos or audio as observations",
     "inaturalistLinked": "Linked: {{login}}"
@@ -645,7 +676,7 @@
     "restoreFromFile": "Restore from backup file",
     "invalidFile": "Not a valid backup file (missing user.db or manifest.json)",
     "corrupt": "Backup file corrupt (manifest.json unparseable)",
-    "notChecklister": "Not a Checklister backup file",
+    "notChecklister": "Not a Mitalivana backup file",
     "tooNew": "This backup was made by a newer app (schema v{{version}}); please update the app before restoring.",
     "safetyTitle": "Automatic safety backups",
     "safetyDesc": "Snapshots the app took before repairing data. Safe to delete once you have checked your data.",
@@ -1856,6 +1887,7 @@
     "openTokenPage": "Open token page in browser",
     "pasteToken": "Paste token from clipboard",
     "geoprivacy": "Geoprivacy",
+    "uuidMismatch": "iNaturalist assigned a different uuid (sent {{sent}}, got {{got}}); this record cannot be synced.",
     "geoprivacyOpen": "Open",
     "geoprivacyObscured": "Obscured",
     "geoprivacyPrivate": "Private",
@@ -1881,7 +1913,7 @@
     "recordsHeader": "Records to upload",
     "toggleAll": "Select all / none",
     "emptyList": "No records here have a photo or audio clip",
-    "resultCompleted": "Last run: {{ok}} succeeded, {{failed}} failed, {{unresolved}} with no iNat taxon match (name only)",
+    "resultCompleted": "Last run: {{ok}} succeeded, {{failed}} failed, {{unresolved}} with no iNaturalist taxon match (name only)",
     "resultCancelled": "Last run cancelled: {{ok}} succeeded, {{failed}} failed",
     "resultOffline": "Last run stopped (offline): {{ok}} succeeded, {{failed}} failed; incomplete ones can be re-uploaded",
     "resultAuth": "Last run stopped (sign-in expired): {{ok}} succeeded, {{failed}} failed",
@@ -1895,17 +1927,16 @@
     "noMediaRecord": "This record has no photo or audio clip, so it cannot be uploaded to iNaturalist",
     "rowUploading": "Uploading…",
     "progressRequests": "{{done}} / {{total}} requests",
-    "uploadedBadge": "On iNat",
-    "uploadButton": "Upload to iNat",
-    "syncButton": "Sync to iNat",
-    "syncChanged": "Sync to iNat (changed)",
+    "uploadButton": "Upload to iNaturalist",
+    "syncButton": "Sync to iNaturalist",
+    "syncChanged": "Sync to iNaturalist (changed)",
     "syncing": "Syncing…",
-    "syncNoChange": "Already up to date on iNat",
-    "syncDone": "Synced to iNat: annotations +{{added}} −{{removed}}, new media {{media}}",
+    "syncNoChange": "Already up to date on iNaturalist",
+    "syncDone": "Synced to iNaturalist: annotations +{{added}} −{{removed}}, new media {{media}}",
     "syncFailed": "Sync failed: {{msg}}",
-    "syncNotUploaded": "This record is not on iNat yet",
-    "syncAuth": "iNat sign-in expired — re-link in Settings",
+    "syncNotUploaded": "This record is not on iNaturalist yet",
+    "syncAuth": "iNaturalist sign-in expired — re-link in Settings",
     "syncOffline": "Offline — cannot sync",
-    "busy": "Another iNat upload or sync is running"
+    "busy": "Another iNaturalist upload or sync is running"
   }
 }

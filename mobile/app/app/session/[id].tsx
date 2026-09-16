@@ -17,6 +17,7 @@ import {
   View,
 } from 'react-native';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
+import { RecordStepBar } from '~/components/RecordStepBar';
 import { showActionSheet } from '~/components/ActionSheet';
 import { deleteAudioFile } from '~/lib/audioCapture';
 import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
@@ -103,7 +104,11 @@ function sortRecords(
   return direction === 'desc' ? sorted.reverse() : sorted;
 }
 
-const HIGH_LEVEL_GROUPS: Array<{ key: string; field: 'kingdom' | 'phylum' | 'class' | 'order'; value: string }> = [
+const HIGH_LEVEL_GROUPS: Array<{
+  key: string;
+  field: 'kingdom' | 'phylum' | 'class' | 'order';
+  value: string;
+}> = [
   { key: 'plantae', field: 'kingdom', value: 'Plantae' },
   { key: 'aves', field: 'class', value: 'Aves' },
   { key: 'mammalia', field: 'class', value: 'Mammalia' },
@@ -188,6 +193,22 @@ export default function SessionDetailScreen() {
     return sortRecords(result, sortOrder, sortDir);
   }, [records, filterKey, sortOrder, sortDir]);
 
+  /** Step the detail sheet through `filtered` — i.e. exactly the order and the
+   *  subset the user is looking at, filter chips and sort included. */
+  const detailPager = useMemo(() => {
+    if (!activeRecord) return undefined;
+    const index = filtered.findIndex((r) => r.id === activeRecord.id);
+    if (index < 0) return undefined;
+    return {
+      index,
+      total: filtered.length,
+      onStep: (dir: -1 | 1) => {
+        const next = filtered[index + dir];
+        if (next) setActiveRecord(next);
+      },
+    };
+  }, [filtered, activeRecord]);
+
   const groupCounts = useMemo(() => {
     const map = new Map<string, number>();
     for (const g of HIGH_LEVEL_GROUPS) map.set(g.key, 0);
@@ -258,9 +279,7 @@ export default function SessionDetailScreen() {
   const handleAddPhoto = async (mode: 'camera' | 'library') => {
     if (!activeRecord) return;
     try {
-      const { captureAndSavePhoto, pickPhotos, buildContext } = await import(
-        '~/lib/photoCapture'
-      );
+      const { captureAndSavePhoto, pickPhotos, buildContext } = await import('~/lib/photoCapture');
       const ctx = buildContext(activeRecord);
       let newUris: string[] = [];
       if (mode === 'camera') {
@@ -304,7 +323,10 @@ export default function SessionDetailScreen() {
   // neither photo nor clip cannot be uploaded at all, so say so here instead
   // of landing on a page that silently omits it.
   const handleUploadInat = (record: RecordWithTaxon) => {
-    if (parsePhotoPaths(record.photo_paths).length + parsePhotoPaths(record.audio_paths).length === 0) {
+    if (
+      parsePhotoPaths(record.photo_paths).length + parsePhotoPaths(record.audio_paths).length ===
+      0
+    ) {
       toast(t('inat.noMediaRecord'));
       return;
     }
@@ -313,7 +335,10 @@ export default function SessionDetailScreen() {
 
   const inatSyncingId = useInatSync((s) => s.runningId);
   const activeInatChanged = useMemo(
-    () => (activeRecord && activeRecord.inat_uploaded_at != null ? hasInatChanges({ kind: 'session', id: sessionId }, activeRecord.id) : false),
+    () =>
+      activeRecord && activeRecord.inat_uploaded_at != null
+        ? hasInatChanges({ kind: 'session', id: sessionId }, activeRecord.id)
+        : false,
     [activeRecord, sessionId],
   );
   const handleInatSync = async (record: RecordWithTaxon) => {
@@ -329,7 +354,11 @@ export default function SessionDetailScreen() {
       toast(
         r.noop
           ? t('inat.syncNoChange')
-          : t('inat.syncDone', { added: r.annotationsAdded, removed: r.annotationsRemoved, media: r.mediaSent }),
+          : t('inat.syncDone', {
+              added: r.annotationsAdded,
+              removed: r.annotationsRemoved,
+              media: r.mediaSent,
+            }),
       );
       reload();
       const fresh = listSessionRecords(sessionId).find((x) => x.id === record.id);
@@ -353,7 +382,10 @@ export default function SessionDetailScreen() {
     const next = parsePhotoPaths(activeRecord.audio_paths).filter((u) => u !== uri);
     updateRecordAudio(activeRecord.id, next);
     void deleteAudioFile(uri);
-    setActiveRecord({ ...activeRecord, audio_paths: next.length > 0 ? JSON.stringify(next) : null });
+    setActiveRecord({
+      ...activeRecord,
+      audio_paths: next.length > 0 ? JSON.stringify(next) : null,
+    });
     reload();
     toast(t('session.audioRemoved'));
   };
@@ -408,7 +440,10 @@ export default function SessionDetailScreen() {
     if (!session) return;
     // Single recorder: block if another record is already recording. The
     // recorder owns permission prompting (throws '需要定位權限').
-    if (recordingTarget && !(recordingTarget.kind === 'session' && recordingTarget.id === session.id)) {
+    if (
+      recordingTarget &&
+      !(recordingTarget.kind === 'session' && recordingTarget.id === session.id)
+    ) {
       Alert.alert(t('gps.trackBusyTitle'), t('gps.trackBusyMsg'));
       return;
     }
@@ -489,7 +524,9 @@ export default function SessionDetailScreen() {
 
     const options: Array<{ label: string; action: () => void; destructive?: boolean }> = [
       {
-        label: hasSite ? t('session.assignSiteCurrent', { name: site?.name ?? '' }) : t('session.assignOrCreateSite'),
+        label: hasSite
+          ? t('session.assignSiteCurrent', { name: site?.name ?? '' })
+          : t('session.assignOrCreateSite'),
         action: () => setSiteSheetOpen(true),
       },
       {
@@ -502,7 +539,10 @@ export default function SessionDetailScreen() {
       },
       tracking
         ? { label: t('session.stopTrack', { count: trackCount }), action: handleStopTrack }
-        : { label: trackHasData ? t('session.resumeTrack') : t('session.startTrack'), action: handleStartTrack },
+        : {
+            label: trackHasData ? t('session.resumeTrack') : t('session.startTrack'),
+            action: handleStartTrack,
+          },
     ];
     if (hasAnySpatial) {
       options.push({ label: t('session.clearSpatial'), action: handleClearGps, destructive: true });
@@ -574,9 +614,7 @@ export default function SessionDetailScreen() {
       title: t('session.sortTitle'),
       options: orders.map((o) => ({
         label:
-          o === sortOrder
-            ? t('session.sortActiveHint', { label: sortLabel[o] })
-            : sortLabel[o],
+          o === sortOrder ? t('session.sortActiveHint', { label: sortLabel[o] }) : sortLabel[o],
       })),
     });
     if (idx < 0 || idx >= orders.length) return;
@@ -679,7 +717,7 @@ export default function SessionDetailScreen() {
       <View className="flex-1">
         {/* Row 1 — identity: project · spatial · surveyor (full width so the
             long surveyor name has room and no longer squeezes the controls). */}
-        <View className="flex-row items-center gap-3 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
+        <View className="flex-row items-center gap-3 border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-900">
           <Pressable
             onPress={() => setProjectSheetOpen(true)}
             hitSlop={8}
@@ -702,7 +740,10 @@ export default function SessionDetailScreen() {
                 return (
                   <>
                     <Ionicons name="radio" size={14} color="#dc2626" />
-                    <Text className="ml-1 text-xs font-medium text-red-600 dark:text-red-400" numberOfLines={1}>
+                    <Text
+                      className="ml-1 text-xs font-medium text-red-600 dark:text-red-400"
+                      numberOfLines={1}
+                    >
                       {t('session.trackBadge', { count: trackCount })}
                     </Text>
                   </>
@@ -712,7 +753,10 @@ export default function SessionDetailScreen() {
                 return (
                   <>
                     <Ionicons name="pin" size={14} color="#2563eb" />
-                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
+                    <Text
+                      className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300"
+                      numberOfLines={1}
+                    >
                       {site.name}
                     </Text>
                   </>
@@ -722,7 +766,10 @@ export default function SessionDetailScreen() {
                 return (
                   <>
                     <Ionicons name="location" size={14} color="#2563eb" />
-                    <Text className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300" numberOfLines={1}>
+                    <Text
+                      className="ml-1 text-xs font-medium text-blue-700 dark:text-blue-300"
+                      numberOfLines={1}
+                    >
                       {t('session.located')}
                     </Text>
                   </>
@@ -731,7 +778,9 @@ export default function SessionDetailScreen() {
               return (
                 <>
                   <Ionicons name="pin-outline" size={14} color="#9ca3af" />
-                  <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">{t('session.spatial')}</Text>
+                  <Text className="ml-1 text-xs italic text-gray-500 dark:text-gray-400">
+                    {t('session.spatial')}
+                  </Text>
                 </>
               );
             })()}
@@ -755,12 +804,16 @@ export default function SessionDetailScreen() {
           </Pressable>
         </View>
         {/* Row 2 — filter chips (scrollable) + sort + batch import. */}
-        <View className="flex-row items-center border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <View className="flex-row items-center border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             className="flex-1"
-            contentContainerStyle={{ paddingHorizontal: 8, paddingVertical: 8, alignItems: 'center' }}
+            contentContainerStyle={{
+              paddingHorizontal: 8,
+              paddingVertical: 8,
+              alignItems: 'center',
+            }}
           >
             <Chip
               label={`${t('records.filterAll')} ${records.length}`}
@@ -781,15 +834,29 @@ export default function SessionDetailScreen() {
             })}
           </ScrollView>
           <View className="flex-row items-center gap-3 pl-2 pr-3">
-            <Pressable onPress={handlePickSort} hitSlop={8} className="flex-row items-center active:opacity-70">
+            <Pressable
+              onPress={handlePickSort}
+              hitSlop={8}
+              className="flex-row items-center active:opacity-70"
+            >
               <Ionicons name="swap-vertical" size={18} color="#6b7280" />
-              <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">{sortLabel[sortOrder]}</Text>
+              <Text className="ml-0.5 text-xs text-gray-600 dark:text-gray-400">
+                {sortLabel[sortOrder]}
+              </Text>
             </Pressable>
             <Pressable onPress={handleToggleSortDir} hitSlop={6} className="active:opacity-50">
-              <Ionicons name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'} size={14} color="#6b7280" />
+              <Ionicons
+                name={sortDir === 'desc' ? 'arrow-down' : 'arrow-up'}
+                size={14}
+                color="#6b7280"
+              />
             </Pressable>
             {isActive ? (
-              <Pressable onPress={() => setBatchImportOpen(true)} hitSlop={8} className="active:opacity-70">
+              <Pressable
+                onPress={() => setBatchImportOpen(true)}
+                hitSlop={8}
+                className="active:opacity-70"
+              >
                 <Ionicons name="cloud-upload-outline" size={18} color="#2563eb" />
               </Pressable>
             ) : null}
@@ -815,7 +882,12 @@ export default function SessionDetailScreen() {
                     color: 'inat',
                     onPress: () => handleUploadInat(item),
                   },
-                  { label: t('common.remove'), icon: 'trash', color: 'red', onPress: () => handleSwipeRemove(item) },
+                  {
+                    label: t('common.remove'),
+                    icon: 'trash',
+                    color: 'red',
+                    onPress: () => handleSwipeRemove(item),
+                  },
                 ]}
               >
                 <SpeciesCard
@@ -828,6 +900,9 @@ export default function SessionDetailScreen() {
           />
         )}
       </View>
+      {/* Above the dock on purpose — chrome BELOW a KeyboardStickyView is what
+          its `offset.opened` compensates for. */}
+      <RecordStepBar kind="session" id={sessionId} />
       {isActive ? (
         // Sticks above the keyboard regardless of accessory-bar height
         // changes (e.g. iOS predictive suggestions). Sibling to the content
@@ -850,6 +925,7 @@ export default function SessionDetailScreen() {
 
       <SpeciesDetailSheet
         record={activeRecord}
+        pager={detailPager}
         onClose={() => setActiveRecord(null)}
         onRemove={() => {
           if (activeRecord) {
@@ -900,9 +976,8 @@ export default function SessionDetailScreen() {
                 ? JSON.stringify(next.reproductive_condition)
                 : null,
             leaf_phenology:
-              next.leaf_phenology.length > 0
-                ? JSON.stringify(next.leaf_phenology)
-                : null,
+              next.leaf_phenology.length > 0 ? JSON.stringify(next.leaf_phenology) : null,
+            degree_of_establishment: next.degree_of_establishment,
           };
           updateRecordAttributes(activeRecord.id, persisted);
           setActiveRecord({ ...activeRecord, ...persisted });
@@ -987,9 +1062,13 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
   return (
     <Pressable
       onPress={onPress}
-      className={`mr-2 rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900'}`}
+      className={`mr-2 rounded-full border px-3 py-1.5 ${active ? 'border-blue-500 bg-blue-500' : 'border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900'}`}
     >
-      <Text className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}>{label}</Text>
+      <Text
+        className={`text-xs font-medium ${active ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }

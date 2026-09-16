@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Checklister</string>
+	<string>Mitalivana</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -19,7 +19,7 @@
 	<key>CFBundlePackageType</key>
 	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.4.1</string>
+	<string>0.5.0</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleURLTypes</key>
@@ -39,7 +39,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>15</string>
+	<string>16</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSApplicationCategoryType</key>
@@ -56,19 +56,19 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow Checklister to take photos of observed species.</string>
+	<string>Allow Mitalivana to take photos of observed species.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Allow Checklister to record locations of species observations (foreground use is sufficient).</string>
+	<string>Allow Mitalivana to record locations of species observations (foreground use is sufficient).</string>
 	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your location</string>
+	<string>Allow Mitalivana to access your location</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Allow Checklister to record locations of species observations.</string>
+	<string>Allow Mitalivana to record locations of species observations.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
+	<string>Allow Mitalivana to access your microphone</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Allow Checklister to save captured species photos to your Photos library.</string>
+	<string>Allow Mitalivana to save captured species photos to your Photos library.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Allow Checklister to attach photos to species records.</string>
+	<string>Allow Mitalivana to attach photos to species records.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

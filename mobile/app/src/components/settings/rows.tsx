@@ -14,10 +14,14 @@ const ROW = 'bg-white dark:bg-gray-900 px-4 py-3';
 const DIVIDER = 'border-b border-gray-100 dark:border-gray-800';
 const PRESSED = 'active:bg-gray-50 dark:active:bg-gray-800';
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+/** `title` is optional so a trailing block can carry no caption — a caption
+ *  promises a group, and the 關於 row at the foot of the menu is one item. */
+export function Section({ title, children }: { title?: string; children: React.ReactNode }) {
   return (
     <View className="mt-6">
-      <Text className="px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</Text>
+      {title ? (
+        <Text className="px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">{title}</Text>
+      ) : null}
       {children}
     </View>
   );

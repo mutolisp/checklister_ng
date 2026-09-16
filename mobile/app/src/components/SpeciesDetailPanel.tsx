@@ -60,7 +60,7 @@ function externalLinks(result: SearchResult): Array<{ label: string; url: string
   }
   const sciEnc = encodeURIComponent(result.name);
   links.push({ label: 'GBIF', url: `https://www.gbif.org/species/search?q=${sciEnc}` });
-  links.push({ label: 'iNaturalist', url: `https://www.inaturalist.org/taxa/search?q=${sciEnc}` });
+  links.push({ label: i18n.t('species.inatTaxon'), url: `https://www.inaturalist.org/taxa/search?q=${sciEnc}` });
   links.push({ label: 'Wikispecies', url: `https://species.wikimedia.org/wiki/${sciEnc}` });
   links.push({ label: 'NCBI', url: `https://www.ncbi.nlm.nih.gov/taxonomy/?term=${sciEnc}` });
   if (result.kingdom === 'Plantae') {

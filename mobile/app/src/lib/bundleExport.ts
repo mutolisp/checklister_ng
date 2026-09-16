@@ -39,7 +39,15 @@ import {
   type ImportedSite,
   type Site,
 } from '~/db';
+import { establishmentDwcValue } from './dwcAttributes';
 import { convertToDwc } from './dwcMapper';
+import {
+  buildContext,
+  buildContextFromPlotRecord,
+  buildContextFromSpecimen,
+  restampJpegBase64,
+  type PhotoSpeciesContext,
+} from './photoCapture';
 import {
   buildPlotEnvRows,
   buildPlotYamlDoc,
@@ -185,6 +193,7 @@ function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
     taxon_id: sp.taxon_id,
     name: sp.simple_name,
     fullname,
+    name_author: sp.name_author,
     cname: sp.common_name_c,
     family: sp.family,
     family_c: sp.family_c,
@@ -212,6 +221,7 @@ function specimenToYamlItem(sp: SpecimenWithTaxon): Record<string, unknown> {
   if (repro) item.reproductive_condition = repro;
   const leaf = multiToPipe(sp.leaf_phenology);
   if (leaf) item.leaf_phenology = leaf;
+  if (sp.degree_of_establishment) item.degree_of_establishment = sp.degree_of_establishment;
   if (sp.notes) item.notes = sp.notes;
   // A specimen determined under a name the checklist calls non-accepted says so
   // on the label and in the export — the determination is the datum.
@@ -232,6 +242,7 @@ export function specimenToMarkdownItem(
     taxon_id: sp.taxon_id,
     name: sp.simple_name,
     fullname,
+    name_author: sp.name_author,
     cname: sp.common_name_c,
     family: sp.family,
     family_c: sp.family_c,
@@ -283,6 +294,7 @@ export function taxonToMarkdownItem(
     taxon_id: taxonId,
     name: r.simple_name,
     fullname,
+    name_author: r.name_author,
     cname: r.common_name_c,
     family: r.family,
     family_c: r.family_c,
@@ -323,6 +335,7 @@ export function plotSpeciesToMarkdownItem(
     taxon_id: r.taxon_id,
     name: r.simple_name,
     fullname,
+    name_author: r.name_author,
     cname: r.common_name_c,
     family: r.family,
     family_c: r.family_c,
@@ -393,6 +406,9 @@ function buildPlotSpeciesCsv(
     ...(includeLeaf
       ? [{ h: 'leafPhenology', v: (r: PlotSpeciesRecordWithTaxon) => multiToPipe(r.leaf_phenology) }]
       : []),
+    // 'wild' has no term in the DwC vocabulary, so it exports blank here —
+    // see the Establishment docblock in dwcAttributes.ts.
+    { h: 'degreeOfEstablishment', v: (r) => establishmentDwcValue(r.degree_of_establishment) },
     { h: 'detectionType', v: (r) => r.detection_type ?? '' },
     // Name usage — blank for every record filed under the accepted name, so
     // existing exports keep their shape.
@@ -404,7 +420,10 @@ function buildPlotSpeciesCsv(
     { h: 'decimalLongitude', v: (r) => r.lng ?? '' },
     { h: 'coordinateUncertaintyInMeters', v: (r) => r.accuracy ?? '' },
     { h: 'eventDate', v: (r) => (r.observed_at ? localIso(r.observed_at) : '') },
-    { h: 'eventRemarks', v: (r) => r.notes ?? '' },
+    // Per-occurrence remarks. Was eventRemarks, which is the EVENT's note —
+    // every other occurrence export in the app uses occurrenceRemarks, and the
+    // plot's own note already goes out as eventRemarks in env.csv / event.txt.
+    { h: 'occurrenceRemarks', v: (r) => r.notes ?? '' },
   ];
   const lines = [cols.map((c) => c.h).join(',')];
   for (const r of species) {
@@ -522,7 +541,7 @@ export async function buildSessionEntries(
   const namer = createPhotoNamer(base);
   let photoNames: PhotoNames = new Map();
   if (opts.includePhotos) {
-    const collected = await collectPhotos(records, namer, progressCtx);
+    const collected = await collectPhotos(records, namer, progressCtx, buildContext);
     entries.push(...collected.entries);
     photoNames = collected.names;
   }
@@ -571,7 +590,7 @@ export async function buildSessionEntries(
   // checklist above stays in observation order.
   const csvItems = [...records]
     .sort(taxonSortCompare)
-    .map((r) => convertToDwc(recordToYamlItem(r, photoNames)));
+    .map((r) => toDwcCsvRow(recordToYamlItem(r, photoNames)));
   const allKeys = new Set<string>();
   for (const row of dwcItems) for (const k of Object.keys(row)) allKeys.add(k);
   const keys = Array.from(allKeys);
@@ -663,7 +682,11 @@ export async function buildPlotEntries(
   let photoNames: PhotoNames = new Map();
   let envPhotoNames: string[] = [];
   if (opts.includePhotos) {
-    const collected = await collectPhotosPlot(species, namer, progressCtx);
+    const collected = await collectPhotosPlot(species, namer, progressCtx, {
+      lat: plot.decimal_latitude,
+      lng: plot.decimal_longitude,
+      accuracyM: plot.coord_uncertainty_m,
+    });
     entries.push(...collected.entries);
     photoNames = collected.names;
     // Plot environment context photos. Filename: plotid_YYYYMMDD_env-N.jpg
@@ -860,7 +883,9 @@ export async function buildCollectionEntries(
   const endIso = trip.ended_at !== null ? localIso(trip.ended_at) : null;
   const eventDate = endIso ? `${startIso}/${endIso}` : startIso;
 
-  // YAML — event block + specimens array (collection order).
+  // YAML — event block + specimens array (collection order). Raw
+  // `convertToDwc`, not `toDwcCsvRow`: the yml is the round-trip format and
+  // must keep every value the user entered (see toDwcCsvRow's docblock).
   const dwcItems = specimens.map((sp) => convertToDwc(specimenToYamlItem(sp)));
   const yamlData: Record<string, unknown> = {
     event: {
@@ -903,7 +928,7 @@ export async function buildCollectionEntries(
 
   // _sp.csv — DwC occurrence rows, ordered taxonomically (the yml above keeps
   // collection order, same split as sessions).
-  const csvItems = [...specimens].sort(taxonSortCompare).map((sp) => convertToDwc(specimenToYamlItem(sp)));
+  const csvItems = [...specimens].sort(taxonSortCompare).map((sp) => toDwcCsvRow(specimenToYamlItem(sp)));
   const allKeys = new Set<string>();
   for (const row of dwcItems) for (const k of Object.keys(row)) allKeys.add(k);
   const keys = Array.from(allKeys);
@@ -943,7 +968,10 @@ export async function buildCollectionEntries(
 
   if (opts.includePhotos) {
     // 採集 has no round-trip import yet, so the assigned names are unused here.
-    entries.push(...(await collectPhotos(specimens, createPhotoNamer(base), progressCtx)).entries);
+    entries.push(
+      ...(await collectPhotos(specimens, createPhotoNamer(base), progressCtx, buildContextFromSpecimen))
+        .entries,
+    );
   }
 
   const manifest = buildManifest({
@@ -1116,10 +1144,48 @@ type PhotoBearing = {
   occurrence_id: string | null;
 };
 
-async function collectPhotos(
-  records: PhotoBearing[],
+/**
+ * Stamp the record's current metadata onto the copy going into the zip.
+ *
+ * The file in the user's photo library keeps whatever it was given when it was
+ * saved — `expo-media-library` cannot modify an asset after the fact — so a
+ * coordinate entered after the shutter, an edited note, or an attribute filled
+ * in later only reaches the delivered file here. The original is untouched,
+ * which is also what makes this safe for album-picked photos.
+ *
+ * JPEG only, and failure is not fatal: the untouched bytes still ship.
+ */
+function restamped(b64: string, fileUri: string, ctx: PhotoSpeciesContext | null): string {
+  if (!ctx) return b64;
+  const ext = guessExt(fileUri).toLowerCase();
+  if (ext !== '.jpg' && ext !== '.jpeg') return b64;
+  return restampJpegBase64(b64, ctx) ?? b64;
+}
+
+/**
+ * A yml item reshaped for a DwC-named CSV.
+ *
+ * The `.yml` and the `_sp.csv` share one item builder, but they answer to
+ * different masters: the yml is this app's own round-trip format (it also
+ * carries eventUUID / gpsMode / startedAt, none of them DwC) and `sessionImport`
+ * reads `degreeOfEstablishment` straight back, so it must keep every value the
+ * user entered — including `wild`, which is ours, not TDWG's. The CSV is the
+ * deliverable, so there the same field is sanitised to a value the vocabulary
+ * actually defines.
+ */
+function toDwcCsvRow(item: Record<string, unknown>): Record<string, unknown> {
+  const row = convertToDwc(item);
+  if ('degreeOfEstablishment' in row) {
+    row.degreeOfEstablishment = establishmentDwcValue(row.degreeOfEstablishment as string | null);
+  }
+  return row;
+}
+
+async function collectPhotos<T extends PhotoBearing>(
+  records: T[],
   namer: PhotoNamer,
   ctx: ProgressCtx,
+  toContext?: (r: T) => PhotoSpeciesContext,
 ): Promise<{ entries: BuiltZipEntry[]; names: PhotoNames }> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
@@ -1132,7 +1198,8 @@ async function collectPhotos(
       ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
       if (!fileUri) continue;
       try {
-        const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
+        const raw = await readAsStringAsync(fileUri, { encoding: 'base64' });
+        const b64 = restamped(raw, fileUri, toContext ? toContext(r) : null);
         const bytes = base64ToBytes(b64);
         const name = namer.next(r.taxon_id, r.common_name_c, r.simple_name, guessExt(fileUri));
         out.push({ name, bytes });
@@ -1199,6 +1266,8 @@ async function collectPhotosPlot(
   species: PlotSpeciesRecordWithTaxon[],
   namer: PhotoNamer,
   ctx: ProgressCtx,
+  /** Plot centre, used for records that carry no coordinate of their own. */
+  plotGeo?: { lat: number | null; lng: number | null; accuracyM?: number | null } | null,
 ): Promise<{ entries: BuiltZipEntry[]; names: PhotoNames }> {
   await ensurePhotosReadAccess();
   const out: BuiltZipEntry[] = [];
@@ -1211,7 +1280,8 @@ async function collectPhotosPlot(
       ctx.onProgress?.({ label: '處理照片', done: ctx.done, total: ctx.total });
       if (!fileUri) continue;
       try {
-        const b64 = await readAsStringAsync(fileUri, { encoding: 'base64' });
+        const raw = await readAsStringAsync(fileUri, { encoding: 'base64' });
+        const b64 = restamped(raw, fileUri, buildContextFromPlotRecord(r, plotGeo));
         const bytes = base64ToBytes(b64);
         const name = namer.next(r.taxon_id, r.common_name_c, r.simple_name, guessExt(fileUri));
         out.push({ name, bytes });

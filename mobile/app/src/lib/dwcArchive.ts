@@ -53,6 +53,7 @@ export const OCCURRENCE_COLS: ColSpec[] = [
   { key: 'sex', term: `${DWC}sex` },
   { key: 'lifeStage', term: `${DWC}lifeStage` },
   { key: 'reproductiveCondition', term: `${DWC}reproductiveCondition` },
+  { key: 'degreeOfEstablishment', term: `${DWC}degreeOfEstablishment` },
   { key: 'eventDate', term: `${DWC}eventDate` },
   { key: 'decimalLatitude', term: `${DWC}decimalLatitude` },
   { key: 'decimalLongitude', term: `${DWC}decimalLongitude` },

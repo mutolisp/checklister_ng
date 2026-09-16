@@ -18,7 +18,10 @@ import { formatScientificNameMarkdown } from './scientificNameMarkdown';
 export type MarkdownItem = {
   taxon_id: string;
   name: string;            // simple_name
-  fullname: string;        // simple_name + author
+  fullname: string;        // simple_name + author — Markdown display only
+  /** Bare authorship, e.g. `(Torr.) J.T. Howell`. Exported as DwC
+   *  scientificNameAuthorship; `fullname` is never that term. */
+  name_author?: string;
   cname: string;           // common_name_c
   family: string;
   family_c: string;

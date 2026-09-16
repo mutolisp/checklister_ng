@@ -16,6 +16,9 @@ export type ChecklistRecord = {
   /** DwC occurrenceID — stable v4 uuid assigned at insert. */
   occurrence_id: string;
   observed_at: number;
+  /** Last time the user changed this record's content (v32). iNat bookkeeping
+   *  writes in `inatSync.ts` deliberately do not count. */
+  updated_at: number;
   notes: string | null;
   photo_paths: string | null;
   lat: number | null;
@@ -23,6 +26,10 @@ export type ChecklistRecord = {
   /** GPS horizontal accuracy in metres, from `Location.getCurrentPositionAsync`.
    *  Maps to DwC `coordinateUncertaintyInMeters` on export. */
   accuracy: number | null;
+  /** DwC degreeOfEstablishment (v33): 'wild' | 'captive' | 'cultivated'.
+   *  NULL = 未記錄, which is a different statement from an explicit 'wild'.
+   *  Per-INDIVIDUAL — not to be confused with the taxon-level `alien_type`. */
+  degree_of_establishment: string | null;
   // DwC species attributes (v8). Persisted as enum strings; UI maps to 中文.
   sex: string | null;
   life_stage: string | null;
@@ -98,13 +105,14 @@ export function addRecord(input: CreateRecordInput): number {
   const db = getUserDb();
   const res = db.executeSync(
     `INSERT INTO checklist_records
-       (session_id, taxon_id, occurrence_id, observed_at, notes, lat, lng,
+       (session_id, taxon_id, occurrence_id, observed_at, updated_at, notes, lat, lng,
         organism_quantity, organism_quantity_type, used_name_id, used_scientific_name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.session_id,
       input.taxon_id,
       generateUuid(),
+      Date.now(),
       Date.now(),
       input.notes ?? null,
       input.lat ?? null,
@@ -125,8 +133,8 @@ export function updateRecordQuantity(
 ): void {
   const db = getUserDb();
   db.executeSync(
-    `UPDATE checklist_records SET organism_quantity = ?, organism_quantity_type = ? WHERE id = ?`,
-    [quantity, type, id],
+    `UPDATE checklist_records SET organism_quantity = ?, organism_quantity_type = ?, updated_at = ? WHERE id = ?`,
+    [quantity, type, Date.now(), id],
   );
 }
 
@@ -137,7 +145,7 @@ export function deleteRecord(id: number): void {
 
 export function updateRecordNotes(id: number, notes: string | null): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE checklist_records SET notes = ? WHERE id = ?`, [notes, id]);
+  db.executeSync(`UPDATE checklist_records SET notes = ?, updated_at = ? WHERE id = ?`, [notes, Date.now(), id]);
 }
 
 export function updateRecordLocation(
@@ -148,8 +156,8 @@ export function updateRecordLocation(
 ): void {
   const db = getUserDb();
   db.executeSync(
-    `UPDATE checklist_records SET lat = ?, lng = ?, accuracy = ? WHERE id = ?`,
-    [lat, lng, accuracy, id],
+    `UPDATE checklist_records SET lat = ?, lng = ?, accuracy = ?, updated_at = ? WHERE id = ?`,
+    [lat, lng, accuracy, Date.now(), id],
   );
 }
 
@@ -158,9 +166,10 @@ export type RecordAttributePatch = Partial<{
   life_stage: string | null;
   reproductive_condition: string | null;
   leaf_phenology: string | null;
+  degree_of_establishment: string | null;
 }>;
 
-const ATTR_COLS = ['sex', 'life_stage', 'reproductive_condition', 'leaf_phenology'] as const;
+const ATTR_COLS = ['sex', 'life_stage', 'reproductive_condition', 'leaf_phenology', 'degree_of_establishment'] as const;
 
 export function updateRecordAttributes(id: number, patch: RecordAttributePatch): void {
   const db = getUserDb();
@@ -173,7 +182,8 @@ export function updateRecordAttributes(id: number, patch: RecordAttributePatch):
     }
   }
   if (sets.length === 0) return;
-  db.executeSync(`UPDATE checklist_records SET ${sets.join(', ')} WHERE id = ?`, [...args, id]);
+  sets.push('updated_at = ?');
+  db.executeSync(`UPDATE checklist_records SET ${sets.join(', ')} WHERE id = ?`, [...args, Date.now(), id]);
 }
 
 export function parsePhotoPaths(s: string | null): string[] {
@@ -190,13 +200,13 @@ export function parsePhotoPaths(s: string | null): string[] {
 export function updateRecordPhotos(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE checklist_records SET photo_paths = ? WHERE id = ?`, [value, id]);
+  db.executeSync(`UPDATE checklist_records SET photo_paths = ?, updated_at = ? WHERE id = ?`, [value, Date.now(), id]);
 }
 
 export function updateRecordAudio(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE checklist_records SET audio_paths = ? WHERE id = ?`, [value, id]);
+  db.executeSync(`UPDATE checklist_records SET audio_paths = ?, updated_at = ? WHERE id = ?`, [value, Date.now(), id]);
 }
 
 export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
@@ -204,7 +214,7 @@ export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
 
   const recordsRes = userDb.executeSync(
     `SELECT id, session_id, taxon_id, occurrence_id, observed_at, notes, photo_paths, lat, lng, accuracy,
-            sex, life_stage, reproductive_condition, leaf_phenology,
+            sex, life_stage, reproductive_condition, leaf_phenology, degree_of_establishment,
             organism_quantity, organism_quantity_type,
             used_name_id, used_scientific_name,
             audio_paths, inat_observation_id, inat_media_done, inat_uploaded_at, inat_sync_hash
