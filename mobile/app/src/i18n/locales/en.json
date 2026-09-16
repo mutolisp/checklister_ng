@@ -240,7 +240,11 @@
     "mergeSamePlotType": "Only plots using the same survey method can be merged",
     "mergeFailed": "Merge failed",
     "merged": "Merged into \"{{name}}\"",
-    "open": "Open"
+    "open": "Open",
+    "star": "Star",
+    "unstar": "Remove star",
+    "layoutToCard": "Switch to card view",
+    "layoutToList": "Switch to list view"
   },
   "export": {
     "preparing": "Preparing…",

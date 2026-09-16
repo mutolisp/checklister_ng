@@ -264,7 +264,11 @@
     "mergeSamePlotType": "Solo se pueden combinar parcelas con el mismo método de muestreo",
     "mergeFailed": "Error al combinar",
     "merged": "Combinado como «{{name}}»",
-    "open": "Abrir"
+    "open": "Abrir",
+    "star": "Destacar",
+    "unstar": "Quitar destacado",
+    "layoutToCard": "Cambiar a vista de tarjetas",
+    "layoutToList": "Cambiar a vista de lista"
   },
   "export": {
     "preparing": "Preparando…",

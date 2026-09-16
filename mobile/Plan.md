@@ -2683,6 +2683,18 @@ TDWG 定義：「The authorship information for the scientificName」，範例 `
 
 i18n：`common.more` + 21 個 `records.merge*` / `moveToProject` 鍵，7 個完整語系（es-419 是覆寫子集，措辭無差異故不動）。
 
+#### 合併不複製媒體檔 —— 以及它揭出的既有刪除行為
+
+合併後的列存的是**同一份 file URI**，照片與聲音的位元組不會被複製，所以磁碟用量不變（多出來的只有 DB 列）。代價是一個檔案從此可以同時屬於多筆記錄。
+
+照片本來就安全：移除照片只改寫 `photo_paths`，全專案沒有任何地方刪除記錄的照片檔（`photoCapture` 的 `deleteAsync` 只碰暫存檔，`deleteSession` / `deletePlotSurvey` 都只刪列）。
+
+**聲音不是**：`handleRemoveAudio` 三處都無條件 `deleteAudioFile(uri)`。合併之後這會變成「從合併記錄移掉一段錄音 → 原記錄的 URI 變成死連結」，而且是靜默的（播放才發現）。
+
+修法：新增 `mediaUriReferenced(uri, column)`（`src/db/records.ts`，掃三張表的 JSON 欄位，用 `instr` 不用 `LIKE` 免去萬用字元跳脫），三個呼叫端改成只有最後一個引用者才刪檔。三處本來就是「先更新列、再刪檔」，所以計數時機正確。
+
+> 匯出時要注意：同時匯出原記錄與合併記錄的話，同一張照片會被打包兩次，zip 會變大 —— 那是匯出端的行為，不是 app 的儲存空間。
+
 ### 驗證狀態
 - [x] `tsc --noEmit`；`check:dock / kav / i18n / roundtrip / names / vegmatrix / report / inat / diversity` 全過；`lint` 0 error
 - [x] 跨平台稽核：未新增任何 `Alert.prompt` / `ActionSheetIOS` / `Platform.OS === 'ios'`
@@ -2692,3 +2704,179 @@ i18n：`common.more` + 21 個 `records.merge*` / `moveToProject` 鍵，7 個完�
 - [ ] **實機（手勢）**：物種詳細頁左右滑動切換；**在內嵌小地圖上橫向拖曳應該是移動地圖，不是切換記錄**（`Gesture.Native().blocksExternalGesture` 的唯一驗證方式）
 - [ ] **實機（手勢）**：樣區 環境↔物種 滑動；物種列左滑仍然是叫出刪除而不是切分頁
 - [ ] **實機（鍵盤）**：三個記錄畫面點搜尋框 → 搜尋框仍貼在鍵盤上方，上／下一筆那條 bar 不會擋住它
+- [ ] **實機（共用媒體）**：合併一筆帶錄音的記錄並保留原記錄 → 從合併結果移除那段錄音 → **原記錄的錄音仍播得出來**；再從原記錄移除同一段 → 檔案這時才真的被刪
+
+---
+
+## 2026-09-16 — 記錄列表：列表／卡片檢視 + 加星號 + 圓角卡片
+
+### 1. 共用的列／卡元件
+
+新檔 `src/components/RecordListItem.tsx`，把記錄列的畫法從 `app/(tabs)/index.tsx` 抽出來共用：`RecordListRow`、`RecordGridCard`、`KindIcon`、`SelectCheckbox`、`StarButton`、`RowDiversityLine` + 其快取。
+
+抽出的理由不只是「共用」：**專案詳細頁 `app/project/[id].tsx` 本來自己抄了一份比較薄的列**（只有 icon／標題／時間，沒有多樣性、沒有星號）。兩個畫面都要有檢視切換，留兩份就保證會走鐘。現在兩邊畫的是同一個元件。
+
+版面依附圖改：**星號移到最左**（原本是分類群 icon 的位置），分類群 icon 縮小成 badge 移到右側 chevron 旁。多選模式時最左換成勾選框、右側 badge 與 chevron 收起。
+
+### 2. 圓角卡片
+
+`rounded-2xl border` + `mx-3 mb-2`，底色沿用畫面既有的 `bg-gray-50 dark:bg-gray-950`，原本的 `border-b` 分隔線拿掉。
+
+**圓角框必須包在 `SwipeRowActions` 外面**，不能放在列本身：左滑露出的 `刪除` 面板是一條直角、滿高、貼齊螢幕邊的色塊，框在裡面的話卡片圓角外會露出直角紅色。所以 `renderRow` 的結構是
+
+```tsx
+<View className="mx-3 mb-2 overflow-hidden rounded-2xl border …">
+  <SwipeRowActions …>
+    <RecordListRow … />
+```
+
+`overflow-hidden` 負責把滑動面板裁進圓角內。
+
+> 這裡刻意用 `rounded-2xl` 而非本專案既有的 `rounded-xl`。目前 `rounded-2xl` 只用在 modal／bottom sheet，但附圖的圓角就是這個量體，而內嵌卡片與滿版 sheet 不會混淆。
+
+### 3. 列表／卡片切換
+
+新設定 `records_layout: 'list' | 'card'`（`src/stores/settings.ts`，預設 `'list'`）。`settings` 是 key-value 表，**不需要 migration**。
+
+**持久化**，與既有的 `viewMode`（專案分組 ⇄ 時間軸）不同 —— 那是「怎麼讀這批資料」，這是「喜歡怎麼畫」，後者該記住。兩個軸互相獨立。
+
+入口：記錄分頁標題列多一顆 `ToggleChip`（與 `DropdownChip` 同樣的藥丸樣式但沒有下拉箭頭 —— 只有兩個狀態，再開一張 ActionSheet 只是多一下點擊）；專案詳細頁放在 header 右側圖示群的最前面。
+
+**卡片格線不是用 `numColumns`**：專案分組檢視把滿版的 `ProjectHeader` 和記錄列放在**同一個 FlatList** 裡，`numColumns` 會把 header 也排進格線。改成把記錄兩兩打包成 `{ kind: 'cards', items }` 列，FlatList 維持單欄 —— 於是兩種檢視 × 兩種版面共用同一個 FlatList（順手把原本重複的兩個 FlatList 合成一個）。`CARD_COLUMNS = 2` 寫死：手機直式擺第三欄就放不下中文記錄名。
+
+卡片**沒有左滑動作**（半寬的格子沒地方展開）。長按進多選仍在，匯出／刪除／合併都走得到；左滑教學動畫（`records_swipe_hint_shown`）在卡片版面自然不會觸發，因為那個版面根本沒有 `'row'` 項目。
+
+卡片顯示的是**在半個螢幕寬度下還活得下來的欄位**：標題、時間、種數、所屬（專案或該筆摘要）。副標題與完整的 S/H′/J′ 一行捨去 —— 種數走同一個 `RowDiversityLine`（`variant="richness"`），**共用同一份快取**，所以切換版面不會重算已經算過的東西。
+
+`card_density`（緊湊／寬鬆）兩種版面都套用：卡片的緊湊模式收掉時間那一行並縮小內距。
+
+### 4. 加星號（v34）
+
+`sessions` / `plot_surveys` / `collection_trips` 各加 `starred INTEGER NOT NULL DEFAULT 0`（`addColumnIfMissing`，冪等）。
+
+排序：**active → starred → startedAt desc**（`records_list.ts` 的 `byActiveThenStarredThenNewest`，`listRecords` 與 `groupByProject` 共用一個 comparator）。active 排在 starred 之前是刻意的：全 app 同時只有一筆 active，那是使用者「現在正在填」的東西，被釘選的記錄壓下去等於藏起正在做的事。
+
+`setRecordStarred(kind, id, starred)` 直接 UPDATE，不走 `updateSession` / `updatePlotSurvey` / `updateCollectionTrip` —— 後兩者有欄位白名單，而 starred 是這台裝置上的整理方式，不該出現在那些 patch 型別裡。
+
+**不進匯出／匯入**：星號不是這次調查的觀測事實。`check:roundtrip` 通過即確認 yml 沒被動到。複製、合併、匯入產生的新記錄一律未加星。
+
+### 順帶發現（未動）
+`app/(tabs)/index.tsx` 的 `clearChao2ChipCache` 是 export 但全專案沒有人 import，是既有的 dead export。
+
+### 驗證狀態
+- [x] `tsc --noEmit`；9 支 check script 全過；`lint` 0 error（本次改動沒有留下 orphan import）
+- [x] v34 的 `ALTER TABLE … ADD COLUMN starred INTEGER NOT NULL DEFAULT 0` 在 scratch DB 實跑：既有列取得 0、新列預設 0、加星後 ORDER BY 正確、`pragma_table_info` 看得到欄位（所以 `addColumnIfMissing` 重跑會跳過）
+- [ ] **實機**：切到卡片檢視 → 兩欄、奇數筆最後一張不會被撐寬；專案分組檢視下 header 仍是滿版、卡片在其下排成兩欄
+- [ ] **實機**：列表檢視左滑 → 紅色刪除面板被裁在圓角內，沒有直角溢出、沒有貼到螢幕邊
+- [ ] **實機**：點星號只切換星號、不會開啟記錄；加星後該筆上移（但仍在 active 記錄之下）
+- [ ] **實機**：專案詳細頁的切換鈕與記錄分頁同步（同一個設定），重開 app 後記住
+- [ ] **實機**：緊湊／寬鬆在兩種版面都看得出差別
+
+---
+
+## 2026-09-16 — 版本號 0.5.0
+
+| 位置 | 原 | 新 |
+|---|---|---|
+| `mobile/app/app.config.ts:28` | `0.4.1` | `0.5.0` ← 唯一的真實來源（`Constants.expoConfig.version`） |
+| `mobile/app/android/app/build.gradle:96` | `versionName "0.4.1"` | `"0.5.0"` |
+| `mobile/app/app/about.tsx:9` | fallback `'0.4.1 build 5'` | `'0.5.0'` |
+| `mobile/app/ios/Checklister/Info.plist:22` | **已經是 `0.5.0`** | 不動 |
+
+> **iOS plist 原本就與 app.config 對不上**（plist 已 0.5.0、app.config 還 0.4.1）。plist 是 prebuild 產物但有納入版控，所以之前顯示哪個版本要看最後一次 build 有沒有重跑 prebuild。現在兩邊一致。
+
+`src/lib/backup.ts:93` 的備份 manifest 用 `Constants.expoConfig?.version` 蓋章，所以之後做的備份會寫 0.5.0；該欄位只是紀錄，回復時不拿它擋（擋的是 `LATEST_SCHEMA_VERSION`）。
+
+### 沒動（需要另外決定）
+- **build number**：iOS `CFBundleVersion` = 16、Android `versionCode` = 1，兩者都維持原值。上傳 TestFlight 前 `CFBundleVersion` 必須遞增；Android `versionCode` 仍是 1，等真的要上 Play 時得一併處理（見「Android 上架前置」）。
+- `mobile/app/package.json` 的 `"version": "1.0.0"`：Expo 不讀它、`private: true` 也不會發佈，純粹是 npm init 的預設值。
+- 桌面版 `frontend/package.json` 是 `0.0.1`，與 mobile 版本號各自獨立，本次未動。
+
+---
+
+## 2026-09-16 — 匯出動作底色改為 #00A2A5
+
+左滑「匯出」的底色從 `bg-blue-600` 改為 `#00A2A5`（按下時 `#008284`，比照 `inat` 的做法取約 0.8 倍亮度）。
+
+**沒有直接改 `blue` token**：`app/collection/[id].tsx:770` 的「複製標本」也用 `color: 'blue'`，改掉會把不相干的動作一起染色。改法是在 `SwipeRowActions` 的 `BG` 表新增一個 `export` token，三個匯出呼叫端（`app/(tabs)/index.tsx`、`app/projects.tsx`、`app/favorites.tsx`）改指到它。
+
+token 名取**用途**不取色相（與既有的 `inat` 同一個理由）：叫 `teal` 會讓人以為是 Tailwind 色階、也會讓下一個人把它借去用在別的動作上，那樣下次調整匯出顏色又會誤傷。
+
+NativeWind 的 JIT 只掃得到靜態字面值，所以 `bg-[#00A2A5] active:bg-[#008284]` 必須整串寫在 `BG` 表裡，不能用變數拼。`tailwind.config.js` 的 content 已涵蓋 `./src/**`。
+
+### 沒動
+匯出的**圖示按鈕**（專案詳細頁 header、報告頁、專案群組列）仍是 `#2563eb` 藍色，那些沒有底色。若要一起改成 #00A2A5 再說。
+
+### 驗證狀態
+- [x] tsc / lint 0 error / check:dock・kav・i18n・roundtrip・names・diversity
+- [ ] **實機**：記錄列表、專案列表、常用名錄三處左滑，匯出那格是 #00A2A5；採集的「複製」仍是藍色
+
+---
+
+## 2026-09-16 — 多選工具列整理
+
+### 匯出改用圖示
+`share-outline`，色碼 `#00A2A5` —— 與左滑「匯出」同一個色，兩者才會讀成同一個動作而不是剛好同名的兩個功能。停用時 `#9ca3af`。
+
+### 統計移進隱藏選單，而且會說明自己為什麼不能用
+`⋯` 選單現在是 **統計 / 移動到專案 / 合併**。
+
+原本統計是工具列上的一顆圖示，在「選到的樣區少於 2 個」時只是變灰。**這是正確行為卻讀起來像壞掉** —— 跨樣區 Chao2 以「整個樣區」為取樣單位，所以選名錄永遠算不出來（使用者這次就是選了名錄）。改成選項恆在，條件不成立時跳既有的 `plotStats.crossNeedTwo`（「至少勾選 2 個樣區才能計算 Chao2。」），把沉默的停用狀態換成一句解釋。
+
+工具列剩下的兩顆（常用名錄、匯出）對任何選取都適用，不會再有長期灰著的控制項。
+
+### 順帶修掉自己前一次改動留下的隱患
+`listRows` 上一版加了 `useMemo` 之後，FlatList 的 `data` identity 就穩定了；而 `renderItem` 閉包裡抓的 `selectMode` / `selected` 不在 `data` 內。在加 memo 之前，那個陣列每次 render 都重建，等於**意外**幫忙觸發了 cell 重繪。RN 自己的文件寫得很清楚（`FlatList.js:296`：「pass a prop (e.g. extraData) that is not === after updates, otherwise your UI may not update on changes」），所以補上 `extraData={selectionEpoch}`。
+
+> 這是補自己的洞，不是修一個已重現的 bug —— 使用者回報的「card view 統計無法點選」查證後是選了名錄，本來就不適用。
+
+### 驗證狀態
+- [x] tsc / lint 0 error / check:dock・kav・i18n・names・diversity
+- [ ] **實機**：多選 2 個以上樣區 → `⋯` → 統計 正常開；多選名錄 → `⋯` → 統計 跳「至少勾選 2 個樣區」提示
+- [ ] **實機**：多選狀態下匯出圖示是 #00A2A5，未選取時是灰的
+
+---
+
+## 2026-09-16 — 導覽列按鈕統一：圓形淡底 + #00A2A5
+
+### 新元件 `src/components/HeaderIconButton.tsx`
+
+原本每個畫面都手抄同一串 `h-9 w-9 items-center justify-center active:opacity-60` 加寫死的 `#2563eb`，共 11 處、6 個檔案。現在一律走這個元件。
+
+| | 原 | 新 |
+|---|---|---|
+| 形狀 | 裸圖示，沒有底 | 36pt 圓形淡底 `bg-gray-100 / dark:bg-gray-800` |
+| 按壓 | `active:opacity-60`（整顆變透明） | 圓底加深 |
+| 顏色 | `#2563eb` 預設藍 | `#00A2A5`，與左滑「匯出」同一個色 |
+| 破壞性動作 | 紅圖示、無底 | 紅圖示、**中性圓底**（紅底在導覽列會喊得比動作本身還大聲） |
+| 停用 | 各自處理 | 灰圖示 + 淡底，一致 |
+
+「整顆變透明」的按壓回饋，看起來像按鈕正在消失而不是被按下去；改成底色加深。36pt 圓底加 `hitSlop` 過得了雙平台 44pt 觸控目標下限。
+
+裸圖示的問題不只是好不好看：**這是野外用的 app，常常單手、戴手套或手是濕的**，沒有可按範圍的暗示就是實際的操作成本。
+
+### 轉換清單（11 處）
+`goBack.tsx`（返回）、`session/[id]`（報告・結束／繼續）、`plot/[id]`（報告・結束／繼續）、`project/[id]`（版面切換・報告・編輯・匯出）、`projects`（新增）、`sites`（匯出）、`surveyors`（新增）、`report/[kind]/[id]`（匯出）。
+
+`project/[id]` 的 headerRight 間距從 `gap-1` 調成 `gap-2` —— 圓底比裸圖示需要多一點呼吸。
+
+### 採集的「結束」從文字改成圖示（使用者回報）
+`app/collection/[id].tsx` 的 headerRight 原本是藍色文字「結束／繼續」，而**名錄與樣區早就用 `stop-circle-outline` / `refresh-outline` 這兩個圖示做同一件事**。三個姊妹畫面、同一個動作，只有採集長得不一樣。已改成同一組圖示（結束為 danger 紅）。
+
+### 檢索表的「重新開始」也改成圖示
+`app/key/[id].tsx` 的 headerRight 原本是藍色文字。我原先以為這個動作沒有對應圖示，**查證後發現同一個畫面底部的終端卡片早就有一顆 `Ionicons name="refresh"` 的「重新開始」** —— 也就是說 glyph 早就選好了，只有 header 是例外。改用 `refresh-outline`（outline 版與其餘 header 圖示一致）。
+
+`refresh-outline` 在名錄／樣區 header 是「繼續編輯」，但檢索表畫面沒有那個動作，同畫面內不會有歧義；兩者語意上也都是「回到先前狀態重來」。
+
+至此**導覽列已無任何文字按鈕**（grep `headerRight` 後 `text-blue-600` 命中數為 0）。
+
+### 順帶
+`app/projects.tsx` 一開始我自己發明了 `projects.newProject` 這個 key，`check:i18n` 當場擋下來，改用既有的 `sheets.newProject`。守門script有用。
+
+### 驗證狀態
+- [x] tsc / lint 0 error（清掉本次造成的 orphan import：`project/[id]` 的 `Pressable`、`report/[kind]/[id]` 的 `Pressable` + `Ionicons`）
+- [x] check:i18n・dock・kav・names・diversity・roundtrip・vegmatrix・report・inat 全過
+- [x] grep 確認導覽列已無 `#2563eb`、無殘留的裸按鈕寫法
+- [ ] **實機**：深色模式下圓底與圖示對比足夠；返回鍵圓底沒有貼齊螢幕左緣（`edge="left"` 的 `-ml-1`）
+- [ ] **實機**：樣區／專案 header 右側三顆圓底並列不會過擠
+- [ ] **實機**：採集的結束鍵是紅色 stop 圖示，與名錄一致

@@ -20,6 +20,7 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { BackHeaderLeft } from '~/lib/goBack';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -51,7 +52,12 @@ import { ScientificName } from '~/components/ScientificName';
 import { serializeMultiAttribute } from '~/lib/dwcAttributes';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
-import { getKeyRunnerState, pushRecentKey, setKeyRunnerState, useSettings } from '~/stores/settings';
+import {
+  getKeyRunnerState,
+  pushRecentKey,
+  setKeyRunnerState,
+  useSettings,
+} from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 
 type LeadKey = 'a' | 'b';
@@ -75,8 +81,11 @@ type LeadPreview =
  *  e.g. "續查屬內檢索表". Falls back to the raw rank for unmapped values. */
 function subkeyRankLabel(rank: string): string {
   const KEY: Record<string, string> = {
-    family: 'rank.family', subfamily: 'rank.subfamily', tribe: 'rank.tribe',
-    genus: 'rank.genus', subgenus: 'rank.subgenus',
+    family: 'rank.family',
+    subfamily: 'rank.subfamily',
+    tribe: 'rank.tribe',
+    genus: 'rank.genus',
+    subgenus: 'rank.subgenus',
   };
   return KEY[rank] ? i18n.t(KEY[rank]) : rank;
 }
@@ -85,7 +94,9 @@ function subkeyRankLabel(rank: string): string {
  *  scope has multiple subkeys (dichotomous + multi_access). */
 function subkeyModeLabel(mode: string): string {
   const KEY: Record<string, string> = {
-    dichotomous: 'keys.modeDichotomous', multi_access: 'keys.modeMultiAccess', both: 'keys.modeBoth',
+    dichotomous: 'keys.modeDichotomous',
+    multi_access: 'keys.modeMultiAccess',
+    both: 'keys.modeBoth',
   };
   return KEY[mode] ? i18n.t(KEY[mode]) : mode;
 }
@@ -124,11 +135,7 @@ function enumerateReachableTerminals(
 ): ReachableTerminal[] {
   const out: ReachableTerminal[] = [];
 
-  function dfs(
-    cNum: number,
-    trace: TraceStep[],
-    visited: Set<number>,
-  ) {
+  function dfs(cNum: number, trace: TraceStep[], visited: Set<number>) {
     if (visited.has(cNum)) return;
     const c = byNumber.get(cNum);
     if (!c) return;
@@ -253,7 +260,10 @@ export default function KeyRunnerScreen() {
         // pointers like Poaceae→Bambusoideae still navigate.
         subs = findSubkeysByScopeName(tid);
       }
-      sCache.set(tid, subs.filter((s) => s.id !== keyId));
+      sCache.set(
+        tid,
+        subs.filter((s) => s.id !== keyId),
+      );
     }
     setTaxonCache(tCache);
     setSubkeyCache(sCache);
@@ -332,7 +342,8 @@ export default function KeyRunnerScreen() {
 
   const currentCoupletNumber = state.path[state.path.length - 1] ?? null;
   const currentCouplet = useMemo(
-    () => (currentCoupletNumber != null ? coupletByNumber.get(currentCoupletNumber) ?? null : null),
+    () =>
+      currentCoupletNumber != null ? (coupletByNumber.get(currentCoupletNumber) ?? null) : null,
     [currentCoupletNumber, coupletByNumber],
   );
 
@@ -394,25 +405,22 @@ export default function KeyRunnerScreen() {
     setState((prev) => ({ path: prev.path.slice(0, idx + 1), terminal: null }));
   }, []);
 
-  const jumpToReachable = useCallback(
-    (cand: ReachableTerminal) => {
-      // Path expansion: trace[0] is always the couplet we're at right now
-      // (already in `state.path`), so skip it; trace[1..] are the couplets
-      // the user is "auto-walking" past. The terminal taxon itself doesn't
-      // get a path entry — it lives in `state.terminal`.
-      setState((prev) => ({
-        path: [...prev.path, ...cand.trace.slice(1).map((s) => s.coupletNumber)],
-        terminal: {
-          kind: 'taxon',
-          taxonId: cand.taxonId,
-          marker: cand.marker,
-          status: cand.status,
-        },
-      }));
-      setCandidatesOpen(false);
-    },
-    [],
-  );
+  const jumpToReachable = useCallback((cand: ReachableTerminal) => {
+    // Path expansion: trace[0] is always the couplet we're at right now
+    // (already in `state.path`), so skip it; trace[1..] are the couplets
+    // the user is "auto-walking" past. The terminal taxon itself doesn't
+    // get a path entry — it lives in `state.terminal`.
+    setState((prev) => ({
+      path: [...prev.path, ...cand.trace.slice(1).map((s) => s.coupletNumber)],
+      terminal: {
+        kind: 'taxon',
+        taxonId: cand.taxonId,
+        marker: cand.marker,
+        status: cand.status,
+      },
+    }));
+    setCandidatesOpen(false);
+  }, []);
 
   // ── Smart routing (Step 5-3) ─────────────────────────────────────────
   // 偏好順序：active plot > active session > 自動建立新 session。
@@ -445,7 +453,10 @@ export default function KeyRunnerScreen() {
       addRecord({ session_id: target.id, taxon_id: taxonId });
       refreshActiveSession();
       toast(tr('session.added', { name: taxon.common_name_c || taxon.simple_name }), {
-        action: { label: tr('addToRecord.goTo'), onPress: () => router.push(`/session/${target.id}` as Href) },
+        action: {
+          label: tr('addToRecord.goTo'),
+          onPress: () => router.push(`/session/${target.id}` as Href),
+        },
       });
     },
     [activePlot, activeSession, startActiveSession, refreshActiveSession, router, toast],
@@ -468,9 +479,18 @@ export default function KeyRunnerScreen() {
         leaf_phenology: serializeMultiAttribute(v.leaf_phenology),
       });
       setPlotValueTarget(null);
-      toast(tr('keys.addedToPlotLayer', { name: t.common_name_c || t.simple_name, layer: plotValueTarget.layer }), {
-        action: { label: tr('addToRecord.goTo'), onPress: () => router.push(`/plot/${activePlot.id}` as Href) },
-      });
+      toast(
+        tr('keys.addedToPlotLayer', {
+          name: t.common_name_c || t.simple_name,
+          layer: plotValueTarget.layer,
+        }),
+        {
+          action: {
+            label: tr('addToRecord.goTo'),
+            onPress: () => router.push(`/plot/${activePlot.id}` as Href),
+          },
+        },
+      );
     },
     [plotValueTarget, activePlot, router, toast],
   );
@@ -487,7 +507,10 @@ export default function KeyRunnerScreen() {
   // ── Render ───────────────────────────────────────────────────────────
   if (!guardTwOn) {
     return (
-      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900 px-8">
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 items-center justify-center bg-white px-8 dark:bg-gray-900"
+      >
         <Stack.Screen options={{ title: tr('nav.key'), headerLeft: BackHeaderLeft }} />
         <Text className="text-center text-sm text-gray-500 dark:text-gray-400">
           {tr('keys.needTaiwanRegion')}
@@ -497,7 +520,10 @@ export default function KeyRunnerScreen() {
   }
   if (!loaded) {
     return (
-      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 items-center justify-center bg-white dark:bg-gray-900"
+      >
         <Stack.Screen options={{ title: tr('nav.key'), headerLeft: BackHeaderLeft }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">{tr('common.loading')}</Text>
       </SafeAreaView>
@@ -506,7 +532,10 @@ export default function KeyRunnerScreen() {
 
   if (!keyData) {
     return (
-      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 items-center justify-center bg-white dark:bg-gray-900"
+      >
         <Stack.Screen options={{ title: tr('nav.key'), headerLeft: BackHeaderLeft }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">{tr('keys.keyNotFound')}</Text>
       </SafeAreaView>
@@ -522,7 +551,10 @@ export default function KeyRunnerScreen() {
 
   if (couplets.length === 0) {
     return (
-      <SafeAreaView edges={['top']} className="flex-1 items-center justify-center bg-white dark:bg-gray-900">
+      <SafeAreaView
+        edges={['top']}
+        className="flex-1 items-center justify-center bg-white dark:bg-gray-900"
+      >
         <Stack.Screen options={{ title: keyData.scope_name, headerLeft: BackHeaderLeft }} />
         <Text className="text-sm text-gray-500 dark:text-gray-400">{tr('keys.noNodes')}</Text>
       </SafeAreaView>
@@ -556,8 +588,7 @@ export default function KeyRunnerScreen() {
           subkeys={subs}
           addTarget={addTarget}
           onAddToActive={() =>
-            state.terminal?.kind === 'taxon' &&
-            addTaxonToActiveRecord(state.terminal.taxonId, t)
+            state.terminal?.kind === 'taxon' && addTaxonToActiveRecord(state.terminal.taxonId, t)
           }
           onOpenDetail={openTerminalDetail}
           onOpenSubkey={(subId: number) => router.push(`/key/${subId}` as Href)}
@@ -587,9 +618,10 @@ export default function KeyRunnerScreen() {
           title: screenTitle,
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <Pressable onPress={restart} hitSlop={8}>
-              <Text className="text-sm font-medium text-blue-600 dark:text-blue-400">{tr('keys.restart')}</Text>
-            </Pressable>
+            // `refresh` is already this screen's glyph for 重新開始 — the
+            // terminal card's own button (see RestartButton below) uses it.
+            // The header just stops being the odd one out.
+            <HeaderIconButton icon="refresh-outline" onPress={restart} label={tr('keys.restart')} />
           ),
         }}
       />
@@ -607,13 +639,13 @@ export default function KeyRunnerScreen() {
       <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 24 }}>
         {body}
         {keyData.source ? (
-          <View className="mt-6 border-t border-gray-100 dark:border-gray-800 px-4 pt-3">
+          <View className="mt-6 border-t border-gray-100 px-4 pt-3 dark:border-gray-800">
             <Text className="text-[11px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
               {tr('keys.citation')}
             </Text>
             <Text className="mt-1 text-xs text-gray-600 dark:text-gray-400" selectable>
               {/* Strip the "(Sheets:<id>#<worksheet>)" trace the importer
-                * appends — useful for backend debugging, noise to users. */}
+               * appends — useful for backend debugging, noise to users. */}
               {keyData.source.replace(/\s*\(Sheets:[^)]+\)\s*$/, '')}
             </Text>
           </View>
@@ -622,7 +654,7 @@ export default function KeyRunnerScreen() {
 
       {!state.terminal && state.path.length > 1 ? (
         <View
-          className="border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+          className="border-t border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
           style={{ paddingBottom: insets.bottom }}
         >
           <Pressable
@@ -630,7 +662,9 @@ export default function KeyRunnerScreen() {
             className="flex-row items-center justify-center py-3 active:bg-gray-100 dark:active:bg-gray-700"
           >
             <Ionicons name="arrow-back" size={16} color="#374151" />
-            <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">{tr('keys.prevStep')}</Text>
+            <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
+              {tr('keys.prevStep')}
+            </Text>
           </Pressable>
         </View>
       ) : null}
@@ -668,10 +702,7 @@ export default function KeyRunnerScreen() {
         onClose={() => setCandidatesOpen(false)}
       />
 
-      <CoupletPreviewPopup
-        couplet={previewCouplet}
-        onClose={() => setPreviewCouplet(null)}
-      />
+      <CoupletPreviewPopup couplet={previewCouplet} onClose={() => setPreviewCouplet(null)} />
     </View>
   );
 }
@@ -696,15 +727,15 @@ function Breadcrumb({
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900"
+      className="border-b border-gray-100 bg-white dark:border-gray-800 dark:bg-gray-900"
       // ScrollView defaults to flexGrow: 1, which would steal vertical space
       // from the main content ScrollView below. Force it to wrap its content.
       style={{ flexGrow: 0, flexShrink: 0 }}
       contentContainerStyle={{ paddingHorizontal: 10, paddingVertical: 4, alignItems: 'center' }}
     >
       {/* Step-count hint right at the start: "第 N 步 / 共 M 步" so the user
-        * has a sense of progress regardless of where they're scrolled. */}
-      <View className="mr-2 rounded-md bg-gray-50 dark:bg-gray-800 px-1.5 py-0.5">
+       * has a sense of progress regardless of where they're scrolled. */}
+      <View className="mr-2 rounded-md bg-gray-50 px-1.5 py-0.5 dark:bg-gray-800">
         <Text className="text-[10px] font-medium text-gray-500 dark:text-gray-400">
           {tr('keys.stepN', { n: path.length })}
         </Text>
@@ -717,7 +748,7 @@ function Breadcrumb({
               onPress={() => onJump(i)}
               onLongPress={() => onLongPressStep(n)}
               delayLongPress={300}
-              className={`rounded-full px-2 py-0.5 ${isLast ? 'bg-emerald-500' : 'bg-gray-100 dark:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700'}`}
+              className={`rounded-full px-2 py-0.5 ${isLast ? 'bg-emerald-500' : 'bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700'}`}
             >
               <Text
                 className={`text-[11px] font-semibold ${isLast ? 'text-white' : 'text-gray-700 dark:text-gray-300'}`}
@@ -726,14 +757,24 @@ function Breadcrumb({
               </Text>
             </Pressable>
             {i < path.length - 1 ? (
-              <Ionicons name="chevron-forward" size={10} color="#9ca3af" style={{ marginHorizontal: 2 }} />
+              <Ionicons
+                name="chevron-forward"
+                size={10}
+                color="#9ca3af"
+                style={{ marginHorizontal: 2 }}
+              />
             ) : null}
           </View>
         );
       })}
       {terminal ? (
         <View className="flex-row items-center">
-          <Ionicons name="chevron-forward" size={10} color="#9ca3af" style={{ marginHorizontal: 2 }} />
+          <Ionicons
+            name="chevron-forward"
+            size={10}
+            color="#9ca3af"
+            style={{ marginHorizontal: 2 }}
+          />
           <View className="rounded-full bg-blue-500 px-2 py-0.5">
             <Text className="text-[11px] font-semibold text-white">{tr('keys.terminal')}</Text>
           </View>
@@ -760,11 +801,13 @@ function CoupletView({
   return (
     <View className="px-4 pt-3">
       <View className="mb-2 flex-row items-center justify-between">
-        <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">{tr('keys.coupletN', { n: couplet.number })}</Text>
+        <Text className="text-xs font-medium text-gray-500 dark:text-gray-400">
+          {tr('keys.coupletN', { n: couplet.number })}
+        </Text>
         {reachableCount > 0 ? (
           <Pressable
             onPress={onPeekCandidates}
-            className="flex-row items-center rounded-full bg-gray-100 dark:bg-gray-800 px-2.5 py-1 active:bg-gray-200 dark:active:bg-gray-700"
+            className="flex-row items-center rounded-full bg-gray-100 px-2.5 py-1 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
           >
             <Ionicons name="list" size={12} color="#6b7280" />
             <Text className="ml-1 text-[11px] font-medium text-gray-700 dark:text-gray-300">
@@ -773,13 +816,23 @@ function CoupletView({
           </Pressable>
         ) : null}
       </View>
-      <LeadButton label="A" text={couplet.lead_a_text} preview={previews.a} onPress={() => pickLead('a')} />
+      <LeadButton
+        label="A"
+        text={couplet.lead_a_text}
+        preview={previews.a}
+        onPress={() => pickLead('a')}
+      />
       <View className="my-3 flex-row items-center">
         <View className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
         <Text className="mx-3 text-xs text-gray-400 dark:text-gray-500">vs</Text>
         <View className="h-px flex-1 bg-gray-200 dark:bg-gray-700" />
       </View>
-      <LeadButton label="B" text={couplet.lead_b_text} preview={previews.b} onPress={() => pickLead('b')} />
+      <LeadButton
+        label="B"
+        text={couplet.lead_b_text}
+        preview={previews.b}
+        onPress={() => pickLead('b')}
+      />
     </View>
   );
 }
@@ -799,7 +852,7 @@ function LeadButton({
   return (
     <Pressable
       onPress={onPress}
-      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-4 active:bg-gray-50 dark:active:bg-gray-800"
+      className="rounded-xl border border-gray-200 bg-white px-4 py-4 active:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:active:bg-gray-800"
     >
       <View className="flex-row items-baseline">
         <View className="mr-2 h-7 w-7 items-center justify-center rounded-full bg-emerald-500">
@@ -825,12 +878,14 @@ function LeadPreviewLine({ preview }: { preview: LeadPreview }) {
   }
   if (preview.kind === 'unresolved') {
     return (
-      <Text className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">→ {preview.rawText}</Text>
+      <Text className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+        → {preview.rawText}
+      </Text>
     );
   }
   const t = preview.taxon;
   return (
-    <View className="mt-2 flex-row items-baseline flex-wrap">
+    <View className="mt-2 flex-row flex-wrap items-baseline">
       <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">→ </Text>
       <ScientificName
         name={t.simple_name}
@@ -838,7 +893,9 @@ function LeadPreviewLine({ preview }: { preview: LeadPreview }) {
         className="text-xs font-medium text-emerald-700 dark:text-emerald-300"
       />
       {t.common_name_c ? (
-        <Text className="ml-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">{t.common_name_c}</Text>
+        <Text className="ml-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+          {t.common_name_c}
+        </Text>
       ) : null}
     </View>
   );
@@ -878,7 +935,7 @@ function TerminalTaxon({
     // can continue instead of dead-ending.
     return (
       <View className="px-4 pt-4">
-        <View className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 px-4 py-4">
+        <View className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 dark:bg-amber-950/40">
           <Text className="text-base font-medium text-amber-800 dark:text-amber-300">
             {subkeys.length > 0 ? tr('keys.terminalIsSubkey') : tr('keys.noTaxonId')}
           </Text>
@@ -900,29 +957,50 @@ function TerminalTaxon({
   type Tag = { label: string; bg: string; text: string };
   const tags: Tag[] = [];
   if (taxon.is_endemic === 'true')
-    tags.push({ label: tr('keys.endemicTw'), bg: 'bg-emerald-100 dark:bg-emerald-900/60', text: 'text-emerald-700 dark:text-emerald-300' });
+    tags.push({
+      label: tr('keys.endemicTw'),
+      bg: 'bg-emerald-100 dark:bg-emerald-900/60',
+      text: 'text-emerald-700 dark:text-emerald-300',
+    });
   // redlist + IUCN are rendered as ConservationBadge below the tags row
   // so they get the official IUCN palette instead of the generic Tailwind tag.
   if (taxon.cites)
-    tags.push({ label: `CITES ${taxon.cites}`, bg: 'bg-red-100 dark:bg-red-900/60', text: 'text-red-700 dark:text-red-400' });
+    tags.push({
+      label: `CITES ${taxon.cites}`,
+      bg: 'bg-red-100 dark:bg-red-900/60',
+      text: 'text-red-700 dark:text-red-400',
+    });
   if (taxon.protected)
-    tags.push({ label: tr('keys.protectedLevel', { level: taxon.protected }), bg: 'bg-red-100 dark:bg-red-900/60', text: 'text-red-700 dark:text-red-400' });
-  if (marker) tags.push({ label: marker, bg: 'bg-blue-100 dark:bg-blue-900/60', text: 'text-blue-700 dark:text-blue-300' });
+    tags.push({
+      label: tr('keys.protectedLevel', { level: taxon.protected }),
+      bg: 'bg-red-100 dark:bg-red-900/60',
+      text: 'text-red-700 dark:text-red-400',
+    });
+  if (marker)
+    tags.push({
+      label: marker,
+      bg: 'bg-blue-100 dark:bg-blue-900/60',
+      text: 'text-blue-700 dark:text-blue-300',
+    });
 
   return (
     <View className="px-4 pt-4">
       <Pressable
         onPress={onOpenDetail}
-        className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-950/40 px-4 py-4 active:bg-emerald-100 dark:active:bg-emerald-900/60"
+        className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 active:bg-emerald-100 dark:bg-emerald-950/40 dark:active:bg-emerald-900/60"
       >
         <View className="flex-row items-center justify-between">
-          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">{tr('keys.keyDone')}</Text>
+          <Text className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            {tr('keys.keyDone')}
+          </Text>
           <View className="flex-row items-center">
-            <Text className="mr-1 text-[11px] text-emerald-700 dark:text-emerald-300">{tr('keys.details')}</Text>
+            <Text className="mr-1 text-[11px] text-emerald-700 dark:text-emerald-300">
+              {tr('keys.details')}
+            </Text>
             <Ionicons name="information-circle-outline" size={14} color="#047857" />
           </View>
         </View>
-        <View className="mt-2 flex-row items-baseline flex-wrap">
+        <View className="mt-2 flex-row flex-wrap items-baseline">
           {taxon.common_name_c ? (
             <Text className="text-xl font-bold text-gray-900 dark:text-gray-100" selectable>
               {taxon.common_name_c}
@@ -931,7 +1009,7 @@ function TerminalTaxon({
           <ScientificName
             name={taxon.simple_name}
             kingdom={taxon.kingdom}
-            className={`${taxon.common_name_c ? 'ml-2 ' : ''}text-base text-gray-800 dark:text-gray-200`}
+            className={`${taxon.common_name_c ? 'ml-2' : ''}text-base text-gray-800 dark:text-gray-200`}
           />
         </View>
         {taxon.name_author ? (
@@ -954,7 +1032,9 @@ function TerminalTaxon({
             {taxon.redlist ? <ConservationBadge code={taxon.redlist} /> : null}
             {status ? (
               <View className="flex-row items-center">
-                <Text className="mr-1 text-xs font-medium text-gray-600 dark:text-gray-400">IUCN</Text>
+                <Text className="mr-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+                  IUCN
+                </Text>
                 <ConservationBadge code={status} />
               </View>
             ) : null}
@@ -962,7 +1042,9 @@ function TerminalTaxon({
         ) : null}
         {taxon.taxon_id ? (
           <View className="mt-3">
-            <Text className="text-[11px] text-gray-500 dark:text-gray-400">TaiCOL: {taxon.taxon_id}</Text>
+            <Text className="text-[11px] text-gray-500 dark:text-gray-400">
+              TaiCOL: {taxon.taxon_id}
+            </Text>
           </View>
         ) : null}
       </Pressable>
@@ -999,31 +1081,33 @@ function SubkeyButton({
   return (
     <Pressable
       onPress={onPress}
-      className="mt-3 flex-row items-center rounded-xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 px-4 py-3 active:bg-blue-100 dark:active:bg-blue-900/60"
+      className="mt-3 flex-row items-center rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 active:bg-blue-100 dark:border-blue-800 dark:bg-blue-950/40 dark:active:bg-blue-900/60"
     >
       <View className="mr-3 h-9 w-9 items-center justify-center rounded-lg bg-blue-500">
         <Ionicons name="key" size={18} color="white" />
       </View>
       <View className="flex-1">
-        <View className="flex-row items-center flex-wrap">
+        <View className="flex-row flex-wrap items-center">
           <Text className="text-xs font-medium text-blue-700 dark:text-blue-300">
             {tr('keys.continueSubkey', { rank: subkeyRankLabel(subkey.scope_rank) })}
           </Text>
           {showModeBadge ? (
-            <View className="ml-2 rounded bg-blue-200 dark:bg-blue-800/80 px-1.5 py-0.5">
+            <View className="ml-2 rounded bg-blue-200 px-1.5 py-0.5 dark:bg-blue-800/80">
               <Text className="text-[10px] font-medium text-blue-800 dark:text-blue-200">
                 {subkeyModeLabel(subkey.mode)}
               </Text>
             </View>
           ) : null}
         </View>
-        <View className="mt-0.5 flex-row items-baseline flex-wrap">
+        <View className="mt-0.5 flex-row flex-wrap items-baseline">
           <ScientificName
             name={subkey.scope_name}
             className="text-base font-semibold text-gray-900 dark:text-gray-100"
           />
           {subkey.scope_cname ? (
-            <Text className="ml-2 text-sm text-gray-600 dark:text-gray-400">{subkey.scope_cname}</Text>
+            <Text className="ml-2 text-sm text-gray-600 dark:text-gray-400">
+              {subkey.scope_cname}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -1071,20 +1155,17 @@ function AddToActiveRecordButton({
   );
 }
 
-function UnresolvedTerminal({
-  rawId,
-  onBack,
-}: {
-  rawId: string | null;
-  onBack: () => void;
-}) {
+function UnresolvedTerminal({ rawId, onBack }: { rawId: string | null; onBack: () => void }) {
   const { t: tr } = useTranslation();
   return (
     <View className="px-4 pt-6">
-      <View className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/40 px-4 py-4">
-        <Text className="text-base font-medium text-amber-800 dark:text-amber-300">{tr('keys.unresolvableTitle')}</Text>
+      <View className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 dark:bg-amber-950/40">
+        <Text className="text-base font-medium text-amber-800 dark:text-amber-300">
+          {tr('keys.unresolvableTitle')}
+        </Text>
         <Text className="mt-2 text-sm text-amber-700 dark:text-amber-300">
-          {tr('keys.rawValue')}<Text className="font-mono">{rawId ?? tr('keys.empty')}</Text>
+          {tr('keys.rawValue')}
+          <Text className="font-mono">{rawId ?? tr('keys.empty')}</Text>
         </Text>
         <Text className="mt-2 text-xs text-amber-700 dark:text-amber-300">
           {tr('keys.unresolvableHint')}
@@ -1095,22 +1176,18 @@ function UnresolvedTerminal({
   );
 }
 
-function FooterButtons({
-  onBack,
-  onRestart,
-}: {
-  onBack: () => void;
-  onRestart?: () => void;
-}) {
+function FooterButtons({ onBack, onRestart }: { onBack: () => void; onRestart?: () => void }) {
   const { t: tr } = useTranslation();
   return (
     <View className="mt-4 flex-row gap-3">
       <Pressable
         onPress={onBack}
-        className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-700 py-3 active:bg-gray-300 dark:active:bg-gray-600"
+        className="flex-1 flex-row items-center justify-center rounded-lg bg-gray-200 py-3 active:bg-gray-300 dark:bg-gray-700 dark:active:bg-gray-600"
       >
         <Ionicons name="arrow-back" size={14} color="#374151" />
-        <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">{tr('keys.prevStep')}</Text>
+        <Text className="ml-1.5 text-sm font-medium text-gray-700 dark:text-gray-300">
+          {tr('keys.prevStep')}
+        </Text>
       </Pressable>
       {onRestart ? (
         <Pressable
@@ -1180,7 +1257,7 @@ function CandidatesSheet({
             <View className="items-center pt-2">
               <View className="h-1 w-12 rounded-full bg-gray-300 dark:bg-gray-700" />
             </View>
-            <View className="border-b border-gray-200 dark:border-gray-700 px-4 py-3">
+            <View className="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
               <Text className="text-base font-semibold text-gray-900 dark:text-gray-100">
                 {tr('keys.uncertainSkip')}
               </Text>
@@ -1214,9 +1291,9 @@ function CandidateRow({ c, onPress }: { c: ReachableTerminal; onPress: () => voi
   return (
     <Pressable
       onPress={onPress}
-      className="border-b border-gray-100 dark:border-gray-800 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+      className="border-b border-gray-100 px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:active:bg-gray-800"
     >
-      <View className="flex-row items-baseline flex-wrap">
+      <View className="flex-row flex-wrap items-baseline">
         {t?.common_name_c ? (
           <Text className="text-base font-medium text-gray-900 dark:text-gray-100">
             {t.common_name_c}
@@ -1226,28 +1303,27 @@ function CandidateRow({ c, onPress }: { c: ReachableTerminal; onPress: () => voi
           <ScientificName
             name={t.simple_name}
             kingdom={t.kingdom}
-            className={`${t.common_name_c ? 'ml-2 ' : ''}text-sm text-gray-700 dark:text-gray-300`}
+            className={`${t.common_name_c ? 'ml-2' : ''}text-sm text-gray-700 dark:text-gray-300`}
           />
         ) : (
-          <Text className="text-sm font-mono text-amber-700 dark:text-amber-300">
-            {c.taxonId}
-          </Text>
+          <Text className="font-mono text-sm text-amber-700 dark:text-amber-300">{c.taxonId}</Text>
         )}
       </View>
       {/* Family was previously shown here but is redundant inside a key
-        * runner: the user already chose the scope (family/genus key) when
-        * opening this list, so repeating "Acanthaceae 爵床科" on every row
-        * just adds noise. Per-step trace below remains. */}
+       * runner: the user already chose the scope (family/genus key) when
+       * opening this list, so repeating "Acanthaceae 爵床科" on every row
+       * just adds noise. Per-step trace below remains. */}
       {/* Per-step trace with descriptions so users can scan the actual
-        * traits leading to this terminal. */}
-      <View className="mt-2 rounded-md bg-gray-50 dark:bg-gray-800 px-2.5 py-2">
+       * traits leading to this terminal. */}
+      <View className="mt-2 rounded-md bg-gray-50 px-2.5 py-2 dark:bg-gray-800">
         {c.trace.map((s, i) => (
           <View
             key={`${s.coupletNumber}-${s.lead}-${i}`}
             className={`flex-row items-baseline ${i > 0 ? 'mt-1' : ''}`}
           >
             <Text className="w-[40px] text-sm font-semibold text-gray-700 dark:text-gray-300">
-              {s.coupletNumber}{s.lead}
+              {s.coupletNumber}
+              {s.lead}
             </Text>
             <Text
               className="flex-1 text-sm leading-5 text-gray-700 dark:text-gray-300"
@@ -1291,10 +1367,10 @@ function CoupletPreviewPopup({
         }}
       >
         {/* Inner Pressable swallows the press so tapping content doesn't
-          * close the popup; only the backdrop does. */}
+         * close the popup; only the backdrop does. */}
         <Pressable
           onPress={() => {}}
-          className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 p-4 shadow-2xl"
+          className="w-full max-w-md rounded-2xl bg-white p-4 shadow-2xl dark:bg-gray-900"
           style={{ maxWidth: 480 }}
         >
           <View className="mb-3 flex-row items-center justify-between">

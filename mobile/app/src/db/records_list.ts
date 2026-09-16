@@ -30,6 +30,8 @@ export type RecordItem = {
   /** Sort key (ms). For sessions = started_at; for plots = start_ts ?? created_at. */
   startedAt: number;
   recordCount: number;
+  /** 加星號（v34）. Starred records sort above unstarred ones. */
+  starred: boolean;
   /** `subtitle` minus the project name — for the byProject view, where the
    *  group header already names the project. Built from its own i18n template
    *  (NOT by string-stripping `subtitle`, which breaks the moment a locale
@@ -53,11 +55,15 @@ function sessionToItem(s: SessionWithStats): RecordItem {
     kind: 'session',
     id: s.id,
     title: s.name,
-    subtitle: i18n.t('recordsList.sessionSubtitle', { count: s.record_count, project: s.project_name }),
+    subtitle: i18n.t('recordsList.sessionSubtitle', {
+      count: s.record_count,
+      project: s.project_name,
+    }),
     subtitlePlain: i18n.t('recordsList.sessionSubtitleNoProject', { count: s.record_count }),
     active: s.ended_at === null,
     startedAt: s.started_at,
     recordCount: s.record_count,
+    starred: s.starred === 1,
     projectId: s.project_id,
     projectName: s.project_name,
     session: s,
@@ -66,9 +72,7 @@ function sessionToItem(s: SessionWithStats): RecordItem {
 
 function plotToItem(p: PlotSurveyWithMeta): RecordItem {
   const n = p.species_count;
-  const sizeStr = p.sample_size_value
-    ? ` · ${p.sample_size_value}${p.sample_size_unit ?? ''}`
-    : '';
+  const sizeStr = p.sample_size_value ? ` · ${p.sample_size_value}${p.sample_size_unit ?? ''}` : '';
   const protocol = p.sampling_protocol || i18n.t('plots.noProtocol');
   const projectName = p.project_name || i18n.t('plot.uncategorized');
   return {
@@ -80,6 +84,7 @@ function plotToItem(p: PlotSurveyWithMeta): RecordItem {
     active: p.status === 'active',
     startedAt: p.start_ts ?? p.created_at,
     recordCount: n,
+    starred: p.starred === 1,
     projectId: p.project_id,
     projectName,
     notReady: !plotCanAcceptSpecies(p),
@@ -100,6 +105,7 @@ function tripToItem(c: CollectionTripWithStats): RecordItem {
     active: c.status === 'active',
     startedAt: c.started_at,
     recordCount: c.specimen_count,
+    starred: c.starred === 1,
     projectId: c.project_id,
     projectName: c.project_name,
     trip: c,
@@ -119,12 +125,21 @@ export function listRecords(filter: RecordFilter = 'all'): RecordItem[] {
   if (filter === 'all' || filter === 'collection') {
     items.push(...listCollectionTrips().map(tripToItem));
   }
-  // Active first, then newest by startedAt desc.
-  items.sort((a, b) => {
-    if (a.active !== b.active) return a.active ? -1 : 1;
-    return b.startedAt - a.startedAt;
-  });
+  items.sort(byActiveThenStarredThenNewest);
   return items;
+}
+
+/**
+ * Active first → starred → newest by `startedAt`.
+ *
+ * Active outranks starred on purpose: at most one record is active app-wide
+ * and it is the one being filled in right now, so burying it under a pinned
+ * record would hide the thing the user is actually doing.
+ */
+function byActiveThenStarredThenNewest(a: RecordItem, b: RecordItem): number {
+  if (a.active !== b.active) return a.active ? -1 : 1;
+  if (a.starred !== b.starred) return a.starred ? -1 : 1;
+  return b.startedAt - a.startedAt;
 }
 
 export type ProjectGroup = {
@@ -151,12 +166,7 @@ function groupByProject(flat: RecordItem[]): ProjectGroup[] {
   }
   const result = Array.from(groups.values());
   // Sort each group's items (already sorted by listRecords, but be defensive).
-  for (const g of result) {
-    g.items.sort((a, b) => {
-      if (a.active !== b.active) return a.active ? -1 : 1;
-      return b.startedAt - a.startedAt;
-    });
-  }
+  for (const g of result) g.items.sort(byActiveThenStarredThenNewest);
   // Sort groups by newest item's startedAt desc.
   result.sort((a, b) => (b.items[0]?.startedAt ?? 0) - (a.items[0]?.startedAt ?? 0));
   return result;
@@ -206,6 +216,28 @@ export function takenRecordNames(kind: RecordKind): Set<string> {
         : `SELECT name FROM collection_trips`;
   const rows = (db.executeSync(sql).rows ?? []) as { name?: string }[];
   return new Set(rows.map((r) => (r.name ?? '').trim()).filter(Boolean));
+}
+
+/** Table holding each record kind's own row. */
+const RECORD_TABLE: Record<RecordKind, string> = {
+  session: 'sessions',
+  plot: 'plot_surveys',
+  collection: 'collection_trips',
+};
+
+/**
+ * 加星／取消星號.
+ *
+ * A plain UPDATE rather than `updateSession` / `updatePlotSurvey` /
+ * `updateCollectionTrip`: two of those three gate writes behind a key
+ * allowlist, and `starred` is device-local organisation that has no business
+ * in the patch types those functions take (or in the export round-trip).
+ */
+export function setRecordStarred(kind: RecordKind, id: number, starred: boolean): void {
+  getUserDb().executeSync(`UPDATE ${RECORD_TABLE[kind]} SET starred = ? WHERE id = ?`, [
+    starred ? 1 : 0,
+    id,
+  ]);
 }
 
 const RECORD_SPECIES_SOURCE: Record<RecordKind, { table: string; fk: string }> = {

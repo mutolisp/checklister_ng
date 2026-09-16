@@ -9,6 +9,8 @@ export type { MatrixValueMode };
 
 export type Theme = 'light' | 'dark' | 'auto';
 export type CardDensity = 'compact' | 'comfortable';
+/** How the records list draws each record: one per row, or a 2-up card grid. */
+export type RecordsLayout = 'list' | 'card';
 
 /** UI language. 'system' follows the device locale; others force that language.
  *  All four ship a locale file (see `~/i18n`), kept structurally identical to
@@ -139,6 +141,9 @@ type SettingsValues = {
   records_collapsed: number[];
   /** One-shot: the records list already played its swipe-actions teaser. */
   records_swipe_hint_shown: boolean;
+  /** 列表 / 卡片 檢視. Persisted (unlike the byProject⇄timeline axis, which is
+   *  a way of reading the data; this one is how the user likes it drawn). */
+  records_layout: RecordsLayout;
   font_scale: FontScale;
   map_view: MapViewState;
   /** Last plot detail tab, so returning to a survey in progress lands where the
@@ -217,6 +222,7 @@ const DEFAULTS: SettingsValues = {
   taxonomy_expanded: [],
   records_collapsed: [],
   records_swipe_hint_shown: false,
+  records_layout: 'list',
   font_scale: 'normal',
   map_view: DEFAULT_MAP_VIEW,
   plot_last_tab: { plotId: 0, tab: 'env' },
@@ -318,15 +324,13 @@ function readAll(): SettingsValues {
     last_search_groups: parseSearchGroups(map.get('last_search_groups')),
     last_record_sort: (map.get('last_record_sort') as RecordSort) ?? DEFAULTS.last_record_sort,
     collection_sort: (map.get('collection_sort') as CollectionSort) ?? DEFAULTS.collection_sort,
-    default_identified_by:
-      map.get('default_identified_by') ?? DEFAULTS.default_identified_by,
+    default_identified_by: map.get('default_identified_by') ?? DEFAULTS.default_identified_by,
     gbif_username: map.get('gbif_username') ?? DEFAULTS.gbif_username,
     gbif_notify_email: map.get('gbif_notify_email') ?? DEFAULTS.gbif_notify_email,
     inat_login: map.get('inat_login') ?? DEFAULTS.inat_login,
     inat_geoprivacy: parseGeoprivacy(map.get('inat_geoprivacy')),
     plot_stats_expanded: map.get('plot_stats_expanded') === 'true',
-    collection_label_title:
-      map.get('collection_label_title') ?? DEFAULTS.collection_label_title,
+    collection_label_title: map.get('collection_label_title') ?? DEFAULTS.collection_label_title,
     collection_label_family:
       map.get('collection_label_family') == null
         ? DEFAULTS.collection_label_family
@@ -336,6 +340,7 @@ function readAll(): SettingsValues {
     taxonomy_expanded: taxonomyExpanded,
     records_collapsed: parseNumberArray(map.get('records_collapsed')),
     records_swipe_hint_shown: map.get('records_swipe_hint_shown') === 'true',
+    records_layout: map.get('records_layout') === 'card' ? 'card' : DEFAULTS.records_layout,
     font_scale: (map.get('font_scale') as FontScale) ?? DEFAULTS.font_scale,
     map_view: mapView,
     plot_last_tab: plotLastTab,
@@ -396,14 +401,14 @@ const LANGUAGE_KEYS = new Set<Language>([
   'es-419',
 ]);
 function parseLanguage(raw: string | undefined): Language {
-  return raw != null && LANGUAGE_KEYS.has(raw as Language)
-    ? (raw as Language)
-    : DEFAULTS.language;
+  return raw != null && LANGUAGE_KEYS.has(raw as Language) ? (raw as Language) : DEFAULTS.language;
 }
 
 const REGION_KEYS = new Set<RegionCode>(['TW', 'JP']);
 function parseGeoprivacy(raw: string | undefined): Geoprivacy {
-  return (GEOPRIVACY_VALUES as string[]).includes(raw ?? '') ? (raw as Geoprivacy) : DEFAULTS.inat_geoprivacy;
+  return (GEOPRIVACY_VALUES as string[]).includes(raw ?? '')
+    ? (raw as Geoprivacy)
+    : DEFAULTS.inat_geoprivacy;
 }
 
 function parseRegions(raw: string | undefined): RegionCode[] {
@@ -472,8 +477,8 @@ function parseGeoFormats(raw: string | undefined): Array<'geojson' | 'gpx' | 'km
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       const allowed = new Set(['geojson', 'gpx', 'kml']);
-      const filtered = parsed.filter((v): v is 'geojson' | 'gpx' | 'kml' =>
-        typeof v === 'string' && allowed.has(v),
+      const filtered = parsed.filter(
+        (v): v is 'geojson' | 'gpx' | 'kml' => typeof v === 'string' && allowed.has(v),
       );
       if (filtered.length > 0) return filtered;
     }
@@ -516,7 +521,8 @@ function parseAnalysisFormats(raw: string | undefined): AnalysisFormat[] {
     // Empty array is valid: the user can turn every analysis folder off.
     if (Array.isArray(parsed)) {
       return parsed.filter(
-        (v): v is AnalysisFormat => typeof v === 'string' && ANALYSIS_FORMAT_KEYS.has(v as AnalysisFormat),
+        (v): v is AnalysisFormat =>
+          typeof v === 'string' && ANALYSIS_FORMAT_KEYS.has(v as AnalysisFormat),
       );
     }
   } catch {

@@ -216,7 +216,11 @@
     "mergeSamePlotType": "同じ調査法のプロットどうしのみ結合できます",
     "mergeFailed": "結合に失敗しました",
     "merged": "「{{name}}」として結合しました",
-    "open": "開く"
+    "open": "開く",
+    "star": "スターを付ける",
+    "unstar": "スターを外す",
+    "layoutToCard": "カード表示に切り替え",
+    "layoutToList": "リスト表示に切り替え"
   },
   "export": {
     "preparing": "準備中…",

@@ -14,8 +14,13 @@ import {
   View,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import { isoDateTime } from '~/lib/datetime';
 import { SwipeRowActions } from '~/components/SwipeRowActions';
+import {
+  clearRecordDiversityCache,
+  RecordGridCard,
+  RecordListRow,
+  SelectCheckbox,
+} from '~/components/RecordListItem';
 import {
   deleteCollectionTrip,
   deletePlotSurvey,
@@ -23,7 +28,7 @@ import {
   getProject,
   listPlotSpecies,
   listRecordsSummary,
-  listSessionRecords,
+  setRecordStarred,
   mergePlotSurveys,
   mergeSessions,
   takenRecordNames,
@@ -61,131 +66,18 @@ import { pickFavoriteFolder } from '~/lib/pickFavoriteFolder';
 import { useFavorites } from '~/stores/favorites';
 import { estimateBundleSize } from '~/lib/exportSize';
 import { bundleProject } from '~/lib/projectExport';
-import {
-  betaSimilarity,
-  chao2,
-  computeDiversity,
-  type Chao2Result,
-  type DiversityRecord,
-} from '~/lib/diversity';
+import { betaSimilarity, chao2, type Chao2Result, type DiversityRecord } from '~/lib/diversity';
 import { BetaSimilarityBlock, Chao2ResultBlock } from '~/components/CrossPlotChao2Card';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useExportShare } from '~/lib/useExportShare';
 import { useActivePlot } from '~/stores/activePlot';
 import { useActiveSession } from '~/stores/activeSession';
 import { selectionKey, useRecordSelection } from '~/stores/recordSelection';
-import { useSettings } from '~/stores/settings';
+import { useSettings, type RecordsLayout } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 
 type Filter = 'all' | RecordKind;
 type ViewMode = 'flat' | 'byProject';
-
-const formatTime = isoDateTime;
-
-function KindIcon({ kind, active }: { kind: RecordKind; active: boolean }) {
-  const tint = active ? '#10b981' : '#94a3b8';
-  const bg = active ? 'bg-emerald-50 dark:bg-emerald-950/40' : 'bg-gray-100 dark:bg-gray-800';
-  const iconName =
-    kind === 'session' ? 'list' : kind === 'collection' ? 'leaf-outline' : 'grid-outline';
-  return (
-    <View className={`mr-3 h-10 w-10 items-center justify-center rounded-lg ${bg}`}>
-      <Ionicons name={iconName as never} size={20} color={tint} />
-    </View>
-  );
-}
-
-function SelectCheckbox({ checked }: { checked: boolean }) {
-  return (
-    <View
-      className={`mr-3 h-6 w-6 items-center justify-center rounded-full ${checked ? 'bg-blue-500' : 'border-2 border-gray-300 dark:border-gray-600'}`}
-    >
-      {checked ? <Ionicons name="checkmark" size={14} color="white" /> : null}
-    </View>
-  );
-}
-
-function RecordRow({
-  item,
-  showProject,
-  onPress,
-  onLongPress,
-  selectMode,
-  selected,
-}: {
-  item: RecordItem;
-  showProject: boolean;
-  onPress: () => void;
-  onLongPress: () => void;
-  selectMode: boolean;
-  selected: boolean;
-}) {
-  const { t } = useTranslation();
-  const compact = useSettings((s) => s.card_density) === 'compact';
-  const showTimestamp = Boolean(
-    item.kind === 'session' &&
-    item.session &&
-    item.session.name === formatTime(item.session.started_at),
-  );
-  return (
-    <Pressable
-      onPress={onPress}
-      onLongPress={onLongPress}
-      delayLongPress={350}
-      // Compact must be VISIBLY compact — an 8px padding delta alone reads as
-      // "the setting does nothing". Tighter padding + smaller title + no
-      // third line ≈ one-third shorter rows.
-      className={`flex-row items-center border-b border-gray-100 px-4 dark:border-gray-800 ${compact ? 'py-1.5' : 'py-3'} active:bg-gray-50 dark:active:bg-gray-800 ${selected ? 'bg-blue-50 dark:bg-blue-950/40' : 'bg-white dark:bg-gray-900'}`}
-    >
-      {selectMode ? (
-        <SelectCheckbox checked={selected} />
-      ) : (
-        <KindIcon kind={item.kind} active={item.active} />
-      )}
-      <View className="flex-1">
-        <View className="flex-row items-center">
-          <View
-            className={`mr-2 h-2 w-2 rounded-full ${item.active ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-700'}`}
-          />
-          <Text
-            className={`flex-shrink font-medium text-gray-900 dark:text-gray-100 ${compact ? 'text-sm' : 'text-base'}`}
-            numberOfLines={1}
-          >
-            {showTimestamp ? formatTime(item.session!.started_at) : item.title}
-          </Text>
-          {item.active ? (
-            <View className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 dark:bg-emerald-900/60">
-              <Text className="text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-                {item.kind === 'session' ? t('records.recording') : t('records.inProgress')}
-              </Text>
-            </View>
-          ) : null}
-          {item.notReady ? (
-            <View className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 dark:bg-amber-900/60">
-              <Text className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                {t('records.notReady')}
-              </Text>
-            </View>
-          ) : null}
-        </View>
-        <Text
-          className={`text-xs text-gray-500 dark:text-gray-400 ${compact ? '' : 'mt-0.5'}`}
-          numberOfLines={1}
-        >
-          {showProject ? item.subtitlePlain : item.subtitle}
-        </Text>
-        <RowDiversityLine kind={item.kind} id={item.id} />
-        {/* Third line dropped when the title IS the timestamp (auto-named
-            sessions printed the same time twice) and in compact density. */}
-        {item.startedAt > 0 && !showTimestamp && !compact ? (
-          <Text className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
-            {formatTime(item.startedAt)}
-          </Text>
-        ) : null}
-      </View>
-      {selectMode ? null : <Ionicons name="chevron-forward" size={18} color="#9ca3af" />}
-    </Pressable>
-  );
-}
 
 /** Cross-plot Chao2 with the given plots as incidence units — the shared
  *  computation for the header chip and the multi-select sheet. */
@@ -255,61 +147,6 @@ function ProjectChao2Chip({ projectId, plotIds }: { projectId: number; plotIds: 
         {t('plotStats.chipLabel', { pct: `${Math.round(completeness * 100)}%` })}
       </Text>
     </Pressable>
-  );
-}
-
-/** Per-row S/H′/J′ cache; cleared with the chip cache on reload. */
-const rowDivCache = new Map<string, { s: number; h: number | null; j: number | null } | null>();
-
-/** Tiny `S 34 · H′ 2.41` line for plot / session rows. Computed off the
- *  mount frame and cached — same perf contract as the header chip. H′ is
- *  omitted when the records carry no usable abundance. */
-function RowDiversityLine({ kind, id }: { kind: RecordKind; id: number }) {
-  const key = `${kind}-${id}`;
-  const [val, setVal] = useState<
-    { s: number; h: number | null; j: number | null } | null | undefined
-  >(() => rowDivCache.get(key));
-  useEffect(() => {
-    if (rowDivCache.has(key)) {
-      setVal(rowDivCache.get(key));
-      return;
-    }
-    if (kind === 'collection') {
-      rowDivCache.set(key, null);
-      setVal(null);
-      return;
-    }
-    const timer = setTimeout(() => {
-      let v: { s: number; h: number | null; j: number | null } | null = null;
-      try {
-        const rows = kind === 'plot' ? listPlotSpecies(id) : listSessionRecords(id);
-        const d = computeDiversity(
-          rows.map((r) => ({
-            taxon_id: r.taxon_id,
-            used_scientific_name: r.used_scientific_name,
-            organism_quantity: r.organism_quantity,
-            organism_quantity_type: r.organism_quantity_type,
-          })),
-        );
-        if (d.richness > 0) v = { s: d.richness, h: d.shannonH, j: d.pielouJ };
-      } catch {
-        // row stays without the line
-      }
-      rowDivCache.set(key, v);
-      setVal(v);
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [key, kind, id]);
-  if (!val) return null;
-  return (
-    <Text
-      className="mt-0.5 text-[11px] text-emerald-700 dark:text-emerald-400"
-      style={{ fontVariant: ['tabular-nums'] }}
-    >
-      {`S:${val.s}`}
-      {val.h != null ? `, H′:${val.h.toFixed(2)}` : ''}
-      {val.j != null ? `, Pielou J′:${val.j.toFixed(2)}` : ''}
-    </Text>
   );
 }
 
@@ -400,16 +237,54 @@ function ProjectHeader({
 
 type FlatRow =
   | { kind: 'header'; group: ProjectGroup; key: string }
-  | { kind: 'row'; item: RecordItem; key: string };
+  | { kind: 'row'; item: RecordItem; key: string }
+  /** One grid line of up to `CARD_COLUMNS` records. */
+  | { kind: 'cards'; items: RecordItem[]; key: string };
 
-function buildFlatRows(groups: ProjectGroup[], collapsedIds: Set<number>): FlatRow[] {
+/** Fixed rather than derived from the window width: at phone widths a third
+ *  column leaves nothing for a Chinese record name, and the records tab has no
+ *  landscape layout of its own. */
+const CARD_COLUMNS = 2;
+
+/**
+ * Records → FlatList rows, in the chosen layout.
+ *
+ * The card grid is built by chunking into `cards` rows rather than by putting
+ * `numColumns` on the FlatList: the byProject view interleaves full-width
+ * `ProjectHeader`s with records in the SAME list, and `numColumns` would tile
+ * those headers into the grid alongside the cards. Chunking keeps one column
+ * of list rows, so both views and both layouts share one FlatList.
+ */
+function toItemRows(items: RecordItem[], layout: RecordsLayout): FlatRow[] {
+  if (layout === 'list') {
+    return items.map((item) => ({
+      kind: 'row' as const,
+      item,
+      key: `${item.kind}-${item.id}`,
+    }));
+  }
+  const rows: FlatRow[] = [];
+  for (let i = 0; i < items.length; i += CARD_COLUMNS) {
+    const chunk = items.slice(i, i + CARD_COLUMNS);
+    rows.push({
+      kind: 'cards',
+      items: chunk,
+      key: `c-${chunk.map((x) => `${x.kind}-${x.id}`).join('+')}`,
+    });
+  }
+  return rows;
+}
+
+function buildFlatRows(
+  groups: ProjectGroup[],
+  collapsedIds: Set<number>,
+  layout: RecordsLayout,
+): FlatRow[] {
   const rows: FlatRow[] = [];
   for (const g of groups) {
     rows.push({ kind: 'header', group: g, key: `h-${g.projectId}` });
     if (collapsedIds.has(g.projectId)) continue;
-    for (const item of g.items) {
-      rows.push({ kind: 'row', item, key: `${item.kind}-${item.id}` });
-    }
+    rows.push(...toItemRows(g.items, layout));
   }
   return rows;
 }
@@ -480,12 +355,13 @@ export default function RecordsListScreen() {
   const includeReport = useSettings((s) => s.export_include_report);
   const reportFormat = useSettings((s) => s.export_report_format);
   const swipeHintShown = useSettings((s) => s.records_swipe_hint_shown);
+  const layout = useSettings((s) => s.records_layout);
   const settingsLoaded = useSettings((s) => s.loaded);
   const [refreshing, setRefreshing] = useState(false);
 
   const reload = useCallback(() => {
     chao2ChipCache.clear();
-    rowDivCache.clear();
+    clearRecordDiversityCache();
     // One table walk: counts (always over ALL records so the chips stay in
     // sync after any delete / create), the filtered list and the grouping all
     // come from listRecordsSummary — this used to be three identical walks.
@@ -806,14 +682,35 @@ export default function RecordsListScreen() {
     const idx = await showActionSheet({
       title: t('records.selectedCount', { count: selectedItems.length }),
       cancelLabel: t('common.cancel'),
-      options: [{ label: t('records.moveToProject') }, { label: t('records.merge') }],
+      options: [
+        { label: t('plotStats.crossTitle') },
+        { label: t('records.moveToProject') },
+        { label: t('records.merge') },
+      ],
     });
     if (idx < 0) return;
+    // 統計 is listed even when it cannot run, and says why.
+    //
+    // It used to be a bar icon that simply went grey below two selected plots,
+    // which reads as "broken" rather than "not applicable" — cross-plot Chao2
+    // needs ≥2 PLOTS as sampling units, so a selection of 名錄 can never
+    // produce one. Telling the user beats hiding the option.
+    if (idx === 0 && selectedPlotIds.length < 2) {
+      toast(t('plotStats.crossNeedTwo'));
+      return;
+    }
     // Presenting our own Modal in the same tick the system sheet is dismissing
     // is the documented iOS no-op; let the dismissal land first.
     await new Promise((r) => setTimeout(r, 250));
-    if (idx === 0) setAssigningProject(true);
-    else if (idx === 1) handleMergeSelection();
+    if (idx === 0) {
+      setChao2Sheet(
+        selectedPlotIds.map((id) => ({
+          id,
+          title: items.find((it) => it.kind === 'plot' && it.id === id)?.title ?? String(id),
+        })),
+      );
+    } else if (idx === 1) setAssigningProject(true);
+    else if (idx === 2) handleMergeSelection();
   };
 
   const handleMergeConfirm = (opts: MergeRecordOptions) => {
@@ -888,7 +785,17 @@ export default function RecordsListScreen() {
     );
   };
 
-  const flatRowsForGrouped = viewMode === 'byProject' ? buildFlatRows(groups, collapsedIds) : [];
+  /** Changes whenever the selection does, so the memoised `listRows` still
+   *  lets FlatList know its cells need redrawing. */
+  const selectionEpoch = `${selectMode}:${selected.size}:${[...selected].join(',')}`;
+
+  const listRows = useMemo(
+    () =>
+      viewMode === 'byProject'
+        ? buildFlatRows(groups, collapsedIds, layout)
+        : toItemRows(items, layout),
+    [viewMode, groups, collapsedIds, layout, items],
+  );
   const isEmpty = viewMode === 'flat' ? items.length === 0 : groups.length === 0;
 
   // C7: pull-to-refresh. reload() is synchronous (op-sqlite executeSync), so
@@ -952,15 +859,12 @@ export default function RecordsListScreen() {
   // C4: one-shot swipe-actions teaser on the first visible record row. The
   // flag flips AFTER the animation window so the prop doesn't change (and
   // cancel the timers) mid-teaser.
-  const firstRecordKey =
-    viewMode === 'flat'
-      ? items.length > 0
-        ? selectionKey(items[0].kind, items[0].id)
-        : null
-      : (() => {
-          const row = flatRowsForGrouped.find((r) => r.kind === 'row');
-          return row && row.kind === 'row' ? selectionKey(row.item.kind, row.item.id) : null;
-        })();
+  // Card layout produces no 'row' entries at all, so the teaser sits out —
+  // which is right: there is nothing to swipe on a card.
+  const firstRecordKey = (() => {
+    const row = listRows.find((r) => r.kind === 'row');
+    return row && row.kind === 'row' ? selectionKey(row.item.kind, row.item.id) : null;
+  })();
   const teaserKey = settingsLoaded && !swipeHintShown && !selectMode ? firstRecordKey : null;
   useEffect(() => {
     if (teaserKey == null) return;
@@ -968,48 +872,80 @@ export default function RecordsListScreen() {
     return () => clearTimeout(done);
   }, [teaserKey, setSetting]);
 
+  const handleToggleStar = (item: RecordItem) => {
+    setRecordStarred(item.kind, item.id, !item.starred);
+    // Starring re-sorts the list, so a plain reload is the whole update.
+    reload();
+  };
+
+  /** A record as a card, for the 2-up grid. No swipe actions: a half-width
+   *  cell has nowhere to reveal them, and long-press → multi-select still
+   *  reaches 匯出 / 刪除 / 合併. */
+  const renderCard = (item: RecordItem, showProject: boolean) => {
+    const key = selectionKey(item.kind, item.id);
+    return (
+      <RecordGridCard
+        key={key}
+        item={item}
+        showProject={showProject}
+        onPress={() => handleRowTap(item)}
+        onLongPress={() => handleRowLongPress(item)}
+        selectMode={selectMode}
+        selected={selected.has(key)}
+        onToggleStar={() => handleToggleStar(item)}
+      />
+    );
+  };
+
   const renderRow = (item: RecordItem, showProject: boolean) => {
     const key = selectionKey(item.kind, item.id);
     return (
-      <SwipeRowActions
-        disabled={selectMode}
-        teaser={key === teaserKey}
-        actions={[
-          {
-            label: t('records.duplicate'),
-            icon: 'copy-outline',
-            color: 'emerald',
-            onPress: () => handleDuplicate(item),
-          },
-          {
-            label: t('common.export'),
-            icon: 'share-outline',
-            color: 'blue',
-            onPress: () => handleExportOne(item),
-          },
-          {
-            label: t('records.uploadInat'),
-            icon: 'cloud-upload-outline',
-            color: 'inat',
-            onPress: () => router.push(`/inat-upload?kind=${item.kind}&id=${item.id}` as Href),
-          },
-          {
-            label: t('common.delete'),
-            icon: 'trash',
-            color: 'red',
-            onPress: () => handleDelete(item),
-          },
-        ]}
-      >
-        <RecordRow
-          item={item}
-          showProject={showProject}
-          onPress={() => handleRowTap(item)}
-          onLongPress={() => handleRowLongPress(item)}
-          selectMode={selectMode}
-          selected={selected.has(key)}
-        />
-      </SwipeRowActions>
+      // The rounded, inset frame lives OUTSIDE SwipeRowActions and clips it:
+      // the revealed 刪除 panel is a square-cornered full-height strip, so
+      // without this it would poke out past the card's corners and run to the
+      // screen edge.
+      <View className="mx-3 mb-2 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700">
+        <SwipeRowActions
+          disabled={selectMode}
+          teaser={key === teaserKey}
+          actions={[
+            {
+              label: t('records.duplicate'),
+              icon: 'copy-outline',
+              color: 'emerald',
+              onPress: () => handleDuplicate(item),
+            },
+            {
+              label: t('common.export'),
+              icon: 'share-outline',
+              color: 'export',
+              onPress: () => handleExportOne(item),
+            },
+            {
+              label: t('records.uploadInat'),
+              icon: 'cloud-upload-outline',
+              color: 'inat',
+              onPress: () => router.push(`/inat-upload?kind=${item.kind}&id=${item.id}` as Href),
+            },
+            {
+              label: t('common.delete'),
+              icon: 'trash',
+              color: 'red',
+              onPress: () => handleDelete(item),
+            },
+          ]}
+        >
+          <RecordListRow
+            item={item}
+            showProject={showProject}
+            onPress={() => handleRowTap(item)}
+            onLongPress={() => handleRowLongPress(item)}
+            selectMode={selectMode}
+            selected={selected.has(key)}
+            onToggleStar={() => handleToggleStar(item)}
+          />
+        </SwipeRowActions>
+      </View>
     );
   };
 
@@ -1029,27 +965,6 @@ export default function RecordsListScreen() {
             </Text>
             <View className="flex-row items-center gap-4">
               <Pressable
-                onPress={() =>
-                  setChao2Sheet(
-                    selectedPlotIds.map((id) => ({
-                      id,
-                      title:
-                        items.find((it) => it.kind === 'plot' && it.id === id)?.title ?? String(id),
-                    })),
-                  )
-                }
-                disabled={selectedPlotIds.length < 2}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('plotStats.crossTitle')}
-              >
-                <Ionicons
-                  name="analytics-outline"
-                  size={20}
-                  color={selectedPlotIds.length < 2 ? '#9ca3af' : '#0284c7'}
-                />
-              </Pressable>
-              <Pressable
                 onPress={handleSaveSelectionToFavorites}
                 disabled={selected.size === 0}
                 hitSlop={8}
@@ -1066,16 +981,20 @@ export default function RecordsListScreen() {
                 onPress={handleExportSelection}
                 disabled={selected.size === 0 || exportBusy}
                 hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.export')}
               >
-                <Text
-                  className={`text-base font-medium ${selected.size === 0 || exportBusy ? 'text-gray-400 dark:text-gray-600' : 'text-blue-600 dark:text-blue-400'}`}
-                >
-                  {t('common.export')}
-                </Text>
+                {/* Same teal as the swipe-reveal 匯出, so the two read as one
+                    action rather than two features that happen to share a name. */}
+                <Ionicons
+                  name="share-outline"
+                  size={20}
+                  color={selected.size === 0 || exportBusy ? '#9ca3af' : '#00A2A5'}
+                />
               </Pressable>
-              {/* 專案 / 合併 live behind an overflow rather than as two more
-                icons: the bar already carries four controls and 已選 N, which
-                on a narrow phone leaves nothing to truncate. */}
+              {/* 統計 / 專案 / 合併 live behind the overflow: the bar keeps only
+                  the two actions that apply to ANY selection, so it no longer
+                  carries a control that is grey most of the time. */}
               <Pressable
                 onPress={handleSelectionMore}
                 disabled={selected.size === 0}
@@ -1123,6 +1042,15 @@ export default function RecordsListScreen() {
                 icon={viewMode === 'byProject' ? 'folder-outline' : 'time-outline'}
                 a11yLabel={`${t('records.viewTitle')}: ${viewLabel[viewMode]}`}
                 onPress={pickView}
+              />
+              {/* A straight toggle, not a DropdownChip: with two states the
+                  sheet would be one more tap to say what the icon already
+                  says. The icon shows the CURRENT layout; the a11y label says
+                  what tapping does. */}
+              <ToggleChip
+                icon={layout === 'card' ? 'grid-outline' : 'list-outline'}
+                a11yLabel={t(layout === 'card' ? 'records.layoutToList' : 'records.layoutToCard')}
+                onPress={() => setSetting('records_layout', layout === 'card' ? 'list' : 'card')}
               />
             </ScrollView>
             <View className="flex-row items-center gap-2">
@@ -1172,19 +1100,21 @@ export default function RecordsListScreen() {
             <Text className="ml-1 text-sm font-medium text-white">{t('records.emptyCreate')}</Text>
           </Pressable>
         </View>
-      ) : viewMode === 'flat' ? (
-        <FlatList
-          data={items}
-          keyExtractor={(x) => `${x.kind}-${x.id}`}
-          renderItem={({ item }) => renderRow(item, false)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        />
       ) : (
         <FlatList
-          data={flatRowsForGrouped}
+          data={listRows}
           keyExtractor={(row) => row.key}
+          // `renderItem` closes over selectMode / selected, which are NOT in
+          // `data`. Before `listRows` was memoised the array was rebuilt every
+          // render and that churn happened to force cells to update; now that
+          // it is stable, RN's documented requirement applies (FlatList.js:296
+          // — "pass a prop that is not === after updates, otherwise your UI
+          // may not update on changes").
+          extraData={selectionEpoch}
+          contentContainerClassName="pt-2 pb-4"
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           renderItem={({ item: row }) => {
+            const showProject = viewMode === 'byProject';
             if (row.kind === 'header')
               return (
                 <ProjectHeader
@@ -1200,7 +1130,16 @@ export default function RecordsListScreen() {
                   onToggleSelect={() => handleToggleSelectGroup(row.group)}
                 />
               );
-            return renderRow(row.item, true);
+            if (row.kind === 'cards')
+              return (
+                <View className="mx-3 mb-2 flex-row gap-2">
+                  {row.items.map((it) => renderCard(it, showProject))}
+                  {/* Keeps a lone last card at one column's width instead of
+                      letting flex stretch it across the row. */}
+                  {row.items.length < CARD_COLUMNS ? <View className="flex-1" /> : null}
+                </View>
+              );
+            return renderRow(row.item, showProject);
           }}
         />
       )}
@@ -1282,6 +1221,30 @@ export default function RecordsListScreen() {
  * lives in `a11yLabel` for screen readers and is spelled out in the sheet the
  * chevron promises.
  */
+/** Same pill as `DropdownChip` without the disclosure caret — for a control
+ *  that flips on tap instead of opening a sheet. */
+function ToggleChip({
+  icon,
+  a11yLabel,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  a11yLabel: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      className="flex-row items-center rounded-full border border-gray-300 bg-white px-2.5 py-1.5 active:opacity-70 dark:border-gray-600 dark:bg-gray-900"
+    >
+      <Ionicons name={icon} size={16} color="#4b5563" />
+    </Pressable>
+  );
+}
+
 function DropdownChip({
   icon,
   a11yLabel,

@@ -216,7 +216,11 @@
     "mergeSamePlotType": "只能合併同一種調查法的樣區",
     "mergeFailed": "合併失敗",
     "merged": "已合併為「{{name}}」",
-    "open": "開啟"
+    "open": "開啟",
+    "star": "加星號",
+    "unstar": "取消星號",
+    "layoutToCard": "改用卡片檢視",
+    "layoutToList": "改用列表檢視"
   },
   "export": {
     "preparing": "準備中…",

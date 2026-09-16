@@ -25,7 +25,7 @@ const GOOGLE_MAPS_ANDROID_API_KEY = process.env.GOOGLE_MAPS_ANDROID_API_KEY;
 const config: ExpoConfig = {
   name: 'Mitalivana',
   slug: 'checklister-mobile',
-  version: '0.4.1',
+  version: '0.5.0',
   orientation: 'portrait',
   icon: './assets/images/icon.png',
   scheme: 'checklister',

@@ -117,6 +117,9 @@ export type PlotSurvey = {
   layer_count: number;
   /** JSON array of env photo URIs ({uri, sequence?, caption?}). */
   env_photos_json: string | null;
+  /** 加星號（v34）：0 / 1. Sorts the record above its peers in the list.
+   *  Device-local organisation, deliberately not exported. */
+  starred: number;
   // Legacy per-layer columns (v5 schema). Kept in DB for rollback safety until
   // v13; new code reads/writes via `plot_survey_layers` instead. Keep the
   // fields here so type-checking against legacy callsites still works during

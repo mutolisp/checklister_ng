@@ -240,7 +240,11 @@
     "mergeSamePlotType": "Nur Flächen mit derselben Aufnahmemethode lassen sich zusammenführen",
     "mergeFailed": "Zusammenführen fehlgeschlagen",
     "merged": "Zusammengeführt zu „{{name}}“",
-    "open": "Öffnen"
+    "open": "Öffnen",
+    "star": "Markieren",
+    "unstar": "Markierung entfernen",
+    "layoutToCard": "Zur Kartenansicht wechseln",
+    "layoutToList": "Zur Listenansicht wechseln"
   },
   "export": {
     "preparing": "Wird vorbereitet…",

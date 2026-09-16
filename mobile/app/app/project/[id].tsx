@@ -8,18 +8,24 @@ import { CrossPlotChao2Card } from '~/components/CrossPlotChao2Card';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   getProject,
   listRecords,
   listSitesByProject,
+  setRecordStarred,
   updateProject,
   type Project,
   type ProjectInput,
   type RecordItem,
-  type RecordKind,
 } from '~/db';
+import {
+  clearRecordDiversityCache,
+  RecordGridCard,
+  RecordListRow,
+} from '~/components/RecordListItem';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { ExportProgressOverlay } from '~/components/ExportProgressOverlay';
 import { ProjectEditModal } from '~/components/ProjectEditModal';
 import { ProjectExportSheet } from '~/components/ProjectExportSheet';
@@ -27,12 +33,7 @@ import { estimateBundleSize } from '~/lib/exportSize';
 import { bundleProject } from '~/lib/projectExport';
 import { useExportShare } from '~/lib/useExportShare';
 import { BackHeaderLeft } from '~/lib/goBack';
-import { isoDateTime } from '~/lib/datetime';
 import { useSettings } from '~/stores/settings';
-
-function kindIcon(kind: RecordKind): string {
-  return kind === 'session' ? 'list' : kind === 'collection' ? 'leaf-outline' : 'grid-outline';
-}
 
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -57,13 +58,35 @@ export default function ProjectDetailScreen() {
   const matrixByLayer = useSettings((s) => s.export_matrix_by_layer);
   const includeReport = useSettings((s) => s.export_include_report);
   const reportFormat = useSettings((s) => s.export_report_format);
+  const layout = useSettings((s) => s.records_layout);
+  const setSetting = useSettings((s) => s.set);
 
   const reload = useCallback(() => {
+    clearRecordDiversityCache();
     setProject(getProject(projectId));
     setRecords(listRecords('all').filter((r) => r.projectId === projectId));
     setSiteCount(listSitesByProject(projectId).length);
   }, [projectId]);
   useFocusEffect(useCallback(() => reload(), [reload]));
+
+  const handleToggleStar = (item: RecordItem) => {
+    setRecordStarred(item.kind, item.id, !item.starred);
+    reload();
+  };
+
+  /** Records → list rows, chunked into pairs in card layout. Same shape as the
+   *  records tab (`app/(tabs)/index.tsx`), minus the project group headers —
+   *  everything here is already one project. */
+  const rows = useMemo(() => {
+    if (layout === 'list')
+      return records.map((item) => ({ key: `${item.kind}-${item.id}`, items: [item] }));
+    const out: { key: string; items: RecordItem[] }[] = [];
+    for (let i = 0; i < records.length; i += 2) {
+      const chunk = records.slice(i, i + 2);
+      out.push({ key: `c-${chunk.map((x) => `${x.kind}-${x.id}`).join('+')}`, items: chunk });
+    }
+    return out;
+  }, [records, layout]);
 
   const counts = useMemo(() => {
     const c = { session: 0, plot: 0, collection: 0 };
@@ -128,52 +151,48 @@ export default function ProjectDetailScreen() {
           title: project.name,
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <View className="flex-row items-center gap-1">
-              <Pressable
+            <View className="flex-row items-center gap-2">
+              <HeaderIconButton
+                icon={layout === 'card' ? 'grid-outline' : 'list-outline'}
+                onPress={() => setSetting('records_layout', layout === 'card' ? 'list' : 'card')}
+                label={t(layout === 'card' ? 'records.layoutToList' : 'records.layoutToCard')}
+              />
+              <HeaderIconButton
+                icon="document-text-outline"
                 onPress={() => router.push(`/report/project/${projectId}` as Href)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('report.navTitle')}
-                className="h-9 w-9 items-center justify-center active:opacity-60"
-              >
-                <Ionicons name="document-text-outline" size={22} color="#2563eb" />
-              </Pressable>
+                label={t('report.navTitle')}
+              />
               {projectId !== 0 ? (
-                <Pressable
+                <HeaderIconButton
+                  icon="pencil"
                   onPress={() => setEditing(true)}
-                  hitSlop={8}
                   disabled={busy}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('common.edit')}
-                  className="h-9 w-9 items-center justify-center active:opacity-60"
-                >
-                  <Ionicons name="pencil" size={22} color="#2563eb" />
-                </Pressable>
+                  label={t('common.edit')}
+                />
               ) : null}
-              <Pressable
+              <HeaderIconButton
+                icon="share-outline"
                 onPress={() => setSheetOpen(true)}
-                hitSlop={8}
                 disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={t('common.export')}
-                className="h-9 w-9 items-center justify-center active:opacity-60"
-              >
-                <Ionicons name="share-outline" size={22} color={busy ? '#9ca3af' : '#2563eb'} />
-              </Pressable>
+                label={t('common.export')}
+              />
             </View>
           ),
         }}
       />
 
       <FlatList
-        data={records}
-        keyExtractor={(r) => `${r.kind}-${r.id}`}
+        data={rows}
+        keyExtractor={(r) => r.key}
+        contentContainerClassName="pb-4"
         ListHeaderComponent={
           <View>
             {project.abstract || project.location_description || project.notes ? (
-              <View className="border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3">
+              <View className="border-b border-gray-100 bg-white px-4 py-3 dark:border-gray-800 dark:bg-gray-900">
                 {project.abstract ? (
-                  <Text className="text-sm text-gray-700 dark:text-gray-300">{project.abstract}</Text>
+                  <Text className="text-sm text-gray-700 dark:text-gray-300">
+                    {project.abstract}
+                  </Text>
                 ) : null}
                 {project.location_description ? (
                   <View className="mt-1 flex-row items-center">
@@ -184,12 +203,16 @@ export default function ProjectDetailScreen() {
                   </View>
                 ) : null}
                 {project.notes ? (
-                  <Text className="mt-1 text-xs text-gray-400 dark:text-gray-500">{project.notes}</Text>
+                  <Text className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                    {project.notes}
+                  </Text>
                 ) : null}
               </View>
             ) : null}
             <CrossPlotChao2Card
-              plots={records.filter((r) => r.kind === 'plot').map((r) => ({ id: r.id, title: r.title }))}
+              plots={records
+                .filter((r) => r.kind === 'plot')
+                .map((r) => ({ id: r.id, title: r.title }))}
             />
             <View className="px-4 py-2">
               <Text className="text-xs text-gray-500 dark:text-gray-400">
@@ -206,29 +229,38 @@ export default function ProjectDetailScreen() {
         ListEmptyComponent={
           <View className="items-center px-4 py-16">
             <Ionicons name="folder-open-outline" size={40} color="#9ca3af" />
-            <Text className="mt-3 text-sm text-gray-500 dark:text-gray-400">{t('projectDetail.empty')}</Text>
+            <Text className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+              {t('projectDetail.empty')}
+            </Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() => handleOpen(item)}
-            className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
-          >
-            <Ionicons name={kindIcon(item.kind) as never} size={18} color="#6b7280" style={{ marginRight: 10 }} />
-            <View className="flex-1">
-              <Text className="text-base text-gray-900 dark:text-gray-100" numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
-                {isoDateTime(item.startedAt)} · {item.subtitle}
-              </Text>
+        renderItem={({ item: row }) =>
+          layout === 'card' ? (
+            <View className="mx-3 mb-2 flex-row gap-2">
+              {row.items.map((it) => (
+                <RecordGridCard
+                  key={`${it.kind}-${it.id}`}
+                  item={it}
+                  // The screen IS one project, so the card footer shows the
+                  // record's own summary instead of repeating the name.
+                  showProject
+                  onPress={() => handleOpen(it)}
+                  onToggleStar={() => handleToggleStar(it)}
+                />
+              ))}
+              {row.items.length < 2 ? <View className="flex-1" /> : null}
             </View>
-            {item.active ? (
-              <View className="ml-2 h-2 w-2 rounded-full bg-emerald-500" />
-            ) : null}
-            <Ionicons name="chevron-forward" size={16} color="#d1d5db" />
-          </Pressable>
-        )}
+          ) : (
+            <View className="mx-3 mb-2 overflow-hidden rounded-2xl border border-gray-200 dark:border-gray-700">
+              <RecordListRow
+                item={row.items[0]}
+                showProject
+                onPress={() => handleOpen(row.items[0])}
+                onToggleStar={() => handleToggleStar(row.items[0])}
+              />
+            </View>
+          )
+        }
       />
 
       <ProjectEditModal

@@ -11,6 +11,7 @@ import { SettingsPage } from '~/components/settings/SettingsPage';
 import { promptText } from '~/components/TextPromptModal';
 import { SwipeRow } from '~/components/SwipeRow';
 import { useSurveyors } from '~/stores/surveyors';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import type { Surveyor } from '~/db';
 
 export default function SurveyorsScreen() {
@@ -49,7 +50,7 @@ export default function SurveyorsScreen() {
     <ScaleDecorator>
       <SwipeRow onDelete={() => remove(item.id)} label={t('common.delete')}>
         <View
-          className={`flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 ${isActive ? 'opacity-90' : ''}`}
+          className={`flex-row items-center border-b border-gray-100 bg-white px-4 dark:border-gray-800 dark:bg-gray-900 ${isActive ? 'opacity-90' : ''}`}
         >
           <Pressable
             onPress={() => toggleDefault(item.id, !item.is_default)}
@@ -69,7 +70,9 @@ export default function SurveyorsScreen() {
             <Text className="text-base text-gray-900 dark:text-gray-100">{item.name}</Text>
           </Pressable>
           {item.is_default ? (
-            <Text className="mr-3 text-xs font-medium text-amber-700 dark:text-amber-300">{t('surveyors.default')}</Text>
+            <Text className="mr-3 text-xs font-medium text-amber-700 dark:text-amber-300">
+              {t('surveyors.default')}
+            </Text>
           ) : null}
           {/* Drag handle — long-press to pick up and reorder. */}
           <Pressable onLongPress={drag} delayLongPress={120} hitSlop={10} className="py-3 pl-1">
@@ -84,15 +87,11 @@ export default function SurveyorsScreen() {
     <SettingsPage
       title={t('nav.surveyors')}
       headerRight={() => (
-        <Pressable onPress={handleAdd} hitSlop={8}>
-          <Ionicons name="add" size={26} color="#2563eb" />
-        </Pressable>
+        <HeaderIconButton icon="add" onPress={handleAdd} label={t('surveyors.create')} />
       )}
     >
-      <View className="border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 px-4 py-2">
-        <Text className="text-xs text-gray-500 dark:text-gray-400">
-          {t('surveyors.hint')}
-        </Text>
+      <View className="border-b border-gray-100 bg-gray-50 px-4 py-2 dark:border-gray-800 dark:bg-gray-950">
+        <Text className="text-xs text-gray-500 dark:text-gray-400">{t('surveyors.hint')}</Text>
       </View>
       <DraggableFlatList
         data={items}

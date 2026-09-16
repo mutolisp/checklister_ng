@@ -8,29 +8,27 @@ import { isoDateTime } from '~/lib/datetime';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import { showActionSheet } from '~/components/ActionSheet';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  deleteSite,
-  geometryBounds,
-  listSites,
-  parseGeometry,
-  type SiteWithProject,
-} from '~/db';
-import {
-  sitesToGeoJSON,
-  sitesToGPX,
-  sitesToKML,
-  sitesToWKT,
-} from '~/lib/geoExporters';
+import { deleteSite, geometryBounds, listSites, parseGeometry, type SiteWithProject } from '~/db';
+import { sitesToGeoJSON, sitesToGPX, sitesToKML, sitesToWKT } from '~/lib/geoExporters';
 import { useSettings } from '~/stores/settings';
 import { useToast } from '~/stores/toast';
 import { SwipeRow } from '~/components/SwipeRow';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { BackHeaderLeft } from '~/lib/goBack';
 
 type ExportFormat = 'geojson' | 'kml' | 'gpx' | 'wkt';
 
-const EXPORT_LABELS: Record<ExportFormat, { label: string; ext: string; mime: string; uti: string }> = {
+const EXPORT_LABELS: Record<
+  ExportFormat,
+  { label: string; ext: string; mime: string; uti: string }
+> = {
   geojson: { label: 'GeoJSON', ext: 'geojson', mime: 'application/geo+json', uti: 'public.json' },
-  kml: { label: 'KML', ext: 'kml', mime: 'application/vnd.google-earth.kml+xml', uti: 'com.google.earth.kml' },
+  kml: {
+    label: 'KML',
+    ext: 'kml',
+    mime: 'application/vnd.google-earth.kml+xml',
+    uti: 'com.google.earth.kml',
+  },
   gpx: { label: 'GPX', ext: 'gpx', mime: 'application/gpx+xml', uti: 'public.xml' },
   wkt: { label: 'WKT', ext: 'wkt', mime: 'text/plain', uti: 'public.plain-text' },
 };
@@ -153,9 +151,11 @@ export default function SitesScreen() {
           headerLeft: BackHeaderLeft,
           headerRight: () =>
             sites.length > 0 ? (
-              <Pressable onPress={() => askExportFormat(sites, 'sites')} hitSlop={8}>
-                <Ionicons name="share-outline" size={22} color="#2563eb" />
-              </Pressable>
+              <HeaderIconButton
+                icon="share-outline"
+                onPress={() => askExportFormat(sites, 'sites')}
+                label={t('common.export')}
+              />
             ) : null,
         }}
       />
@@ -163,7 +163,9 @@ export default function SitesScreen() {
       {sites.length === 0 ? (
         <View className="flex-1 items-center justify-center px-6">
           <Ionicons name="map-outline" size={64} color="#9ca3af" />
-          <Text className="mt-4 text-lg font-medium text-gray-700 dark:text-gray-300">{t('sites.empty')}</Text>
+          <Text className="mt-4 text-lg font-medium text-gray-700 dark:text-gray-300">
+            {t('sites.empty')}
+          </Text>
           <Text className="mt-2 text-center text-sm text-gray-500 dark:text-gray-400">
             {t('sites.emptyHint')}
           </Text>
@@ -180,7 +182,7 @@ export default function SitesScreen() {
           keyExtractor={([projectName]) => projectName}
           renderItem={({ item: [projectName, list] }) => (
             <View>
-              <View className="flex-row items-center justify-between bg-gray-100 dark:bg-gray-800 px-4 py-2">
+              <View className="flex-row items-center justify-between bg-gray-100 px-4 py-2 dark:bg-gray-800">
                 <Text className="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-400">
                   {projectName} · {t('sites.projectStats', { count: list.length })}
                 </Text>
@@ -192,7 +194,7 @@ export default function SitesScreen() {
                 <SwipeRow key={s.id} onDelete={() => handleDelete(s)}>
                   <Pressable
                     onPress={() => handleJumpTo(s)}
-                    className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+                    className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
                   >
                     <Ionicons
                       name={TYPE_ICON[s.geometry_type] ?? 'pin-outline'}
@@ -201,12 +203,20 @@ export default function SitesScreen() {
                       style={{ marginRight: 12 }}
                     />
                     <View className="flex-1">
-                      <Text className="text-base font-medium text-gray-900 dark:text-gray-100">{s.name}</Text>
+                      <Text className="text-base font-medium text-gray-900 dark:text-gray-100">
+                        {s.name}
+                      </Text>
                       <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                        {TYPE_LABEL[s.geometry_type] ? t(TYPE_LABEL[s.geometry_type]) : s.geometry_type} · {formatTime(s.updated_at)}
+                        {TYPE_LABEL[s.geometry_type]
+                          ? t(TYPE_LABEL[s.geometry_type])
+                          : s.geometry_type}{' '}
+                        · {formatTime(s.updated_at)}
                       </Text>
                       {s.notes ? (
-                        <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
+                        <Text
+                          className="mt-0.5 text-xs text-gray-500 dark:text-gray-400"
+                          numberOfLines={1}
+                        >
                           {s.notes}
                         </Text>
                       ) : null}

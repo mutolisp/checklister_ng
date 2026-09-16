@@ -205,7 +205,9 @@ export default function FavoritesScreen() {
     const keys: SortKey[] = ['added', 'cname', 'name', 'family'];
     const idx = await showActionSheet({
       title: t('favorites.sortTitle'),
-      options: keys.map((k) => ({ label: k === sortKey ? `✓ ${t(SORT_LABEL[k])}` : t(SORT_LABEL[k]) })),
+      options: keys.map((k) => ({
+        label: k === sortKey ? `✓ ${t(SORT_LABEL[k])}` : t(SORT_LABEL[k]),
+      })),
     });
     if (idx >= 0 && idx < keys.length) setSortKey(keys[idx]);
   };
@@ -215,7 +217,6 @@ export default function FavoritesScreen() {
     if (r) setSelected(r);
     else toast(t('favorites.notInDb'));
   };
-
 
   // ── 匯入 ────────────────────────────────────────────────────────────
   /** 從既有的名錄／樣區／標本把物種複製進目前目錄（可多選）。 */
@@ -255,10 +256,7 @@ export default function FavoritesScreen() {
   const handleImportMenu = async () => {
     const idx = await showActionSheet({
       title: t('favorites.import'),
-      options: [
-        { label: t('favorites.importPaste') },
-        { label: t('favorites.importFromRecord') },
-      ],
+      options: [{ label: t('favorites.importPaste') }, { label: t('favorites.importFromRecord') }],
     });
     if (idx === 0) setBatchOpen(true);
     else if (idx === 1) handleImportFromRecord();
@@ -374,7 +372,9 @@ export default function FavoritesScreen() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(file.uri, {
           mimeType: docx ? DOCX_MIME : 'text/csv',
-          UTI: docx ? 'org.openxmlformats.wordprocessingml.document' : 'public.comma-separated-values-text',
+          UTI: docx
+            ? 'org.openxmlformats.wordprocessingml.document'
+            : 'public.comma-separated-values-text',
           dialogTitle: filename,
         });
       } else {
@@ -498,7 +498,7 @@ export default function FavoritesScreen() {
     return (
       <SafeAreaView edges={['bottom']} className="flex-1 bg-gray-50 dark:bg-gray-950">
         <Stack.Screen options={{ title: t('nav.favorites') }} />
-        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
+        <View className="flex-row items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-900">
           <Text className="text-sm text-gray-500 dark:text-gray-400">
             {folderSelectMode
               ? t('favorites.selectedFolders', { count: pickedFolders.size })
@@ -556,7 +556,7 @@ export default function FavoritesScreen() {
               ) : null}
               <Pressable
                 onPress={handleNewFolder}
-                className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-900/40 px-3 py-1.5 active:opacity-70"
+                className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:opacity-70 dark:bg-blue-900/40"
               >
                 <Ionicons name="add" size={16} color="#2563eb" />
                 <Text className="ml-1 text-xs font-medium text-blue-600 dark:text-blue-400">
@@ -586,7 +586,7 @@ export default function FavoritesScreen() {
                 {
                   label: t('common.export'),
                   icon: 'share-outline',
-                  color: 'blue',
+                  color: 'export',
                   onPress: () => handleExportFolder(f),
                 },
                 ...(f.id === DEFAULT_FOLDER_ID
@@ -601,54 +601,56 @@ export default function FavoritesScreen() {
                     ]),
               ]}
             >
-            <Pressable
-              onPress={() => {
-                if (folderSelectMode) {
-                  if (f.id !== DEFAULT_FOLDER_ID) togglePickFolder(f.id);
-                  return;
-                }
-                setFolderId(f.id);
-                setFilter('');
-                setSelectMode(false);
-                setPicked(new Set());
-              }}
-              onLongPress={() => (folderSelectMode ? undefined : handleFolderLongPress(f))}
-              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
-            >
-              {folderSelectMode ? (
-                <Ionicons
-                  name={pickedFolders.has(f.id) ? 'checkbox' : 'square-outline'}
-                  size={20}
-                  color={
-                    f.id === DEFAULT_FOLDER_ID
-                      ? '#d1d5db'
-                      : pickedFolders.has(f.id)
-                        ? '#2563eb'
-                        : '#9ca3af'
+              <Pressable
+                onPress={() => {
+                  if (folderSelectMode) {
+                    if (f.id !== DEFAULT_FOLDER_ID) togglePickFolder(f.id);
+                    return;
                   }
-                  style={{ marginRight: 12 }}
-                />
-              ) : null}
-              <Ionicons
-                name={f.is_default ? 'star' : 'folder-outline'}
-                size={20}
-                color={f.is_default ? '#f59e0b' : '#6b7280'}
-              />
-              <View className="ml-3 flex-1">
-                <Text className="text-base text-gray-900 dark:text-gray-100">{folderLabel(f)}</Text>
-                {f.note ? (
-                  <Text className="text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
-                    {f.note}
-                  </Text>
+                  setFolderId(f.id);
+                  setFilter('');
+                  setSelectMode(false);
+                  setPicked(new Set());
+                }}
+                onLongPress={() => (folderSelectMode ? undefined : handleFolderLongPress(f))}
+                className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
+              >
+                {folderSelectMode ? (
+                  <Ionicons
+                    name={pickedFolders.has(f.id) ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={
+                      f.id === DEFAULT_FOLDER_ID
+                        ? '#d1d5db'
+                        : pickedFolders.has(f.id)
+                          ? '#2563eb'
+                          : '#9ca3af'
+                    }
+                    style={{ marginRight: 12 }}
+                  />
                 ) : null}
-              </View>
-              <Text className="mr-1 text-sm text-gray-500 dark:text-gray-400">
-                {t('favorites.count', { count: f.species_count })}
-              </Text>
-              {folderSelectMode ? null : (
-                <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-              )}
-            </Pressable>
+                <Ionicons
+                  name={f.is_default ? 'star' : 'folder-outline'}
+                  size={20}
+                  color={f.is_default ? '#f59e0b' : '#6b7280'}
+                />
+                <View className="ml-3 flex-1">
+                  <Text className="text-base text-gray-900 dark:text-gray-100">
+                    {folderLabel(f)}
+                  </Text>
+                  {f.note ? (
+                    <Text className="text-xs text-gray-500 dark:text-gray-400" numberOfLines={1}>
+                      {f.note}
+                    </Text>
+                  ) : null}
+                </View>
+                <Text className="mr-1 text-sm text-gray-500 dark:text-gray-400">
+                  {t('favorites.count', { count: f.species_count })}
+                </Text>
+                {folderSelectMode ? null : (
+                  <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+                )}
+              </Pressable>
             </SwipeRowActions>
           )}
         />
@@ -668,7 +670,7 @@ export default function FavoritesScreen() {
       <View className="flex-1">
         <Pressable
           onPress={() => setFolderId(null)}
-          className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-2 active:bg-gray-50 dark:active:bg-gray-800"
+          className="flex-row items-center border-b border-gray-100 bg-white px-4 py-2 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
         >
           <Ionicons name="chevron-back" size={16} color="#2563eb" />
           <Text className="ml-1 text-sm text-blue-600 dark:text-blue-400">
@@ -676,7 +678,7 @@ export default function FavoritesScreen() {
           </Text>
         </Pressable>
 
-        <View className="flex-row items-center justify-between border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-2">
+        <View className="flex-row items-center justify-between border-b border-gray-200 bg-white px-4 py-2 dark:border-gray-700 dark:bg-gray-900">
           <Text className="text-sm text-gray-500 dark:text-gray-400">
             {selectMode
               ? t('favorites.selectedCount', { count: picked.size })
@@ -687,9 +689,7 @@ export default function FavoritesScreen() {
               <Pressable
                 onPress={() =>
                   setPicked(
-                    picked.size === display.length
-                      ? new Set()
-                      : new Set(display.map((i) => i.id)),
+                    picked.size === display.length ? new Set() : new Set(display.map((i) => i.id)),
                   )
                 }
                 hitSlop={8}
@@ -718,33 +718,33 @@ export default function FavoritesScreen() {
               </Pressable>
             </View>
           ) : (
-          <View className="flex-row items-center gap-2">
-            <Pressable
-              onPress={() => setSelectMode(true)}
-              hitSlop={8}
-              className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700"
-            >
-              <Ionicons name="checkbox-outline" size={16} color="#4b5563" />
-            </Pressable>
-            <Pressable
-              onPress={handleImportMenu}
-              className="flex-row items-center rounded-full bg-blue-50 dark:bg-blue-900/40 px-3 py-1.5 active:opacity-70"
-            >
-              <Ionicons name="download-outline" size={14} color="#2563eb" />
-              <Text className="ml-1 text-xs font-medium text-blue-600 dark:text-blue-400">
-                {t('favorites.import')}
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={handleSort}
-              className="flex-row items-center rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1.5 active:bg-gray-200 dark:active:bg-gray-700"
-            >
-              <Ionicons name="swap-vertical" size={14} color="#4b5563" />
-              <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">
-                {t(SORT_LABEL[sortKey])}
-              </Text>
-            </Pressable>
-          </View>
+            <View className="flex-row items-center gap-2">
+              <Pressable
+                onPress={() => setSelectMode(true)}
+                hitSlop={8}
+                className="h-7 w-7 items-center justify-center rounded-full bg-gray-100 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
+              >
+                <Ionicons name="checkbox-outline" size={16} color="#4b5563" />
+              </Pressable>
+              <Pressable
+                onPress={handleImportMenu}
+                className="flex-row items-center rounded-full bg-blue-50 px-3 py-1.5 active:opacity-70 dark:bg-blue-900/40"
+              >
+                <Ionicons name="download-outline" size={14} color="#2563eb" />
+                <Text className="ml-1 text-xs font-medium text-blue-600 dark:text-blue-400">
+                  {t('favorites.import')}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSort}
+                className="flex-row items-center rounded-full bg-gray-100 px-3 py-1.5 active:bg-gray-200 dark:bg-gray-800 dark:active:bg-gray-700"
+              >
+                <Ionicons name="swap-vertical" size={14} color="#4b5563" />
+                <Text className="ml-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                  {t(SORT_LABEL[sortKey])}
+                </Text>
+              </Pressable>
+            </View>
           )}
         </View>
 
@@ -798,39 +798,39 @@ export default function FavoritesScreen() {
                 },
               ]}
             >
-            <Pressable
-              onPress={() => (selectMode ? togglePick(item.id) : openDetail(item.taxon_id))}
-              onLongPress={() => (selectMode ? undefined : handleLongPress(item))}
-              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
-            >
-              {selectMode ? (
-                <Ionicons
-                  name={picked.has(item.id) ? 'checkbox' : 'square-outline'}
-                  size={20}
-                  color={picked.has(item.id) ? '#2563eb' : '#9ca3af'}
-                  style={{ marginRight: 12 }}
-                />
-              ) : null}
-              <View className="flex-1">
-              {item.common_name_c ? (
-                <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {item.common_name_c}
-                </Text>
-              ) : null}
-              <ScientificName
-                name={item.simple_name}
-                author=""
-                kingdom={item.kingdom}
-                className="text-xs text-gray-700 dark:text-gray-300"
-              />
-              {item.family_c || item.family ? (
-                <Text className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
-                  {item.family_c}
-                  {item.family ? ` ${item.family}` : ''}
-                </Text>
-              ) : null}
-              </View>
-            </Pressable>
+              <Pressable
+                onPress={() => (selectMode ? togglePick(item.id) : openDetail(item.taxon_id))}
+                onLongPress={() => (selectMode ? undefined : handleLongPress(item))}
+                className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
+              >
+                {selectMode ? (
+                  <Ionicons
+                    name={picked.has(item.id) ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={picked.has(item.id) ? '#2563eb' : '#9ca3af'}
+                    style={{ marginRight: 12 }}
+                  />
+                ) : null}
+                <View className="flex-1">
+                  {item.common_name_c ? (
+                    <Text className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {item.common_name_c}
+                    </Text>
+                  ) : null}
+                  <ScientificName
+                    name={item.simple_name}
+                    author=""
+                    kingdom={item.kingdom}
+                    className="text-xs text-gray-700 dark:text-gray-300"
+                  />
+                  {item.family_c || item.family ? (
+                    <Text className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                      {item.family_c}
+                      {item.family ? ` ${item.family}` : ''}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
             </SwipeRowActions>
           )}
         />

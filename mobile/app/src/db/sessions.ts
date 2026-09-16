@@ -31,6 +31,9 @@ export type Session = {
   notes: string | null;
   /** DwC recordedBy — comma-separated surveyor names. NULL = unset. */
   recorded_by: string | null;
+  /** 加星號（v34）：0 / 1. Sorts the record above its peers in the list.
+   *  Device-local organisation, deliberately not exported. */
+  starred: number;
 };
 
 export type SessionWithStats = Session & {

@@ -40,8 +40,10 @@ import {
 } from '~/db';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import { RecordStepBar } from '~/components/RecordStepBar';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { showActionSheet } from '~/components/ActionSheet';
 import { deleteAudioFile } from '~/lib/audioCapture';
+import { mediaUriReferenced } from '~/db';
 import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { rebaseAppFileUri } from '~/lib/appFiles';
@@ -566,7 +568,9 @@ export default function CollectionTripScreen() {
       active.id,
       parsePhotoPaths(active.audio_paths).filter((u) => u !== uri),
     );
-    void deleteAudioFile(uri);
+    // A merged record shares its clips with the record it came from, so only
+    // the last reference may delete the file.
+    if (!mediaUriReferenced(uri, 'audio_paths')) void deleteAudioFile(uri);
     refreshActive(active.id);
   };
 
@@ -603,19 +607,19 @@ export default function CollectionTripScreen() {
           ),
           headerLeft: () => <BackHeaderLeft />,
           headerRight: () => (
-            <Pressable
+            // Icon rather than the words it used to be: 名錄 and 樣區 already
+            // end / resume through exactly these two glyphs, and the odd one
+            // out was 採集 — three sibling screens, one action, one shape.
+            <HeaderIconButton
+              icon={isActive ? 'stop-circle-outline' : 'refresh-outline'}
+              tone={isActive ? 'danger' : 'default'}
+              label={isActive ? t('collection.endTrip') : t('collection.resume')}
               onPress={() => {
                 if (isActive) endCollectionTrip(trip.id);
                 else reopenCollectionTrip(trip.id);
                 reload();
               }}
-              hitSlop={8}
-              className="active:opacity-60"
-            >
-              <Text className="text-base font-medium text-blue-600 dark:text-blue-400">
-                {isActive ? t('collection.endTrip') : t('collection.resume')}
-              </Text>
-            </Pressable>
+            />
           ),
         }}
       />

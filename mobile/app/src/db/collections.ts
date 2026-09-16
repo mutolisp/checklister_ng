@@ -40,6 +40,9 @@ export type CollectionTrip = {
   notes: string | null;
   created_at: number;
   updated_at: number;
+  /** 加星號（v34）：0 / 1. Sorts the record above its peers in the list.
+   *  Device-local organisation, deliberately not exported. */
+  starred: number;
 };
 
 export type CollectionTripWithStats = CollectionTrip & {

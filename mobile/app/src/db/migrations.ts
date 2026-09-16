@@ -40,9 +40,13 @@ const MIGRATIONS: Migration[] = [
           FOREIGN KEY (project_id) REFERENCES projects(id)
         );
       `);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at DESC);`,
+      );
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(ended_at) WHERE ended_at IS NULL;`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(ended_at) WHERE ended_at IS NULL;`,
+      );
       db.executeSync(`
         CREATE TABLE IF NOT EXISTS checklist_records (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,8 +60,12 @@ const MIGRATIONS: Migration[] = [
           FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
         );
       `);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_records_session ON checklist_records(session_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_records_taxon ON checklist_records(taxon_id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_records_session ON checklist_records(session_id);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_records_taxon ON checklist_records(taxon_id);`,
+      );
       db.executeSync(`
         CREATE TABLE IF NOT EXISTS settings (
           key TEXT PRIMARY KEY,
@@ -71,7 +79,9 @@ const MIGRATIONS: Migration[] = [
           searched_at INTEGER NOT NULL
         );
       `);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_history_searched ON search_history(searched_at DESC);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_history_searched ON search_history(searched_at DESC);`,
+      );
     },
   },
   {
@@ -142,7 +152,10 @@ const MIGRATIONS: Migration[] = [
     // Most sessions will have NULL site_id; site capture is opt-in.
     version: 4,
     up: (db) => {
-      addColumnIfMissing(db, `ALTER TABLE sessions ADD COLUMN site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL;`);
+      addColumnIfMissing(
+        db,
+        `ALTER TABLE sessions ADD COLUMN site_id INTEGER REFERENCES sites(id) ON DELETE SET NULL;`,
+      );
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_sessions_site ON sessions(site_id);`);
     },
   },
@@ -203,10 +216,16 @@ const MIGRATIONS: Migration[] = [
           FOREIGN KEY (site_id) REFERENCES sites(id) ON DELETE SET NULL
         );
       `);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_surveys_project ON plot_surveys(project_id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_surveys_project ON plot_surveys(project_id);`,
+      );
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_surveys_site ON plot_surveys(site_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_surveys_started ON plot_surveys(start_ts DESC);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_surveys_active ON plot_surveys(status) WHERE status = 'active';`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_surveys_started ON plot_surveys(start_ts DESC);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_surveys_active ON plot_surveys(status) WHERE status = 'active';`,
+      );
       db.executeSync(`
         CREATE TABLE IF NOT EXISTS plot_species_records (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -225,9 +244,15 @@ const MIGRATIONS: Migration[] = [
           FOREIGN KEY (plot_survey_id) REFERENCES plot_surveys(id) ON DELETE CASCADE
         );
       `);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_records_plot ON plot_species_records(plot_survey_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_records_taxon ON plot_species_records(taxon_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_records_layer ON plot_species_records(plot_survey_id, layer);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_plot ON plot_species_records(plot_survey_id);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_taxon ON plot_species_records(taxon_id);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_layer ON plot_species_records(plot_survey_id, layer);`,
+      );
     },
   },
   {
@@ -238,7 +263,10 @@ const MIGRATIONS: Migration[] = [
     //     SQLite 不支援 ALTER CHECK，因此 rename+create+copy 重建表。
     version: 6,
     up: (db) => {
-      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN plot_type TEXT NOT NULL DEFAULT 'fixed';`);
+      addColumnIfMissing(
+        db,
+        `ALTER TABLE plot_surveys ADD COLUMN plot_type TEXT NOT NULL DEFAULT 'fixed';`,
+      );
       addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN track_geojson TEXT;`);
 
       db.executeSync(`ALTER TABLE plot_species_records RENAME TO plot_species_records_old;`);
@@ -265,9 +293,15 @@ const MIGRATIONS: Migration[] = [
         FROM plot_species_records_old;
       `);
       db.executeSync(`DROP TABLE plot_species_records_old;`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_records_plot ON plot_species_records(plot_survey_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_records_taxon ON plot_species_records(taxon_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_plot_records_layer ON plot_species_records(plot_survey_id, layer);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_plot ON plot_species_records(plot_survey_id);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_taxon ON plot_species_records(taxon_id);`,
+      );
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_plot_records_layer ON plot_species_records(plot_survey_id, layer);`,
+      );
     },
   },
   {
@@ -277,7 +311,9 @@ const MIGRATIONS: Migration[] = [
     //     由 code 層處理；DB schema 不變（TEXT GeoJSON）。
     version: 7,
     up: (db) => {
-      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN track_finalized INTEGER NOT NULL DEFAULT 0;`,
+      addColumnIfMissing(
+        db,
+        `ALTER TABLE plot_surveys ADD COLUMN track_finalized INTEGER NOT NULL DEFAULT 0;`,
       );
     },
   },
@@ -396,7 +432,9 @@ const MIGRATIONS: Migration[] = [
       // layer_count default 4 = existing plots keep 4 layers (E1-E4). User can
       // bump to 6 via the env tab; lowered count just hides the trailing
       // layers in UI, the data stays for safety.
-      addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN layer_count INTEGER NOT NULL DEFAULT 4 CHECK (layer_count BETWEEN 1 AND 6);`,
+      addColumnIfMissing(
+        db,
+        `ALTER TABLE plot_surveys ADD COLUMN layer_count INTEGER NOT NULL DEFAULT 4 CHECK (layer_count BETWEEN 1 AND 6);`,
       );
       addColumnIfMissing(db, `ALTER TABLE plot_surveys ADD COLUMN env_photos_json TEXT;`);
 
@@ -515,7 +553,9 @@ const MIGRATIONS: Migration[] = [
           added_at INTEGER NOT NULL
         );
       `);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_added ON favorite_taxa(added_at DESC);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_favorite_added ON favorite_taxa(added_at DESC);`,
+      );
     },
   },
   {
@@ -565,7 +605,9 @@ const MIGRATIONS: Migration[] = [
     // env tab and which column name + value the export emits.
     version: 17,
     up: (db) => {
-      addColumnIfMissing(db, `ALTER TABLE plot_survey_layers ADD COLUMN height_unit TEXT NOT NULL DEFAULT 'cm';`,
+      addColumnIfMissing(
+        db,
+        `ALTER TABLE plot_survey_layers ADD COLUMN height_unit TEXT NOT NULL DEFAULT 'cm';`,
       );
     },
   },
@@ -644,7 +686,9 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_ctrips_started ON collection_trips(started_at DESC);`,
       );
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_ctrips_project ON collection_trips(project_id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_ctrips_project ON collection_trips(project_id);`,
+      );
       db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_ctrips_active ON collection_trips(status) WHERE status = 'active';`,
       );
@@ -671,7 +715,9 @@ const MIGRATIONS: Migration[] = [
         );
       `);
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_cspec_trip ON collection_specimens(trip_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_cspec_taxon ON collection_specimens(taxon_id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_cspec_taxon ON collection_specimens(taxon_id);`,
+      );
       db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_cspec_seq ON collection_specimens(record_number_seq DESC);`,
       );
@@ -789,9 +835,13 @@ const MIGRATIONS: Migration[] = [
         db.executeSync(`DROP TABLE favorite_taxa_v14;`);
       }
 
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_folder ON favorite_taxa(folder_id, added_at DESC);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_favorite_folder ON favorite_taxa(folder_id, added_at DESC);`,
+      );
       db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_taxon ON favorite_taxa(taxon_id);`);
-      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_favorite_folders_sort ON favorite_folders(sort_order, id);`);
+      db.executeSync(
+        `CREATE INDEX IF NOT EXISTS idx_favorite_folders_sort ON favorite_folders(sort_order, id);`,
+      );
     },
   },
   {
@@ -829,9 +879,7 @@ const MIGRATIONS: Migration[] = [
       db.executeSync(
         `CREATE INDEX IF NOT EXISTS idx_external_source ON external_taxa(source, source_key);`,
       );
-      db.executeSync(
-        `CREATE INDEX IF NOT EXISTS idx_external_name ON external_taxa(simple_name);`,
-      );
+      db.executeSync(`CREATE INDEX IF NOT EXISTS idx_external_name ON external_taxa(simple_name);`);
     },
   },
   // v25：常用名錄目錄記住來源。由地圖範圍建立的目錄要能說明「這是哪一塊範圍、
@@ -906,7 +954,10 @@ const MIGRATIONS: Migration[] = [
       addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN local_status TEXT;`);
       addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN higher_classification TEXT;`);
       // 1 = 使用者刻意採用（而非範圍匯入順手鑄的）。upsert 時必須保留。
-      addColumnIfMissing(db, `ALTER TABLE external_taxa ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;`);
+      addColumnIfMissing(
+        db,
+        `ALTER TABLE external_taxa ADD COLUMN adopted INTEGER NOT NULL DEFAULT 0;`,
+      );
     },
   },
   // v29：錄音附件。audio_paths = JSON array of file:// URIs
@@ -936,7 +987,10 @@ const MIGRATIONS: Migration[] = [
     up: (db) => {
       for (const t of ['checklist_records', 'plot_species_records', 'collection_specimens']) {
         addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_observation_id INTEGER;`);
-        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_media_done INTEGER NOT NULL DEFAULT 0;`);
+        addColumnIfMissing(
+          db,
+          `ALTER TABLE ${t} ADD COLUMN inat_media_done INTEGER NOT NULL DEFAULT 0;`,
+        );
         addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN inat_uploaded_at INTEGER;`);
       }
     },
@@ -988,6 +1042,24 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  // v34：加星號的記錄（starred），記錄列表排序時排在前面。
+  //
+  // 0 = 沒加星（預設），1 = 加星。刻意用整數而非布林，SQLite 沒有布林型別，
+  // 且既有欄位（inat_media_done、track_finalized）都是這個慣例。
+  //
+  // 與「常用名錄 favorite_taxa」是兩回事：那個收藏的是**物種**，這個標的是
+  // 整筆調查記錄。
+  //
+  // 不進匯出／匯入：星號是這台裝置上的整理方式，不是這次調查的觀測事實，
+  // 把它寫進 yml 會讓「同一份記錄在兩台機器上」的語意變得含糊。
+  {
+    version: 34,
+    up: (db) => {
+      for (const t of ['sessions', 'plot_surveys', 'collection_trips']) {
+        addColumnIfMissing(db, `ALTER TABLE ${t} ADD COLUMN starred INTEGER NOT NULL DEFAULT 0;`);
+      }
+    },
+  },
 ];
 
 /** Highest schema version this build knows how to produce. Backup/restore uses
@@ -998,9 +1070,7 @@ function columnsOf(db: DB, table: string): Set<string> {
   // PRAGMA cannot be parameterised; the table name always comes from our own
   // SQL literals in this file, never from user input.
   const res = db.executeSync(`PRAGMA table_info(${table});`);
-  return new Set(
-    ((res.rows ?? []) as { name?: string }[]).map((r) => String(r.name ?? '')),
-  );
+  return new Set(((res.rows ?? []) as { name?: string }[]).map((r) => String(r.name ?? '')));
 }
 
 /**

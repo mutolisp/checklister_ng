@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { RecordLocationMap } from '~/components/RecordLocationMap';
 import { RecordStepBar } from '~/components/RecordStepBar';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import {
   SwipeBlockedArea,
   SwipeBlockProvider,
@@ -127,16 +128,16 @@ export default function PlotDetailScreen() {
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <View className="flex-row items-center gap-2">
-              <Pressable
+              <HeaderIconButton
+                icon="document-text-outline"
                 onPress={() => router.push(`/report/plot/${plot.id}` as Href)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('report.navTitle')}
-                className="h-9 w-9 items-center justify-center active:opacity-60"
-              >
-                <Ionicons name="document-text-outline" size={22} color="#2563eb" />
-              </Pressable>
-              <Pressable
+                label={t('report.navTitle')}
+              />
+              <HeaderIconButton
+                icon={plot.status === 'done' ? 'refresh-outline' : 'stop-circle-outline'}
+                // 結束 is the destructive half of this toggle; 繼續 is not.
+                tone={plot.status === 'done' ? 'default' : 'danger'}
+                label={plot.status === 'done' ? t('plot.reopen') : t('session.end')}
                 onPress={() => {
                   if (plot.status === 'done') {
                     // Reopen force-ends any other active record DB-side; stop a
@@ -162,20 +163,7 @@ export default function PlotDetailScreen() {
                     ]);
                   }
                 }}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={plot.status === 'done' ? t('plot.reopen') : t('session.end')}
-                className="h-9 w-9 items-center justify-center active:opacity-60"
-              >
-                {/* Icon-only: the words cost most of the header's width and the
-                   glyphs carry the same two states. The label survives for
-                   screen readers. */}
-                <Ionicons
-                  name={plot.status === 'done' ? 'refresh-outline' : 'stop-circle-outline'}
-                  size={22}
-                  color={plot.status === 'done' ? '#2563eb' : '#dc2626'}
-                />
-              </Pressable>
+              />
             </View>
           ),
         }}

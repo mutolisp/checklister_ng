@@ -53,37 +53,38 @@ export type ChecklistRecord = {
   inat_sync_hash: string | null;
 };
 
-export type RecordWithTaxon = ChecklistRecord & AdoptionStatus & {
-  simple_name: string;
-  name_author: string;
-  common_name_c: string;
-  alternative_name_c: string;
-  family: string;
-  family_c: string;
-  rank: string;
-  is_endemic: string;
-  alien_type: string;
-  redlist: string;
-  iucn: string;
-  cites: string;
-  protected: string;
-  is_hybrid: string;
-  kingdom: string;
-  kingdom_c: string;
-  phylum: string;
-  phylum_c: string;
-  class: string;
-  class_c: string;
-  order: string;
-  order_c: string;
-  genus: string;
-  genus_c: string;
-  is_terrestrial: string;
-  is_freshwater: string;
-  is_brackish: string;
-  is_marine: string;
-  is_fossil: string;
-};
+export type RecordWithTaxon = ChecklistRecord &
+  AdoptionStatus & {
+    simple_name: string;
+    name_author: string;
+    common_name_c: string;
+    alternative_name_c: string;
+    family: string;
+    family_c: string;
+    rank: string;
+    is_endemic: string;
+    alien_type: string;
+    redlist: string;
+    iucn: string;
+    cites: string;
+    protected: string;
+    is_hybrid: string;
+    kingdom: string;
+    kingdom_c: string;
+    phylum: string;
+    phylum_c: string;
+    class: string;
+    class_c: string;
+    order: string;
+    order_c: string;
+    genus: string;
+    genus_c: string;
+    is_terrestrial: string;
+    is_freshwater: string;
+    is_brackish: string;
+    is_marine: string;
+    is_fossil: string;
+  };
 
 export type CreateRecordInput = {
   session_id: number;
@@ -145,7 +146,11 @@ export function deleteRecord(id: number): void {
 
 export function updateRecordNotes(id: number, notes: string | null): void {
   const db = getUserDb();
-  db.executeSync(`UPDATE checklist_records SET notes = ?, updated_at = ? WHERE id = ?`, [notes, Date.now(), id]);
+  db.executeSync(`UPDATE checklist_records SET notes = ?, updated_at = ? WHERE id = ?`, [
+    notes,
+    Date.now(),
+    id,
+  ]);
 }
 
 export function updateRecordLocation(
@@ -169,7 +174,13 @@ export type RecordAttributePatch = Partial<{
   degree_of_establishment: string | null;
 }>;
 
-const ATTR_COLS = ['sex', 'life_stage', 'reproductive_condition', 'leaf_phenology', 'degree_of_establishment'] as const;
+const ATTR_COLS = [
+  'sex',
+  'life_stage',
+  'reproductive_condition',
+  'leaf_phenology',
+  'degree_of_establishment',
+] as const;
 
 export function updateRecordAttributes(id: number, patch: RecordAttributePatch): void {
   const db = getUserDb();
@@ -183,7 +194,11 @@ export function updateRecordAttributes(id: number, patch: RecordAttributePatch):
   }
   if (sets.length === 0) return;
   sets.push('updated_at = ?');
-  db.executeSync(`UPDATE checklist_records SET ${sets.join(', ')} WHERE id = ?`, [...args, Date.now(), id]);
+  db.executeSync(`UPDATE checklist_records SET ${sets.join(', ')} WHERE id = ?`, [
+    ...args,
+    Date.now(),
+    id,
+  ]);
 }
 
 export function parsePhotoPaths(s: string | null): string[] {
@@ -200,13 +215,21 @@ export function parsePhotoPaths(s: string | null): string[] {
 export function updateRecordPhotos(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE checklist_records SET photo_paths = ?, updated_at = ? WHERE id = ?`, [value, Date.now(), id]);
+  db.executeSync(`UPDATE checklist_records SET photo_paths = ?, updated_at = ? WHERE id = ?`, [
+    value,
+    Date.now(),
+    id,
+  ]);
 }
 
 export function updateRecordAudio(id: number, paths: string[]): void {
   const db = getUserDb();
   const value = paths.length > 0 ? JSON.stringify(paths) : null;
-  db.executeSync(`UPDATE checklist_records SET audio_paths = ?, updated_at = ? WHERE id = ?`, [value, Date.now(), id]);
+  db.executeSync(`UPDATE checklist_records SET audio_paths = ?, updated_at = ? WHERE id = ?`, [
+    value,
+    Date.now(),
+    id,
+  ]);
 }
 
 export function listSessionRecords(sessionId: number): RecordWithTaxon[] {
@@ -252,4 +275,39 @@ export function isTaxonInSession(sessionId: number, taxonId: string): boolean {
     [sessionId, taxonId],
   );
   return (res.rows?.length ?? 0) > 0;
+}
+
+/**
+ * Is this media file still referenced by any record?
+ *
+ * 合併 (`mergeSessions` / `mergePlotSurveys`) points the merged rows at the
+ * SAME file URIs as their sources instead of copying the bytes — that is what
+ * keeps a merge from doubling the photo storage. The cost is that one file can
+ * legitimately belong to more than one record, so deleting it because one of
+ * them dropped it would leave the others with a dangling URI and silent
+ * playback failures.
+ *
+ * Only audio removal actually deletes a file today (`deleteAudioFile`); photo
+ * removal just rewrites the row. Both columns are supported anyway so the check
+ * is already in place if that ever changes.
+ *
+ * `instr` rather than `LIKE`: the URI is matched as a literal substring of the
+ * JSON array, with no `%` / `_` to escape. Table and column names come from a
+ * literal union — they are never user input.
+ */
+export function mediaUriReferenced(uri: string, column: 'photo_paths' | 'audio_paths'): boolean {
+  if (!uri) return false;
+  const db = getUserDb();
+  for (const table of [
+    'checklist_records',
+    'plot_species_records',
+    'collection_specimens',
+  ] as const) {
+    const res = db.executeSync(
+      `SELECT 1 FROM ${table} WHERE ${column} IS NOT NULL AND instr(${column}, ?) > 0 LIMIT 1`,
+      [uri],
+    );
+    if ((res.rows ?? []).length > 0) return true;
+  }
+  return false;
 }

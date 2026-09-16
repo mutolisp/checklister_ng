@@ -18,8 +18,10 @@ import {
 } from 'react-native';
 import { KeyboardStickyView } from '~/components/KeyboardAvoidingView';
 import { RecordStepBar } from '~/components/RecordStepBar';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { showActionSheet } from '~/components/ActionSheet';
 import { deleteAudioFile } from '~/lib/audioCapture';
+import { mediaUriReferenced } from '~/db';
 import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -381,7 +383,9 @@ export default function SessionDetailScreen() {
     if (!activeRecord) return;
     const next = parsePhotoPaths(activeRecord.audio_paths).filter((u) => u !== uri);
     updateRecordAudio(activeRecord.id, next);
-    void deleteAudioFile(uri);
+    // A merged record shares its clips with the record it came from, so only
+    // the last reference may delete the file.
+    if (!mediaUriReferenced(uri, 'audio_paths')) void deleteAudioFile(uri);
     setActiveRecord({
       ...activeRecord,
       audio_paths: next.length > 0 ? JSON.stringify(next) : null,
@@ -680,35 +684,24 @@ export default function SessionDetailScreen() {
           headerLeft: BackHeaderLeft,
           headerRight: () => (
             <View className="flex-row items-center gap-2">
-              <Pressable
+              <HeaderIconButton
+                icon="document-text-outline"
                 onPress={() => router.push(`/report/session/${sessionId}` as Href)}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('report.navTitle')}
-                className="h-9 w-9 items-center justify-center active:opacity-60"
-              >
-                <Ionicons name="document-text-outline" size={22} color="#2563eb" />
-              </Pressable>
+                label={t('report.navTitle')}
+              />
               {isActive ? (
-                <Pressable
+                <HeaderIconButton
+                  icon="stop-circle-outline"
+                  tone="danger"
                   onPress={handleEnd}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('session.end')}
-                  className="h-9 w-9 items-center justify-center active:opacity-60"
-                >
-                  <Ionicons name="stop-circle-outline" size={22} color="#dc2626" />
-                </Pressable>
+                  label={t('session.end')}
+                />
               ) : (
-                <Pressable
+                <HeaderIconButton
+                  icon="refresh-outline"
                   onPress={handleReopen}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('session.continueEdit')}
-                  className="h-9 w-9 items-center justify-center active:opacity-60"
-                >
-                  <Ionicons name="refresh-outline" size={22} color="#2563eb" />
-                </Pressable>
+                  label={t('session.continueEdit')}
+                />
               )}
             </View>
           ),

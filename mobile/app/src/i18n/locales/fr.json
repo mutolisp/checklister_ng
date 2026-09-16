@@ -264,7 +264,11 @@
     "mergeSamePlotType": "Seules des placettes utilisant la même méthode peuvent être fusionnées",
     "mergeFailed": "Échec de la fusion",
     "merged": "Fusionné sous « {{name}} »",
-    "open": "Ouvrir"
+    "open": "Ouvrir",
+    "star": "Épingler",
+    "unstar": "Retirer l’épingle",
+    "layoutToCard": "Passer en vue cartes",
+    "layoutToList": "Passer en vue liste"
   },
   "export": {
     "preparing": "Préparation…",

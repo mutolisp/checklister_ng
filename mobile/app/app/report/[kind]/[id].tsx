@@ -6,12 +6,11 @@
  * report model, so what is on screen and what an export writes are the same
  * numbers by construction.
  */
-import { Ionicons } from '@expo/vector-icons';
 import { File, Paths } from 'expo-file-system';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { showActionSheet } from '~/components/ActionSheet';
 import { pickExportLanguage } from '~/lib/pickExportLanguage';
@@ -35,6 +34,7 @@ import {
   type Translate,
 } from '~/lib/reportModel';
 import { buildReportHtml } from '~/lib/reportHtml';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { useExportShare } from '~/lib/useExportShare';
 
 /** Build the report in an arbitrary language — the same model code, with a
@@ -78,10 +78,7 @@ export default function ReportScreen() {
     if (!report) return;
     const fmtIdx = await showActionSheet({
       title: t('report.exportFormat'),
-      options: [
-        { label: t('report.formatHtml') },
-        { label: t('report.formatDocx') },
-      ],
+      options: [{ label: t('report.formatHtml') }, { label: t('report.formatDocx') }],
     });
     if (fmtIdx < 0) return;
     const docx = fmtIdx === 1;
@@ -119,15 +116,12 @@ export default function ReportScreen() {
           headerLeft: BackHeaderLeft,
           headerRight: () =>
             report ? (
-              <Pressable
+              <HeaderIconButton
+                icon="share-outline"
                 onPress={handleShare}
                 disabled={busy}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={t('common.export')}
-              >
-                <Ionicons name="share-outline" size={22} color={busy ? '#9ca3af' : '#2563eb'} />
-              </Pressable>
+                label={t('common.export')}
+              />
             ) : null,
         }}
       />

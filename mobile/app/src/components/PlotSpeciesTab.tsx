@@ -44,6 +44,7 @@ import {
   updatePlotSpeciesValue,
 } from '~/db';
 import { deleteAudioFile } from '~/lib/audioCapture';
+import { mediaUriReferenced } from '~/db';
 import { hasInatChanges, syncRecord, useInatSync } from '~/lib/inatUpload';
 import { apiErrorMessage } from '~/lib/apiErrorMessage';
 import { KeyboardStickyView } from './KeyboardAvoidingView';
@@ -422,7 +423,9 @@ export function PlotSpeciesTab({ plot, onChanged }: { plot: PlotSurvey; onChange
     const record = modal.record;
     const next = parsePhotoPaths(record.audio_paths).filter((u) => u !== uri);
     updatePlotSpeciesAudio(record.id, next);
-    void deleteAudioFile(uri);
+    // A merged record shares its clips with the record it came from, so only
+    // the last reference may delete the file.
+    if (!mediaUriReferenced(uri, 'audio_paths')) void deleteAudioFile(uri);
     setModal({
       mode: 'edit',
       record: { ...record, audio_paths: next.length > 0 ? JSON.stringify(next) : null },

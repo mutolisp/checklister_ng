@@ -216,7 +216,11 @@
     "mergeSamePlotType": "같은 조사법의 조사구끼리만 병합할 수 있습니다",
     "mergeFailed": "병합 실패",
     "merged": "\"{{name}}\"(으)로 병합했습니다",
-    "open": "열기"
+    "open": "열기",
+    "star": "별표 추가",
+    "unstar": "별표 해제",
+    "layoutToCard": "카드 보기로 전환",
+    "layoutToList": "목록 보기로 전환"
   },
   "export": {
     "preparing": "준비 중…",

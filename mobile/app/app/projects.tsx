@@ -22,6 +22,7 @@ import { bundleProject } from '~/lib/projectExport';
 import { useExportShare } from '~/lib/useExportShare';
 import { useSettings } from '~/stores/settings';
 import { listRecords } from '~/db';
+import { HeaderIconButton } from '~/components/HeaderIconButton';
 import { BackHeaderLeft } from '~/lib/goBack';
 
 export default function ProjectsScreen() {
@@ -122,9 +123,11 @@ export default function ProjectsScreen() {
           title: t('nav.projects'),
           headerLeft: BackHeaderLeft,
           headerRight: () => (
-            <Pressable onPress={() => setEditing('new')} hitSlop={8}>
-              <Ionicons name="add" size={26} color="#2563eb" />
-            </Pressable>
+            <HeaderIconButton
+              icon="add"
+              onPress={() => setEditing('new')}
+              label={t('sheets.newProject')}
+            />
           ),
         }}
       />
@@ -135,7 +138,7 @@ export default function ProjectsScreen() {
           const row = (
             <Pressable
               onPress={() => router.push(`/project/${item.id}` as Href)}
-              className="flex-row items-center border-b border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-4 py-3 active:bg-gray-50 dark:active:bg-gray-800"
+              className="flex-row items-center border-b border-gray-100 bg-white px-4 py-3 active:bg-gray-50 dark:border-gray-800 dark:bg-gray-900 dark:active:bg-gray-800"
             >
               <Ionicons
                 name={item.id === 0 ? 'help-circle-outline' : 'folder-outline'}
@@ -144,14 +147,19 @@ export default function ProjectsScreen() {
                 style={{ marginRight: 10 }}
               />
               <View className="flex-1">
-                <Text className={`text-base ${item.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}>
+                <Text
+                  className={`text-base ${item.id === 0 ? 'italic text-gray-500 dark:text-gray-400' : 'text-gray-900 dark:text-gray-100'}`}
+                >
                   {item.name}
                 </Text>
                 <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                   {t('projects.stats', { sessions: item.session_count, plots: item.plot_count })}
                 </Text>
                 {item.location_description ? (
-                  <Text className="mt-0.5 text-xs text-gray-400 dark:text-gray-500" numberOfLines={1}>
+                  <Text
+                    className="mt-0.5 text-xs text-gray-400 dark:text-gray-500"
+                    numberOfLines={1}
+                  >
                     {item.location_description}
                   </Text>
                 ) : null}
@@ -162,7 +170,7 @@ export default function ProjectsScreen() {
             {
               label: t('common.export'),
               icon: 'share-outline' as const,
-              color: 'blue' as const,
+              color: 'export' as const,
               onPress: () => handleExport(item),
             },
             ...(item.id !== 0

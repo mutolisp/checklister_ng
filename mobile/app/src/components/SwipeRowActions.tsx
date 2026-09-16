@@ -24,10 +24,16 @@ export type SwipeAction = {
   label: string;
   /** Ionicons glyph. */
   icon: keyof typeof Ionicons.glyphMap;
-  /** Tailwind bg colour class (also used for active state). `inat` is
-   *  iNaturalist's green (#74AB00) — a static literal, which is the one case
-   *  where an arbitrary `bg-[#…]` class is safe for NativeWind's JIT scanner. */
-  color: 'red' | 'blue' | 'emerald' | 'purple' | 'amber' | 'inat';
+  /** Tailwind bg colour class (also used for active state). `inat` and
+   *  `export` are fixed brand hexes rather than palette steps — static
+   *  literals, which is the one case where an arbitrary `bg-[#…]` class is
+   *  safe for NativeWind's JIT scanner.
+   *
+   *  Both are named for their PURPOSE, not their hue: `export` must not be
+   *  borrowed as a generic teal, or the next recolour of 匯出 silently drags
+   *  an unrelated action along — which is exactly why it could not just reuse
+   *  `blue` (採集's 複製 is blue too). */
+  color: 'red' | 'blue' | 'emerald' | 'purple' | 'amber' | 'inat' | 'export';
   onPress: () => void;
 };
 
@@ -38,6 +44,7 @@ const BG: Record<SwipeAction['color'], string> = {
   purple: 'bg-purple-600 active:bg-purple-700',
   amber: 'bg-amber-600 active:bg-amber-700',
   inat: 'bg-[#74AB00] active:bg-[#5E8A00]',
+  export: 'bg-[#00A2A5] active:bg-[#008284]',
 };
 
 type Props = {
